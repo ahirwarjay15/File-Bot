@@ -48,3 +48,15 @@ Do not deploy as production-ready until the GitHub Actions checks pass, test cas
 - Aligned Force Join default copy in both the initial prompt and verification-refresh path with the agreed `{remaining_count}` wording.
 - Start settings fallback defaults now use the approved Start Text instead of the old generic welcome copy, and the default Start Button URL is explicitly seeded when the button text is customized.
 - These edits are not yet runtime-verified. Continue the Blueprint audit before deployment; no end-to-end Telegram/Atlas test has been run.
+
+
+## User-confirmed decisions — 2026-10-11
+
+- Animation default mode: Force Join Poster.
+- Default animation text frames: `.`, `..`, `...`.
+- `📟 UPDATE CHANNEL` remains the explicit emoji exception.
+- Force Join is effectively disabled with no Join Request channels configured. The Add flow asks the mode first: Join Request or Other.
+- Auto Delete and After Delete are separate toggles/pages. After Delete cannot be enabled while Auto Delete is off; switching Auto Delete off also turns After Delete off.
+- Both user-facing About views include a Back button to restore their prior Start/Invalid post content and buttons.
+- Implemented settings/UI updates are committed to the branch, but the actual 3-frame animation loop and both runtime animation modes remain incomplete/unverified in the delivery flow. The current flow still refers to a separately configured Force Join animation media ID.
+- No successful CI run for this branch or live Telegram/MongoDB Atlas end-to-end test has been verified yet.
