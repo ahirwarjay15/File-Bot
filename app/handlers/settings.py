@@ -201,6 +201,12 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_auto_message(query, db)
     elif action == "after": await render_after(query, db)
     elif action == "after_toggle":
+        auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
+        if not auto:
+            await patch(db, "after_delete", {"enabled": False}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
+            if query.message: await query.message.answer("After Delete only works when Auto Delete is enabled.")
+            await render_after(query, db)
+            return
         cfg = await db.settings.find_one({"key": "after_delete"}) or {}
         await patch(db, "after_delete", {"enabled": not cfg.get("enabled", False)}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
         await render_after(query, db)
