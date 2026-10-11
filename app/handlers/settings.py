@@ -6,7 +6,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
 from app.services.permissions import is_owner_or_moderator
@@ -64,6 +64,10 @@ async def edit_page(query, text, keyboard):
         return
     try:
         await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    except TelegramBadRequest as exc:
+        if "message is not modified" in str(exc).lower():
+            return
+        await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     except TelegramAPIError:
         await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
