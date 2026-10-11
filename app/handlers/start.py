@@ -1,6 +1,7 @@
 """Start command, Force Join gate, and single/batch deeplink delivery."""
 import logging
 import hashlib
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 from aiogram import Router,F
 from aiogram.filters import CommandStart
@@ -111,12 +112,25 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
             except Exception: log.exception("Could not update delivery request status")
         return
     if await is_owner_or_moderator(database.db,user.id,settings):return
-    cfg=await database.db.settings.find_one({"key":"start_message"})
-    if cfg is None or cfg.get("enabled",True):
-        markup = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=cfg.get("about_button_text", "ABOUT"), callback_data="start:about")
-        ]]) if cfg and cfg.get("about_enabled", False) else None
-        await message.answer((cfg or {}).get("text") or "👋 Welcome! Send a valid file link to receive your file.", reply_markup=markup)
+    cfg=await database.db.settings.find_one({"key":"start_message"}) or {}
+    if cfg.get("enabled", True):
+        rows = []
+        button_url = cfg.get("button_url", "http://t.me/lexiAnime")
+        parsed = urlparse(button_url)
+        if cfg.get("button_enabled", True) and parsed.scheme in ("http", "https") and parsed.netloc:
+            rows.append([InlineKeyboardButton(text=cfg.get("button_text") or "📟 UPDATE CHANNEL", url=button_url)])
+        if cfg.get("about_enabled", True):
+            rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ＡＢＯＵＴ"), callback_data="start:about")])
+        markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+        text = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi"
+        text = text.replace("{first_name}", user.first_name or "").replace("{last_name}", user.last_name or "")
+        text = text.replace("{mention}", user.mention_html())
+        if cfg.get("poster_file_id"):
+            await message.answer_animation(cfg["poster_file_id"], caption=text, reply_markup=markup, parse_mode="HTML")
+        elif cfg.get("poster_photo_id"):
+            await message.answer_photo(cfg["poster_photo_id"], caption=text, reply_markup=markup, parse_mode="HTML")
+        else:
+            await message.answer(text, reply_markup=markup, parse_mode="HTML")
 
 @router.callback_query(F.data == "start:about")
 async def start_about(query: CallbackQuery, database):
