@@ -79,7 +79,7 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
         reply_markup=menu(),
     )
 
-@router.message(Command("cancel"))
+@router.message(BatchState.collecting, Command("cancel"))
 async def cancel_command(message: Message, state: FSMContext, settings: Settings, database):
     if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
         return
@@ -138,15 +138,6 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
 @router.message(BatchState.collecting)
 async def collect_in_state(message: Message, state: FSMContext, settings: Settings, database):
     if not message.from_user:
-        return
-    await _collect_message(message, settings, database, message.from_user.id)
-
-# This fallback restores active sessions after a process restart, when MemoryStorage is empty.
-@router.message()
-async def recover_and_collect(message: Message, settings: Settings, database):
-    if not message.from_user or (message.text and message.text.startswith("/")):
-        return
-    if not await is_owner_or_moderator(database.db, message.from_user.id, settings):
         return
     await _collect_message(message, settings, database, message.from_user.id)
 
