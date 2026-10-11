@@ -118,13 +118,15 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
             "source_message_id": copied.message_id,
             "file_name": message.document.file_name if message.document else None,
             "source_message_date": message.date.isoformat() if message.date else None,
+            "original_message_id": message.message_id,
         }
         # Conditional update prevents adding to a session cancelled or expired concurrently.
         result = await database.db.batch_sessions.update_one(
             {"_id": session["_id"], "status": "collecting",
-             "last_activity_ts": session.get("last_activity_ts")},
+             "$expr": {"$lt": [{"$size": "$items"}, 100]}},
             {"$push": {"items": item},
-             "$set": {"last_activity_at": _now(), "last_activity_ts": time.time()}},
+             "$max": {"last_activity_ts": time.time()},
+             "$currentDate": {"last_activity_at": True}},
         )
         if not result.modified_count:
             await message.answer("Batch session changed. Use /batch to resume or start again.")
@@ -170,7 +172,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
         if query.message:
             await query.message.edit_text("Time's up. Try again.")
         return
-    items = session.get("items", [])
+    items = sorted(session.get("items", []), key=lambda item: item.get("original_message_id", item.get("source_message_id", 0)))
     if not items:
         if query.message:
             await query.message.answer("Add at least one message first.")
