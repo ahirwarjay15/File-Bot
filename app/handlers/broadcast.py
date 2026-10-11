@@ -60,6 +60,7 @@ async def confirm(query: CallbackQuery, settings: Settings, database):
         {"$set": {"status": "queued", "queued_at": now(),
                   "report_chat_id": query.message.chat.id if query.message else admin_id,
                   "report_message_id": query.message.message_id if query.message else None}},
+        return_document=True,
     )
     if not draft:
         await query.answer("No pending broadcast draft, or it has already been queued.", show_alert=True)
