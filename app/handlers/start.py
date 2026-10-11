@@ -267,17 +267,21 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
 async def invalid_about(query:CallbackQuery,settings:Settings,database):
     await query.answer()
     if not query.from_user or await is_banned_for_callback(database.db,query.from_user.id):return
-    cfg=await database.db.settings.find_one({"key":"invalid_post"})
-    if not cfg or not cfg.get("about_enabled"):return
-    if query.message:
-        text = cfg.get("about_text") or "This bot delivers files using permanent source-channel references."
-        try:
-            if query.message.photo or query.message.animation or query.message.document:
-                await query.message.edit_caption(caption=text)
-            else:
-                await query.message.edit_text(text)
-        except TelegramAPIError:
-            pass
+    cfg=await database.db.settings.find_one({"key":"invalid_post","enabled":True})
+    if not cfg or not cfg.get("about_enabled") or not query.message:return
+    me = await query.bot.get_me()
+    about_text = "✨ ᴀʙᴏᴜᴛ ᴍᴇ\\n\\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\\n\\n✰ creator: Lexi\\n\\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\\n\\n✰ made for: Lexi Anime\\n\\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
+    rendered = html.escape(about_text).replace("{bot_name}", html.escape(me.full_name))
+    rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
+    rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
+    rendered = rendered.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
+    try:
+        if query.message.photo or query.message.animation or query.message.document:
+            await query.message.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=None)
+        else:
+            await query.message.edit_text(rendered, parse_mode="HTML", reply_markup=None)
+    except TelegramAPIError:
+        pass
 
 async def is_banned_for_callback(db,user_id:int)->bool:
     doc=await db.users.find_one({"user_id":user_id},{"banned":1})
