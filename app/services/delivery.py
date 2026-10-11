@@ -19,9 +19,13 @@ def _minutes(cfg):
 
 def _notice(cfg, minutes):
     value = (cfg or {}).get("notice") or DEFAULT_NOTICE
-    label = (f"{minutes // 60} hours" if minutes % 60 == 0 and minutes >= 60
-             else f"{minutes} minutes" if minutes < 60
-             else f"{minutes // 60}h {minutes % 60}m")
+    if minutes % 60 == 0 and minutes >= 60:
+        hours = minutes // 60
+        label = f"{hours} hour" if hours == 1 else f"{hours} hours"
+    elif minutes < 60:
+        label = f"{minutes} minutes"
+    else:
+        label = f"{minutes // 60}h {minutes % 60}m"
     return value.replace("{auto_delete_time}", label)
 
 async def _save_expiry_task(db, user_id, message_ids, deadline, deeplink):
