@@ -147,8 +147,11 @@ async def start_about(query: CallbackQuery, database):
     me = await query.bot.get_me()
     about_text = cfg.get("about_text") or "✨ ᴀʙᴏᴜᴛ ᴍᴇ\\n\\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\\n\\n✰ creator: Lexi\\n\\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\\n\\n✰ made for: Lexi Anime\\n\\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
     rendered = html.escape(about_text).replace("{bot_name}", html.escape(me.full_name))
-    rendered = rendered.replace("Lexi Anime", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
+    # Replace the longer phrase first via a placeholder so the "Lexi" link
+    # cannot be nested inside the "Lexi Anime" anchor.
+    rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
     rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
+    rendered = rendered.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
     try:
         if query.message.photo or query.message.animation:
             await query.message.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=None)
