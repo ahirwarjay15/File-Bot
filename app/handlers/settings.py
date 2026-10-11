@@ -92,11 +92,11 @@ async def render_forcejoin(query, db, settings):
         [("VERIFY", "settings:forcejoin_verify_text")],
         [("《 BACK", "settings:home")],
     ])
-    text = ("F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲\\n\\n"
-            f"Status: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}\\n\\n"
-            "Users must verify the required Join Request channels before receiving files.\\n\\n"
-            "Join Request channels accept membership or a pending join request.\\n\\n"
-            "Other links are treated as verified when all required Join Request channels are verified.\\n\\n"
+    text = ("F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲\n\n"
+            f"Status: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}\n\n"
+            "Users must verify the required Join Request channels before receiving files.\n\n"
+            "Join Request channels accept membership or a pending join request.\n\n"
+            "Other links are treated as verified when all required Join Request channels are verified.\n\n"
             "You can add up to 10 force-join channels.")
     await edit_page(query, text, kb(rows))
 
