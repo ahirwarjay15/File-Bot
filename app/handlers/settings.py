@@ -488,6 +488,76 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     field = data.get("field")
     db = database.db
     value = (message.text or "").strip()
+    if field == "forcejoin_other_url":
+        parsed = urlparse(value)
+        if parsed.scheme not in ("https", "http") or not parsed.netloc:
+            await message.answer("Please send a valid http/https platform link.")
+            return
+        channels = await effective_force_join_channels(database, settings)
+        if len(channels) >= 10:
+            await message.answer("Maximum 10 force-join channels allowed.")
+            await state.clear()
+            return
+        if any((await db.settings.find_one({"key": "force_join_channel", "url": value} for _ in [0]))):
+            await message.answer("That link is already configured.")
+            return
+        await state.update_data(field="forcejoin_other_label", pending_url=value)
+        await message.answer("Use the default button text or set a custom button text.", reply_markup=kb([
+            [("DEFAULT", "settings:forcejoin_other_default"), ("CUSTOM", "settings:forcejoin_other_custom")],
+            [("《 BACK", "settings:forcejoin")],
+        ]))
+        return
+    if field == "forcejoin_other_label":
+        prev = await state.get_data()
+        channels = await effective_force_join_channels(database, settings)
+        if len(channels) >= 10:
+            await message.answer("Maximum 10 force-join channels allowed.")
+            await state.clear()
+            return
+        url = prev.get("pending_url")
+        if not url:
+            await message.answer("Add process expired. Please start again.")
+            await state.clear()
+            return
+        channel_key = f"other:{len(channels)+1}"
+        channels.append(channel_key)
+        await patch(db, "force_join", {"channels": channels})
+        await patch(db, "force_join_channel", {"channel": channel_key, "url": url, "button_text": value, "mode": "other"})
+        await state.clear()
+        await message.answer(f"✨ Successfully added {channel_key} as your force-join channel.")
+        return
+    if field == "forcejoin_label":
+        prev = await state.get_data()
+        channel = prev.get("channel")
+        if not channel:
+            await message.answer("Channel setting expired. Please reopen it.")
+            await state.clear()
+            return
+        await patch(db, "force_join_channel", {"channel": channel, "button_text": value})
+        await state.clear()
+        await message.answer(f"✨ Successfully updated button text for {channel} force-join button.")
+        return
+    if field == "forcejoin_message":
+        await patch(db, "force_join", {"message": value})
+        await state.clear()
+        await message.answer("✨ Successfully updated force-join message.")
+        return
+    if field == "forcejoin_verify_text":
+        await patch(db, "force_join", {"verify_text": value})
+        await state.clear()
+        await message.answer("✨ Successfully updated verification button text.")
+        return
+    if field == "forcejoin_media":
+        if message.animation:
+            await patch(db, "force_join", {"poster_file_id": message.animation.file_id, "poster_photo_id": None})
+        elif message.photo:
+            await patch(db, "force_join", {"poster_photo_id": message.photo[-1].file_id, "poster_file_id": None})
+        else:
+            await message.answer("Only GIFs and images are supported. Send a photo or GIF.")
+            return
+        await state.clear()
+        await message.answer("✨ Force-join poster updated successfully.")
+        return
     if field == "forcejoin_channel":
         channel = value.strip()
         if channel.startswith("https://t.me/"):
