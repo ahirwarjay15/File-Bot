@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, CopyTextButton
 from aiogram.exceptions import TelegramAPIError
+from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
 from app.database.files import FileRepository
 from app.services.permissions import is_owner_or_moderator
@@ -139,7 +140,10 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
 async def collect_in_state(message: Message, state: FSMContext, settings: Settings, database):
     if not message.from_user:
         return
-    await _collect_message(message, settings, database, message.from_user.id)
+    handled = await _collect_message(message, settings, database, message.from_user.id)
+    if not handled:
+        await state.clear()
+        raise SkipHandler
 
 @router.callback_query(F.data.startswith("batch:"))
 async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, database):
@@ -204,3 +208,21 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
         )
         if query.message:
             await query.message.answer("Batch link generation failed. Your collected messages are still saved; tap Generate link again.")
+
+
+async def run_batch_session_worker(bot, db, poll_seconds: int = 5):
+    """Expire idle batch sessions durably and notify the collecting moderator."""
+    import asyncio
+    while True:
+        cutoff = time.time() - SESSION_TTL
+        async for session in db.batch_sessions.find({"status": "collecting", "last_activity_ts": {"$lte": cutoff}}).limit(100):
+            result = await db.batch_sessions.update_one(
+                {"_id": session["_id"], "status": "collecting", "last_activity_ts": {"$lte": cutoff}},
+                {"$set": {"status": "expired", "finished_at": _now()}},
+            )
+            if result.modified_count:
+                try:
+                    await bot.send_message(session["admin_id"], "Time's up. Try again.")
+                except TelegramAPIError:
+                    log.info("Could not notify moderator %s that batch session expired", session["admin_id"])
+        await asyncio.sleep(poll_seconds)
