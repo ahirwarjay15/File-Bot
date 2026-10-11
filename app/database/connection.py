@@ -20,6 +20,7 @@ class Database:
             await self.db.settings.create_index([("key",ASCENDING)],unique=True)
             await self.db.moderators.create_index([("user_id",ASCENDING)],unique=True)
             await self.db.tasks.create_index([("status",ASCENDING),("deadline",ASCENDING)])
+            await self.db.tasks.create_index([("request_key",ASCENDING)],unique=True,sparse=True)
             await self.db.delivery_requests.create_index([("request_key",ASCENDING)],unique=True)
             await self.db.delivery_requests.create_index([("status",ASCENDING),("updated_at",ASCENDING)])
             await self.db.batches.create_index([("batch_id",ASCENDING)],unique=True,sparse=True)
@@ -29,11 +30,14 @@ class Database:
             await self.db.broadcast_recipients.create_index([("job_id",ASCENDING),("user_id",ASCENDING)],unique=True)
             await self.db.broadcast_recipients.create_index([("job_id",ASCENDING),("status",ASCENDING)])
             await self.db.batch_sessions.create_index([("admin_id",ASCENDING)],unique=True)
+            await self.db.batch_deliveries.create_index([("request_key",ASCENDING)],unique=True)
+            await self.db.batch_deliveries.create_index([("status",ASCENDING),("created_at",ASCENDING)])
             await self.db.batch_sessions.create_index([("status",ASCENDING),("last_activity_ts",ASCENDING)])
             await self.db.users.create_index([("blocked",ASCENDING)])
             # Re-queue jobs interrupted while the process was down.
             await self.db.tasks.update_many({"status":"processing"},{"$set":{"status":"pending"}})
-            logger.info("MongoDB ready; interrupted delete tasks recovered")
+            await self.db.batch_deliveries.update_many({"status":"processing"},{"$set":{"status":"pending"}})
+            logger.info("MongoDB ready; interrupted delete tasks and batch deliveries recovered")
         except Exception:
             await self.close()
             logger.exception("MongoDB startup check failed")
