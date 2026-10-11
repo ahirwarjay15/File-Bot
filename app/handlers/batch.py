@@ -225,7 +225,11 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
             await _expire_session(database.db, uid)
         await state.clear()
         if query.message:
-            await query.message.edit_text("Time's up. Try again.")
+            try:
+                await query.message.delete()
+            except TelegramAPIError:
+                pass
+            await query.message.answer("Time's up. Try again.\\n/batch")
         return
     items = sorted(session.get("items", []), key=lambda item: item.get("original_message_id", item.get("source_message_id", 0)))
     if not items:
@@ -267,7 +271,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
             await query.message.answer("Batch link generation failed. Your collected messages are still saved; tap Generate link again.")
 
 
-async def run_batch_session_worker(bot, db, poll_seconds: int = 5):
+async def run_batch_session_worker(bot, db, poll_seconds: int = 2):
     """Expire idle batch sessions durably and notify the collecting moderator."""
     import asyncio
     while True:
@@ -279,7 +283,14 @@ async def run_batch_session_worker(bot, db, poll_seconds: int = 5):
             )
             if result.modified_count:
                 try:
-                    await bot.send_message(session["admin_id"], "Time's up. Try again.")
+                    status_id = session.get("status_message_id")
+                    status_chat = session.get("status_chat_id", session["admin_id"])
+                    if status_id:
+                        try:
+                            await bot.delete_message(status_chat, status_id)
+                        except TelegramAPIError:
+                            pass
+                    await bot.send_message(session["admin_id"], "Time's up. Try again.\\n/batch")
                 except TelegramAPIError:
                     log.info("Could not notify moderator %s that batch session expired", session["admin_id"])
         await asyncio.sleep(poll_seconds)
