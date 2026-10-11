@@ -164,7 +164,7 @@ async def settings_command(message: Message, settings: Settings, database):
     ]))
 
 @router.callback_query(F.data.startswith("settings:"))
-async def settings_callbacks(query: CallbackQuery, state: SettingInput, settings: Settings, database):
+async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: Settings, database):
     if not query.from_user or not await is_owner_or_moderator(database.db, query.from_user.id, settings):
         await query.answer("Not authorized.", show_alert=True)
         return
