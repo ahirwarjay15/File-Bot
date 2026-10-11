@@ -18,11 +18,15 @@ class FileRepository:
     async def get_file(self,key:str)->dict|None:
         return await self.db.files.find_one({"file_key":key,"kind":"file"})
 
-    async def save_batch(self,items:list[dict],created_by:int)->dict:
+    async def save_batch(self,items:list[dict],created_by:int,batch_id:str|None=None)->dict:
         if not items or len(items)>100: raise ValueError("A batch must contain 1 to 100 files")
-        for _ in range(8):
-            batch_id=token_urlsafe(9).replace("-","").replace("_","")[:12]
+        if batch_id:
             doc={"batch_id":batch_id,"items":items,"created_by":created_by,"created_at":datetime.now(timezone.utc),"kind":"batch"}
+            await self.db.batches.update_one({"batch_id":batch_id},{"$setOnInsert":doc},upsert=True)
+            return await self.db.batches.find_one({"batch_id":batch_id,"kind":"batch"})
+        for _ in range(8):
+            key=token_urlsafe(9).replace("-","").replace("_","")[:12]
+            doc={"batch_id":key,"items":items,"created_by":created_by,"created_at":datetime.now(timezone.utc),"kind":"batch"}
             try:
                 await self.db.batches.insert_one(doc); return doc
             except Exception as exc:
