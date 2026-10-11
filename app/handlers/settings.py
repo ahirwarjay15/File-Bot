@@ -201,10 +201,9 @@ async def render_poster(query):
 
 async def render_about(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
-    await edit_page(query, f"ABOUT BUTTON\nChoose whether to show the About button with invalid posts.\nStatus: {'ENABLED' if cfg.get('about_enabled', True) else 'DISABLED'}", kb([
+    await edit_page(query, f"A̲B̲O̲U̲T̲ ̲B̲U̲T̲T̲O̲N̲\\n\\nChoose whether to show the About button with invalid posts.\\n\\nStatus: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
         [("ENABLE / DISABLE", "settings:invalid_about_toggle")],
-        [("EDIT ABOUT TEXT", "settings:invalid_about_text")],
-        [("BACK", "settings:invalid")],
+        [("《 BACK", "settings:invalid")],
     ]))
 
 async def render_shortener(query, db):
