@@ -121,6 +121,11 @@ async def render_start_poster(query):
         [("BACK", "settings:start")],
     ]))
 
+def _animation_mode_for_action(action: str) -> str:
+    """Translate the two explicit mode buttons to their persisted values."""
+    return "new_message" if action == "animation_mode_new" else "force_join_poster"
+
+
 async def render_animation(query, db):
     cfg = await db.settings.find_one({"key": "animation"}) or {}
     await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\\n\\n<i>Add a custom animation for the verification process.</i>\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
@@ -535,7 +540,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             [("《 BACK", "settings:forcejoin_animation")],
         ]))
     elif action in ("animation_mode_new", "animation_mode_poster"):
-        await patch(db, "animation", {"mode": "force_join_poster" if action.endswith("_new") else "force_join_poster"}, {"enabled": False, "prefix": "Checking..", "frames": [], "speed": 0.10})
+        mode = _animation_mode_for_action(action)
+        await patch(db, "animation", {"mode": mode}, {"enabled": False, "prefix": "Checking..", "frames": [".", "..", "..."], "speed": 0.10})
         await render_animation(query, db)
     elif action == "shortener": await render_shortener(query, db)
     elif action == "shortener_add":

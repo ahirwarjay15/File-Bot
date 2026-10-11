@@ -44,3 +44,10 @@ def test_blueprint_timer_display_labels():
     ]
     assert time_words(60) == "1 hour"
     assert time_words(1440) == "24 hours"
+
+
+def test_animation_mode_buttons_persist_distinct_modes():
+    from app.handlers.settings import _animation_mode_for_action
+
+    assert _animation_mode_for_action("animation_mode_new") == "new_message"
+    assert _animation_mode_for_action("animation_mode_poster") == "force_join_poster"
