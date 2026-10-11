@@ -121,6 +121,15 @@ async def render_start_poster(query):
         [("BACK", "settings:start")],
     ]))
 
+async def render_animation(query, db):
+    cfg = await db.settings.find_one({"key": "animation"}) or {}
+    await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\\n\\nAdd a custom animation for the verification process.\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', [])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+        [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
+        [("ENABLE / DISABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
+        [("MODE", "settings:animation_mode")],
+        [("《 BACK", "settings:home")],
+    ]))
+
 async def render_auto(query, db):
     cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
     after = await db.settings.find_one({"key": "after_delete"}) or {}
@@ -480,19 +489,38 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_about_text")
         if query.message: await query.message.answer("Send the About text to show when the About button is tapped.")
     elif action == "forcejoin_animation":
-        cfg = await db.settings.find_one({"key": "force_join_animation"}) or {}
-        status = "CONFIGURED" if cfg.get("file_id") else "NOT SET"
-        await edit_page(query, f"FORCE JOIN ANIMATION\nStatus: {status}\nThis GIF is shown after Force Join verification and removed after delivery. It is not part of Auto Delete.", kb([
-            [("SET / REPLACE", "settings:forcejoin_animation_set"), ("REMOVE", "settings:forcejoin_animation_remove")],
-            [("BACK", "settings:home")],
+        cfg = await db.settings.find_one({"key": "animation"}) or {}
+        await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\\n\\nAdd a custom animation for the verification process.\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', [])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+            [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
+            [("ENABLE / DISABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
+            [("MODE", "settings:animation_mode")],
+            [("《 BACK", "settings:home")],
         ]))
-    elif action == "forcejoin_animation_set":
-        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_animation")
-        if query.message: await query.message.answer("Send a GIF animation to use after Force Join verification.")
-    elif action == "forcejoin_animation_remove":
-        await db.settings.update_one({"key": "force_join_animation"}, {"$unset": {"file_id": ""}}, upsert=True)
-        if query.message: await query.message.answer("Force Join animation removed.")
-        await render_home(query)
+    elif action == "animation_prefix":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="animation_prefix")
+        if query.message: await query.message.answer("Send new prefix text for the loop animation.")
+    elif action == "animation_frames":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="animation_frame_1", pending_frames=[])
+        if query.message: await query.message.answer("Send the first frame for the loop animation.")
+    elif action == "animation_toggle":
+        cfg = await db.settings.find_one({"key": "animation"}) or {}
+        await patch(db, "animation", {"enabled": not cfg.get("enabled", False)}, {"prefix": "Checking..", "frames": [], "speed": 0.10, "mode": "new_message"})
+        await render_animation(query, db)
+    elif action == "animation_speed":
+        cfg = await db.settings.find_one({"key": "animation"}) or {}
+        speed = float(cfg.get("speed", 0.10))
+        next_speed = round(0.10 + ((round((speed - 0.10) / 0.05) + 1) % 19) * 0.05, 2)
+        await patch(db, "animation", {"speed": next_speed}, {"enabled": False, "prefix": "Checking..", "frames": [], "mode": "new_message"})
+        await render_animation(query, db)
+    elif action == "animation_mode":
+        cfg = await db.settings.find_one({"key": "animation"}) or {}
+        await edit_page(query, f"M̲O̲D̲E̲\\n\\nNew Message: Run the animation in a separate message.\\n\\nForce Join Poster: Run the animation on the force-join poster.\\n\\nCurrent mode: {cfg.get('mode', 'new_message')}", kb([
+            [("NEW MESSAGE", "settings:animation_mode_new"), ("FORCE JOIN POSTER", "settings:animation_mode_poster")],
+            [("《 BACK", "settings:forcejoin_animation")],
+        ]))
+    elif action in ("animation_mode_new", "animation_mode_poster"):
+        await patch(db, "animation", {"mode": "new_message" if action.endswith("_new") else "force_join_poster"}, {"enabled": False, "prefix": "Checking..", "frames": [], "speed": 0.10})
+        await render_animation(query, db)
     elif action == "shortener": await render_shortener(query, db)
     elif action == "shortener_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="shortener_url")
