@@ -35,6 +35,12 @@ async def patch(db, key, values, defaults=None):
 def time_label(minutes: int) -> str:
     return f"{minutes // 60}h" if minutes >= 60 else f"{minutes}m"
 
+def time_words(minutes: int) -> str:
+    if minutes >= 60 and minutes % 60 == 0:
+        hours = minutes // 60
+        return f"{hours} hour" if hours == 1 else f"{hours} hours"
+    return f"{minutes} minutes"
+
 def kb(rows):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data=data) for label, data in row]
@@ -258,7 +264,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "auto_message_see":
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
         me = await query.bot.get_me()
-        saved = (cfg.get("notice") or DEFAULT_NOTICE).replace("{auto_delete_time}", f"{cfg.get('minutes',30)} minutes")
+        saved = (cfg.get("notice") or DEFAULT_NOTICE).replace("{auto_delete_time}", time_words(int(cfg.get("minutes", 30))))
         await query.answer(f"{me.full_name}\n\n{saved}", show_alert=True)
         return
     elif action == "auto_message_default":
