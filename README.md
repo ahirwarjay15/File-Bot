@@ -4,11 +4,11 @@ Async Telegram file/batch delivery bot built with Python 3.12, aiogram 3 and Mon
 
 ## Implemented behavior
 - /file creates one permanent deeplink for one copied source-channel message.
-- /batch supports up to 100 messages, one deeplink per batch, persistent collection state, original order, 200-second inactivity timeout, and recovery after restart.
+- /batch supports up to 100 messages, one deeplink per batch, persistent collection state, original order, 200-second inactivity timeout, and per-item delivery progress recovery after restart.
 - /start handles file and batch links, ban checks, Force Join membership checks, and cached verification for the current channel configuration.
 - Inline /settings pages cover Start Message, Auto Delete/time/message, After Delete, Invalid Post text/button/poster/About, Link Shortener, Moderators, and Stats.
 - Auto Delete schedules only delivered file messages and their auto-delete notice. Batch files share a deadline starting at the first successful delivery.
-- Expiry tasks and broadcast queues persist in MongoDB. Broadcast tracks per-recipient outcomes and resumes after restart.
+- Expiry tasks, batch-delivery item progress, and broadcast queues persist in MongoDB. Broadcast tracks per-recipient outcomes and resumes after restart.
 - Owner-only moderator management (maximum three), moderator/owner ban protection, /ban, /unban, and /stats.
 - Manual /shortener URL or reply-to-message shortening; file and batch links are not automatically shortened.
 - Shortener setup includes a GPlinks adapter plus a generic JSON API adapter for compatible providers.
