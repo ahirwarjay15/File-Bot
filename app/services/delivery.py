@@ -196,6 +196,10 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
             {"request_key": request_key, "status": "processing"},
             {"$set": {"status": "done", "finished_at": _now()}},
         )
+        await db.delivery_requests.update_one(
+            {"request_key": request_key, "status": "processing"},
+            {"$set": {"status": "done", "updated_at": _now(), "recovered_or_completed_at": _now()}},
+        )
         final = await db.batch_deliveries.find_one({"request_key": request_key})
         return (len(final.get("delivered_message_ids", [])), int(final.get("failed_count", 0)))
     except Exception:
