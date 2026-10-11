@@ -100,9 +100,13 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
             if not was_verified and channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, user.id, settings):
                 animation_message = await bot.send_animation(message.chat.id, animation_cfg["file_id"])
             result=await deliver_payload(bot,database,settings,message.chat.id,payload,record,request_key=request_key)
-            if payload.startswith("batch_") and result[0]==0:await message.answer("None of the batch files could be delivered. The source messages may be unavailable.")
-            elif payload.startswith("batch_") and result[1]:log.warning("Batch delivery partial: %s delivered, %s failed",*result)
-            success = True
+            if payload.startswith("batch_") and result[0]==0:
+                await message.answer("None of the batch files could be delivered. The source messages may be unavailable.")
+            elif payload.startswith("batch_") and result[1]:
+                log.warning("Batch delivery partial: %s delivered, %s failed",*result)
+            elif payload.startswith("file_") and result[0] == 0:
+                await message.answer("This file is currently unavailable. The source message may have been deleted or become inaccessible.")
+            success = result[0] > 0
         except TelegramAPIError:
             log.exception("Delivery failed for %s",payload);await message.answer("This file is currently unavailable. Please contact the bot owner.")
         except Exception:
@@ -171,7 +175,9 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record,request_key=request_key)
         if payload.startswith("batch_") and result[0]==0:
             await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
-        success = True
+        elif payload.startswith("file_") and result[0] == 0:
+            await bot.send_message(query.from_user.id,"This file is currently unavailable. The source message may have been deleted or become inaccessible.")
+        success = result[0] > 0
     except TelegramAPIError:
         log.exception("Delivery after Force Join failed")
         await bot.send_message(query.from_user.id,"File delivery failed. Contact the owner.")
