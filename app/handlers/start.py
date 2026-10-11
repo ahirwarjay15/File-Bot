@@ -88,17 +88,12 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         if not record or len(payload.split("_",1)[1])>40:
             await message.answer("This link is invalid or expired.");return
         channels = await effective_force_join_channels(database, settings)
-        was_verified = await _is_verified(database.db, user.id, channels)
         if await gate_or_prompt(message,payload,settings,database,bot):return
         request_key = f"start:{user.id}:{message.message_id}"
         if not await claim_delivery_request(database.db, request_key, user.id, payload):
             return
-        animation_message = None
         success = False
-        animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
         try:
-            if not was_verified and channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, user.id, settings):
-                animation_message = await bot.send_animation(message.chat.id, animation_cfg["file_id"])
             result=await deliver_payload(bot,database,settings,message.chat.id,payload,record,request_key=request_key)
             if payload.startswith("batch_") and result[0]==0:
                 await message.answer("None of the batch files could be delivered. The source messages may be unavailable.")
@@ -115,9 +110,6 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         finally:
             try: await finish_delivery_request(database.db, request_key, success)
             except Exception: log.exception("Could not update delivery request status")
-            if animation_message:
-                try: await bot.delete_message(message.chat.id, animation_message.message_id)
-                except TelegramAPIError: pass
         return
     if await is_owner_or_moderator(database.db,user.id,settings):return
     cfg=await database.db.settings.find_one({"key":"start_message"})
