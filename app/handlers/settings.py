@@ -491,6 +491,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if uid == settings.owner_id:
             await message.answer("Owner is not stored as a moderator.")
             return
+        if await db.users.find_one({"user_id": uid, "banned": True}):
+            await message.answer("Unban this user before adding them as a moderator.")
+            await state.clear(); return
         if await db.moderators.find_one({"user_id": uid}):
             await message.answer("This user is already a moderator.")
             await state.clear(); return
