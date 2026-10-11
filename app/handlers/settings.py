@@ -573,6 +573,24 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     field = data.get("field")
     db = database.db
     value = (message.text or "").strip()
+    if field == "animation_prefix":
+        await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [], "speed": 0.10, "mode": "new_message"})
+        await state.clear()
+        await message.answer("✨ Animation prefix updated successfully.")
+        return
+    if field in ("animation_frame_1", "animation_frame_2", "animation_frame_3"):
+        frames = list(data.get("pending_frames", []))
+        frames.append(value)
+        if len(frames) < 3:
+            next_field = f"animation_frame_{len(frames)+1}"
+            await state.update_data(field=next_field, pending_frames=frames)
+            prompt = "Now send the middle frame." if len(frames) == 1 else "Send the last frame."
+            await message.answer(prompt)
+            return
+        await patch(db, "animation", {"frames": frames}, {"enabled": False, "prefix": "Checking..", "speed": 0.10, "mode": "new_message"})
+        await state.clear()
+        await message.answer("✨ Animation frames updated successfully.")
+        return
     if field == "forcejoin_other_url":
         parsed = urlparse(value)
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
