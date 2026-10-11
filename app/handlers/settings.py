@@ -415,14 +415,14 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_start_poster(query)
     elif action == "start_about":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        await edit_page(query, f"START ABOUT BUTTON\nStatus: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
+        await edit_page(query, f"START ABOUT BUTTON\nStatus: {'ENABLED' if cfg.get('about_enabled', True) else 'DISABLED'}", kb([
             [("ENABLE / DISABLE", "settings:start_about_toggle")],
             [("EDIT ABOUT TEXT", "settings:start_about_text")],
             [("BACK", "settings:start")],
         ]))
     elif action == "start_about_toggle":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", True)}, {"enabled": True, "text": DEFAULT_START_TEXT})
+        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", True)}, {"enabled": True, "text": DEFAULT_START_TEXT, "about_enabled": True})
         await render_start(query, db)
     elif action == "start_about_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_about_text")
