@@ -1,5 +1,7 @@
 """Start command, Force Join gate, and single/batch deeplink delivery."""
 import logging
+import hashlib
+from datetime import datetime, timezone
 from aiogram import Router,F
 from aiogram.filters import CommandStart
 from aiogram.filters.command import CommandObject
@@ -10,6 +12,21 @@ from app.database.files import FileRepository
 from app.services.delivery import deliver_reference,deliver_batch
 from app.services.permissions import is_owner_or_moderator
 router=Router(name="start");log=logging.getLogger(__name__)
+
+def _join_signature(channels: list[str]) -> str:
+    return hashlib.sha256(",".join(sorted(c.strip() for c in channels if c.strip())).encode()).hexdigest()
+
+async def _is_verified(db, user_id: int, channels: list[str]) -> bool:
+    if not channels:
+        return True
+    user = await db.users.find_one({"user_id": user_id}, {"force_join_signature": 1})
+    return bool(user and user.get("force_join_signature") == _join_signature(channels))
+
+async def _mark_verified(db, user_id: int, channels: list[str]):
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"force_join_signature": _join_signature(channels), "force_join_verified_at": datetime.now(timezone.utc)}},
+    )
 
 async def join_status(bot,user_id:int,channels:list[str])->list[str]:
     missing=[]
@@ -25,8 +42,11 @@ async def join_status(bot,user_id:int,channels:list[str])->list[str]:
 async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->bool:
     user=message.from_user
     if not user or user.id==settings.owner_id or await is_owner_or_moderator(database.db,user.id,settings):return False
+    if await _is_verified(database.db, user.id, settings.force_join_channels): return False
     missing=await join_status(bot,user.id,settings.force_join_channels)
-    if not missing:return False
+    if not missing:
+        await _mark_verified(database.db, user.id, settings.force_join_channels)
+        return False
     rows=[]
     for channel in missing:
         target=channel if channel.startswith("https://") else ("https://t.me/"+channel.lstrip("@") if not channel.lstrip("-").isdigit() else None)
@@ -75,6 +95,10 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     if missing:
         if query.message:await query.message.answer("You haven't joined all required channels yet.")
         return
+    await _mark_verified(database.db, query.from_user.id, settings.force_join_channels)
+    if query.message:
+        try: await query.message.delete()
+        except TelegramAPIError: pass
     repo=FileRepository(database.db)
     if payload.startswith("file_"):record=await repo.get_file(payload[5:])
     elif payload.startswith("batch_"):record=await repo.get_batch(payload[6:])
@@ -96,8 +120,14 @@ async def invalid_about(query:CallbackQuery,settings:Settings,database):
     cfg=await database.db.settings.find_one({"key":"invalid_post"})
     if not cfg or not cfg.get("about_enabled"):return
     if query.message:
-        try:await query.message.edit_text(cfg.get("about_text") or "This bot delivers files using permanent source-channel references.")
-        except TelegramAPIError:pass
+        text = cfg.get("about_text") or "This bot delivers files using permanent source-channel references."
+        try:
+            if query.message.photo or query.message.animation or query.message.document:
+                await query.message.edit_caption(caption=text)
+            else:
+                await query.message.edit_text(text)
+        except TelegramAPIError:
+            pass
 
 async def is_banned_for_callback(db,user_id:int)->bool:
     doc=await db.users.find_one({"user_id":user_id},{"banned":1})
