@@ -22,14 +22,14 @@ async def invalid_post(message:Message,settings:Settings,database):
     if cfg.get("button_text") and cfg.get("button_url"):
         rows.append([InlineKeyboardButton(text=cfg["button_text"],url=cfg["button_url"])])
     if cfg.get("about_enabled"):
-        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text","About"),callback_data="invalid:about")])
+        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text","ＡＢＯＵＴ"),callback_data="invalid:about")])
     try:
         if cfg.get("poster_file_id"):
-            await message.answer_animation(cfg["poster_file_id"],caption=text,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
+            await message.answer_animation(cfg["poster_file_id"],caption=text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
         elif cfg.get("poster_photo_id"):
             await message.answer_photo(cfg["poster_photo_id"],caption=text,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
         else:
-            await message.answer(text,reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
+            await message.answer(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
     except Exception:
         # Fall back to plain text if a stale poster ID or invalid optional button is configured.
         await message.answer(text)
