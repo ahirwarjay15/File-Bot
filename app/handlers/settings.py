@@ -15,7 +15,15 @@ from app.handlers.start import effective_force_join_channels
 
 router = Router(name="settings")
 def unicode_buttons(value: str) -> str:
-    table = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ")
+    if str(value) == "《 BACK" or str(value) == "📟 UPDATE CHANNEL":
+        return str(value)
+    table = str.maketrans({
+        "A": "ᴀ", "B": "ʙ", "C": "ᴄ", "D": "ᴅ", "E": "ᴇ", "F": "ꜰ",
+        "G": "ɢ", "H": "ʜ", "I": "ɪ", "J": "ᴊ", "K": "ᴋ", "L": "ʟ",
+        "M": "ᴍ", "N": "ɴ", "O": "ᴏ", "P": "ᴘ", "Q": "ǫ", "R": "ʀ",
+        "S": "ꜱ", "T": "ᴛ", "U": "ᴜ", "V": "ᴠ", "W": "ᴡ", "X": "x",
+        "Y": "ʏ", "Z": "ᴢ",
+    })
     return "".join(ch.translate(table) if ch.isascii() and ch.isalpha() else ch for ch in str(value))
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."

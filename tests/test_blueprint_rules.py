@@ -51,3 +51,11 @@ def test_animation_mode_buttons_persist_distinct_modes():
 
     assert _animation_mode_for_action("animation_mode_new") == "new_message"
     assert _animation_mode_for_action("animation_mode_poster") == "force_join_poster"
+
+
+def test_settings_buttons_use_small_caps_with_required_exceptions():
+    from app.handlers.settings import unicode_buttons
+
+    assert unicode_buttons("START TEXT") == "ꜱᴛᴀʀᴛ ᴛᴇxᴛ"
+    assert unicode_buttons("《 BACK") == "《 BACK"
+    assert unicode_buttons("📟 UPDATE CHANNEL") == "📟 UPDATE CHANNEL"
