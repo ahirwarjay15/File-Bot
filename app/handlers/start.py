@@ -195,7 +195,30 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     channels = await effective_force_join_channels(database, settings)
     missing=[] if await is_owner_or_moderator(database.db, query.from_user.id, settings) else await join_status(bot,query.from_user.id,channels)
     if missing:
-        if query.message:await query.message.answer("You haven't joined all required channels yet.")
+        if query.message:
+            cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
+            other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
+            rows = []
+            for index, channel in enumerate(missing):
+                channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
+                target = channel if channel.startswith("https://") else ("https://t.me/" + channel.lstrip("@") if not channel.lstrip("-").isdigit() else None)
+                if target:
+                    rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"Join {index+1}", url=target)])
+            for item in other_links:
+                if item.get("url"):
+                    rows.append([InlineKeyboardButton(text=item.get("button_text") or "Join", url=item["url"])])
+            rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "I Joined — Check Again", callback_data=f"forcejoin:check:{payload}")])
+            raw_text = cfg.get("message") or "Hey {mention}\\n\\nPlease join my {remaining_count} channels to use me!"
+            rendered = html.escape(raw_text).replace("{first_name}", html.escape(query.from_user.first_name or "")).replace("{last_name}", html.escape(query.from_user.last_name or ""))
+            rendered = rendered.replace("{mention}", query.from_user.mention_html()).replace("{remaining_count}", str(len(missing)))
+            markup = InlineKeyboardMarkup(inline_keyboard=rows)
+            try:
+                if query.message.photo or query.message.animation:
+                    await query.message.edit_caption(caption=rendered, reply_markup=markup, parse_mode="HTML")
+                else:
+                    await query.message.edit_text(rendered, reply_markup=markup, parse_mode="HTML")
+            except TelegramAPIError:
+                pass
         return
     repo=FileRepository(database.db)
     if payload.startswith("file_"):record=await repo.get_file(payload[5:])
