@@ -22,7 +22,7 @@ The supplied blueprint file starts at section 5 (Auto Delete). Sections 1–4 ar
 | Shortener add/remove, masked token, API validation, manual shortening + COPY | GPlinks adapter plus generic compatible JSON API adapter implemented | Adapter unit tests added; live provider test pending |
 | /file creates one permanent deeplink and does not auto-shorten it | Implemented | Telegram integration test pending |
 | /batch creates one permanent deeplink for up to 100 messages | Implemented | Telegram integration test pending |
-| Batch source order, 200-second timeout, persistent collection session, restart recovery | Implemented with MongoDB session and stable batch ID | Concurrency/restart tests pending |
+| Batch source order, 200-second timeout, persistent collection session, restart recovery | MongoDB session plus per-item delivery progress and a recovery worker | Concurrency/restart tests pending |
 | Force Join checks configured channels, caches verification for matching channel set, removes prompt after successful check | Implemented | Real membership checks pending |
 | Optional Force Join animation, excluded from Auto Delete | Implemented through settings UI; deleted after delivery | Telegram media test pending |
 | Moderator maximum three, owner-only add/remove, owner excluded from list | Implemented | Concurrent moderator-change test pending |
@@ -32,7 +32,7 @@ The supplied blueprint file starts at section 5 (Auto Delete). Sections 1–4 ar
 
 ## Known remaining gaps before production
 
-- Request-level deduplication is persisted for repeated /start updates and Force Join callbacks. Broadcast now recovers queued drafts even if the process stops before job creation, skips users banned after queueing, and marks interrupted in-flight recipients as unknown. Automatic replay of an interrupted single/batch delivery request still needs a durable per-item delivery queue; exactly-once delivery cannot be guaranteed across the Telegram-send/database-write crash window.
+- Request-level deduplication is persisted for repeated /start updates and Force Join callbacks. Batch deliveries now persist item-level progress and recover after restart; an item caught in the send/database-write crash window is marked unknown rather than resent blindly. Single-file delivery still lacks an equivalent durable recovery queue. Broadcast recovers queued drafts even if the process stops before job creation, skips users banned after queueing, and marks interrupted in-flight recipients as unknown. Exactly-once delivery cannot be guaranteed across the Telegram-send/database-write crash window.
 - The blueprint mentions a separate last-two-message retention rule. That retention/cleanup behavior is not implemented because the supplied section does not define its trigger/cleanup sequence. Telegram also does not generally allow the bot to delete user-authored messages in private chats.
 - The supplied file lacks blueprint sections 1–4, so the complete A-to-Z comparison requires the missing source sections.
 - No automated test run or end-to-end Telegram/Atlas/Oracle test has been confirmed yet. The repository workflow now runs syntax compilation and pytest on pushes/PRs, but this audit does not claim a passing run.
