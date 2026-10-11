@@ -57,17 +57,41 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     user=message.from_user
     if not user or user.id==settings.owner_id or await is_owner_or_moderator(database.db,user.id,settings):return False
     channels = await effective_force_join_channels(database, settings)
-    if await _is_verified(database.db, user.id, channels): return False
+    # External links alone never create a verification gate.
+    if not channels or await _is_verified(database.db, user.id, channels): return False
     missing=await join_status(bot,user.id,channels)
     if not missing:
         await _mark_verified(database.db, user.id, channels)
         return False
+    cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
+    other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
     rows=[]
-    for channel in missing:
+    for index, channel in enumerate(missing):
+        channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
         target=channel if channel.startswith("https://") else ("https://t.me/"+channel.lstrip("@") if not channel.lstrip("-").isdigit() else None)
-        if target:rows.append([InlineKeyboardButton(text="Join channel",url=target)])
-    rows.append([InlineKeyboardButton(text="I Joined — Check Again",callback_data=f"forcejoin:check:{payload}")])
-    await message.answer("Please join the required channel(s) before receiving this file.",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        if target:
+            rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"Join {index+1}",url=target)])
+    for item in other_links:
+        if item.get("url"):
+            rows.append([InlineKeyboardButton(text=item.get("button_text") or "Join", url=item["url"])])
+    rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "I Joined — Check Again",callback_data=f"forcejoin:check:{payload}")])
+    raw_text = cfg.get("message") or "Hey {mention}\\n\\nPlease join my {remaining_count} channels to use me!"
+    rendered = html.escape(raw_text)
+    rendered = rendered.replace("{first_name}", html.escape(user.first_name or ""))
+    rendered = rendered.replace("{last_name}", html.escape(user.last_name or ""))
+    rendered = rendered.replace("{mention}", user.mention_html())
+    rendered = rendered.replace("{remaining_count}", str(len(missing)))
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    try:
+        if cfg.get("poster_file_id"):
+            await message.answer_animation(cfg["poster_file_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
+        elif cfg.get("poster_photo_id"):
+            await message.answer_photo(cfg["poster_photo_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
+        else:
+            await message.answer(rendered,reply_markup=markup,parse_mode="HTML")
+    except TelegramAPIError:
+        # If a configured media item is invalid, preserve a usable verification interface.
+        await message.answer(rendered,reply_markup=markup,parse_mode="HTML")
     return True
 
 async def deliver_payload(bot,database,settings,user_id:int,payload:str,record:dict,request_key:str|None=None):
