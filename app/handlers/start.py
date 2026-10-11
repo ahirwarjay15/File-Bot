@@ -68,10 +68,10 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     await message.answer("Please join the required channel(s) before receiving this file.",reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     return True
 
-async def deliver_payload(bot,database,settings,user_id:int,payload:str,record:dict):
+async def deliver_payload(bot,database,settings,user_id:int,payload:str,record:dict,request_key:str|None=None):
     me=await bot.get_me();link=f"https://t.me/{me.username}?start={payload}"
     if payload.startswith("file_"):return await deliver_reference(bot,database.db,settings,user_id=user_id,file_doc=record,deeplink=link)
-    return await deliver_batch(bot,database.db,user_id=user_id,batch=record,deeplink=link)
+    return await deliver_batch(bot,database.db,user_id=user_id,batch=record,deeplink=link,request_key=request_key)
 
 @router.message(CommandStart())
 async def start_command(message:Message,command:CommandObject,settings:Settings,database,bot):
@@ -99,7 +99,7 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         try:
             if not was_verified and channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, user.id, settings):
                 animation_message = await bot.send_animation(message.chat.id, animation_cfg["file_id"])
-            result=await deliver_payload(bot,database,settings,message.chat.id,payload,record)
+            result=await deliver_payload(bot,database,settings,message.chat.id,payload,record,request_key=request_key)
             if payload.startswith("batch_") and result[0]==0:await message.answer("None of the batch files could be delivered. The source messages may be unavailable.")
             elif payload.startswith("batch_") and result[1]:log.warning("Batch delivery partial: %s delivered, %s failed",*result)
             success = True
@@ -168,7 +168,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
         if channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, query.from_user.id, settings):
             animation_message = await bot.send_animation(query.from_user.id, animation_cfg["file_id"])
-        result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record)
+        result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record,request_key=request_key)
         if payload.startswith("batch_") and result[0]==0:
             await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
         success = True
