@@ -305,6 +305,14 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     field = data.get("field")
     db = database.db
     value = (message.text or "").strip()
+    if field == "forcejoin_animation":
+        if not message.animation:
+            await message.answer("Send a GIF animation to use after Force Join verification.")
+            return
+        await patch(db, "force_join_animation", {"file_id": message.animation.file_id})
+        await state.clear()
+        await message.answer("Force Join animation updated successfully.")
+        return
     if field == "poster":
         if message.animation:
             await patch(db, "invalid_post", {"poster_file_id": message.animation.file_id, "poster_photo_id": None}, {"enabled": False})
@@ -479,3 +487,18 @@ async def setshortener(m: Message, settings: Settings, database):
     if parsed.scheme not in ("https","http") or not parsed.netloc: await m.answer("API URL must be a valid http/https URL."); return
     await patch(database.db, "shortener", {"enabled":True,"url":p[1],"token":p[2]})
     await m.answer(f"Shortener provider configured: {parsed.netloc}. API token is stored privately.")
+
+@router.message(Command("setforcejoinanimation"))
+async def setforcejoinanimation(message: Message, state: FSMContext, settings: Settings, database):
+    if not await allowed(message, settings, database):
+        return
+    await state.set_state(SettingInput.waiting)
+    await state.update_data(field="forcejoin_animation")
+    await message.answer("Send the GIF animation to show after Force Join verification. It will be removed after delivery and is not part of Auto Delete.")
+
+@router.message(Command("removeforcejoinanimation"))
+async def removeforcejoinanimation(message: Message, settings: Settings, database):
+    if not await allowed(message, settings, database):
+        return
+    await database.db.settings.update_one({"key": "force_join_animation"}, {"$unset": {"file_id": ""}}, upsert=True)
+    await message.answer("Force Join animation removed.")
