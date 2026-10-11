@@ -91,7 +91,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     await query.answer()
     payload=query.data.split(":",2)[2]
     if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):return
-    missing=await join_status(bot,query.from_user.id,settings.force_join_channels)
+    missing=[] if await is_owner_or_moderator(database.db, query.from_user.id, settings) else await join_status(bot,query.from_user.id,settings.force_join_channels)
     if missing:
         if query.message:await query.message.answer("You haven't joined all required channels yet.")
         return
