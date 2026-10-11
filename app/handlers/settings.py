@@ -123,7 +123,7 @@ async def render_start_poster(query):
 
 async def render_animation(query, db):
     cfg = await db.settings.find_one({"key": "animation"}) or {}
-    await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\\n\\nAdd a custom animation for the verification process.\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', [])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+    await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\\n\\n<i>Add a custom animation for the verification process.</i>\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', [])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
         [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
         [("ENABLE / DISABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
         [("MODE", "settings:animation_mode")],
