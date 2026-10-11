@@ -131,6 +131,9 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
     if message.text and message.text.startswith("/"):
         return False
     items = session.get("items", [])
+    if any(item.get("original_message_id") == message.message_id for item in items):
+        await message.answer("This message is already included in the batch.")
+        return True
     if len(items) >= 100:
         await message.answer("Maximum 100 messages reached. Generate the batch link.")
         return True
