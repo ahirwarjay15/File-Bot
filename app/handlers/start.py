@@ -384,15 +384,10 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     if query.message:
         try: await query.message.delete()
         except TelegramAPIError: pass
-    animation_message = None
     success = False
     try:
-        animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
-        if channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, query.from_user.id, settings):
-            try:
-                animation_message = await bot.send_animation(query.from_user.id, animation_cfg["file_id"])
-            except TelegramAPIError:
-                log.warning("Force Join animation could not be sent; continuing with file delivery", exc_info=True)
+        # The configured text animation has already been cancelled and its
+        # temporary message removed above. Do not send the legacy static GIF.
         result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record,request_key=request_key)
         if payload.startswith("batch_") and result[0]==0:
             await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
@@ -408,55 +403,4 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     finally:
         try: await finish_delivery_request(database.db, request_key, success)
         except Exception: log.exception("Could not update Force Join delivery request status")
-        if animation_message:
-            try: await bot.delete_message(query.from_user.id, animation_message.message_id)
-            except TelegramAPIError: pass
 
-@router.callback_query(F.data=="invalid:about")
-async def invalid_about(query:CallbackQuery,settings:Settings,database):
-    await query.answer()
-    if not query.from_user or await is_banned_for_callback(database.db,query.from_user.id):return
-    cfg=await database.db.settings.find_one({"key":"invalid_post","enabled":True})
-    if not cfg or not cfg.get("about_enabled") or not query.message:return
-    me = await query.bot.get_me()
-    about_text = "✨ ᴀʙᴏᴜᴛ ᴍᴇ\n\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\n\n✰ creator: Lexi\n\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\n\n✰ made for: Lexi Anime\n\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
-    rendered = html.escape(about_text).replace("{bot_name}", html.escape(me.full_name))
-    rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
-    rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
-    rendered = rendered.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
-    try:
-        if query.message.photo or query.message.animation or query.message.document:
-            await query.message.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="《 BACK", callback_data="invalid:about_back")]]))
-        else:
-            await query.message.edit_text(rendered, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="《 BACK", callback_data="invalid:about_back")]]))
-    except TelegramAPIError:
-        pass
-
-@router.callback_query(F.data == "invalid:about_back")
-async def invalid_about_back(query: CallbackQuery, settings: Settings, database):
-    await query.answer()
-    user, msg = query.from_user, query.message
-    if not user or not msg or await is_banned_for_callback(database.db, user.id):
-        return
-    cfg = await database.db.settings.find_one({"key": "invalid_post", "enabled": True})
-    if not cfg:
-        return
-    raw = cfg.get("text") or "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
-    rendered = html.escape(raw).replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or "")).replace("{mention}", user.mention_html())
-    rows = []
-    if cfg.get("button_text") and cfg.get("button_url"):
-        rows.append([InlineKeyboardButton(text=cfg["button_text"], url=cfg["button_url"])])
-    if cfg.get("about_enabled"):
-        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="invalid:about")])
-    markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-    try:
-        if msg.photo or msg.animation or msg.document:
-            await msg.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=markup)
-        else:
-            await msg.edit_text(rendered, parse_mode="HTML", reply_markup=markup)
-    except TelegramAPIError:
-        pass
-
-async def is_banned_for_callback(db,user_id:int)->bool:
-    doc=await db.users.find_one({"user_id":user_id},{"banned":1})
-    return bool(doc and doc.get("banned"))
