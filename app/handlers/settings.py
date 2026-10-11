@@ -71,12 +71,23 @@ async def render_home(query):
 
 async def render_forcejoin(query, db, settings):
     channels = await effective_force_join_channels(type("DatabaseView", (), {"db": db})(), settings)
-    channel_text = "\n".join(f"• {channel}" for channel in channels) if channels else "No Force Join channels configured."
-    await edit_page(query, "FORCE JOIN\nRequired channels:\n" + channel_text, kb([
-        [("ADD CHANNEL", "settings:forcejoin_add")],
-        [("REMOVE CHANNEL", "settings:forcejoin_remove")],
-        [("BACK", "settings:home")],
-    ]))
+    rows = []
+    for i, channel in enumerate(channels[:10]):
+        cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
+        label = cfg.get("button_text") or f"Join {i + 1}"
+        rows.append([(label, f"settings:forcejoin_channel:{i}")])
+    if len(channels) < 10:
+        rows.append([("✚ ADD", "settings:forcejoin_add")])
+    rows.extend([
+        [("FORCE JOIN MESSAGE", "settings:forcejoin_message"), ("FORCE JOIN MEDIA", "settings:forcejoin_media")],
+        [("VERIFY", "settings:forcejoin_verify_text")],
+        [("《 BACK", "settings:home")],
+    ])
+    text = ("F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲\n\nUsers must verify the required Join Request channels before receiving files.\n\n"
+            "Join Request channels accept membership or a pending join request.\n\n"
+            "Other links are treated as verified when all required Join Request channels are verified.\n\n"
+            "You can add up to 10 force-join channels.")
+    await edit_page(query, text, kb(rows))
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
@@ -233,8 +244,49 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     if action in {"home", "home_back"}: await render_home(query)
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
     elif action == "forcejoin_add":
+        await edit_page(query, "A̲D̲D̲ ̲C̲H̲A̲N̲N̲E̲L̲\\n\\nSelect a verification mode.\\n\\nJoin Request: Verify membership or a pending join request.\\n\\nOther: Add an external platform link.", kb([
+            [("OTHER", "settings:forcejoin_other"), ("JOIN REQUEST", "settings:forcejoin_join_request")],
+            [("《 BACK", "settings:forcejoin")],
+        ]))
+    elif action == "forcejoin_other":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_other_url")
+        if query.message: await query.message.answer("Send the link of any platform. Example: Facebook, Instagram or YouTube.")
+    elif action == "forcejoin_join_request":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_channel")
-        if query.message: await query.message.answer("Send a public channel username such as @mychannel. Public username is required so users can open the Join button.")
+        if query.message: await query.message.answer("Send a public channel username or forward a message from the channel. Make sure the bot is an administrator in the selected channel.")
+    elif action.startswith("forcejoin_channel:"):
+        channels = await effective_force_join_channels(database, settings)
+        index = int(action.split(":", 1)[1])
+        if index < len(channels):
+            channel = channels[index]
+            cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
+            await edit_page(query, f"C̲H̲A̲N̲N̲E̲L̲ ̲S̲E̲T̲T̲I̲N̲G̲S̲\\n\\n{channel}\\n\\nSelect an option below.", kb([
+                [("BUTTON TEXT", f"settings:forcejoin_label:{index}"), ("REMOVE", f"settings:forcejoin_remove_one:{index}")],
+                [("《 BACK", "settings:forcejoin")],
+            ]))
+    elif action.startswith("forcejoin_label:"):
+        channels = await effective_force_join_channels(database, settings)
+        index = int(action.split(":", 1)[1])
+        if index < len(channels):
+            await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_label", channel=channels[index])
+            if query.message: await query.message.answer("Send new button text for force-join channel button.")
+    elif action.startswith("forcejoin_remove_one:"):
+        channels = await effective_force_join_channels(database, settings)
+        index = int(action.split(":", 1)[1])
+        if index < len(channels):
+            channel = channels.pop(index)
+            await patch(db, "force_join", {"channels": channels})
+            await db.settings.delete_one({"key": "force_join_channel", "channel": channel})
+        await render_forcejoin(query, db, settings)
+    elif action == "forcejoin_message":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_message")
+        if query.message: await query.message.answer("Send your bot's new force-join message. Variables: {first_name}, {last_name}, {mention}, {remaining_count}.")
+    elif action == "forcejoin_media":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_media")
+        if query.message: await query.message.answer("Only GIFs and images are supported. Send the new force-join poster here.")
+    elif action == "forcejoin_verify_text":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_verify_text")
+        if query.message: await query.message.answer("Send your new verification button text.")
     elif action == "forcejoin_remove":
         channels = await effective_force_join_channels(database, settings)
         rows = [[(channel, f"settings:forcejoin_del:{i}")] for i, channel in enumerate(channels)]
