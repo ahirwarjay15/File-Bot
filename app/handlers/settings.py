@@ -585,6 +585,19 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await state.clear()
         await message.answer(f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
         return
+    if field == "forcejoin_existing_other_label":
+        prev = await state.get_data()
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        links = cfg.get("other_links", [])
+        index = int(prev.get("other_index", -1))
+        if 0 <= index < len(links):
+            links[index]["button_text"] = value
+            await patch(db, "force_join", {"other_links": links})
+            await message.answer("✨ Successfully updated force-join button text.")
+        else:
+            await message.answer("Channel setting expired. Please reopen it.")
+        await state.clear()
+        return
     if field == "forcejoin_label":
         prev = await state.get_data()
         channel = prev.get("channel")
