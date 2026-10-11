@@ -117,7 +117,25 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         return
     if await is_owner_or_moderator(database.db,user.id,settings):return
     cfg=await database.db.settings.find_one({"key":"start_message"})
-    if cfg is None or cfg.get("enabled",True):await message.answer((cfg or {}).get("text") or "👋 Welcome! Send a valid file link to receive your file.")
+    if cfg is None or cfg.get("enabled",True):
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text=cfg.get("about_button_text", "ABOUT"), callback_data="start:about")
+        ]]) if cfg and cfg.get("about_enabled", False) else None
+        await message.answer((cfg or {}).get("text") or "👋 Welcome! Send a valid file link to receive your file.", reply_markup=markup)
+
+@router.callback_query(F.data == "start:about")
+async def start_about(query: CallbackQuery, database):
+    await query.answer()
+    if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):
+        return
+    cfg = await database.db.settings.find_one({"key": "start_message"}) or {}
+    if not cfg.get("enabled", True) or not cfg.get("about_enabled", False) or not query.message:
+        return
+    about_text = cfg.get("about_text") or "This bot delivers files using permanent source-channel references."
+    try:
+        await query.message.edit_text(about_text)
+    except TelegramAPIError:
+        pass
 
 @router.callback_query(F.data.startswith("forcejoin:check:"))
 async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
