@@ -70,7 +70,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
 
 async def deliver_payload(bot,database,settings,user_id:int,payload:str,record:dict,request_key:str|None=None):
     me=await bot.get_me();link=f"https://t.me/{me.username}?start={payload}"
-    if payload.startswith("file_"):return await deliver_reference(bot,database.db,settings,user_id=user_id,file_doc=record,deeplink=link)
+    if payload.startswith("file_"):return await deliver_reference(bot,database.db,settings,user_id=user_id,file_doc=record,deeplink=link,request_key=request_key)
     return await deliver_batch(bot,database.db,user_id=user_id,batch=record,deeplink=link,request_key=request_key)
 
 @router.message(CommandStart())
