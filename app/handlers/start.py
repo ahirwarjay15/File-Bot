@@ -9,7 +9,7 @@ from aiogram import Router,F
 from aiogram.filters import CommandStart
 from aiogram.filters.command import CommandObject
 from aiogram.types import Message,InlineKeyboardMarkup,InlineKeyboardButton,CallbackQuery
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, RetryAfter
 from app.config import Settings
 from app.database.files import FileRepository
 from app.services.delivery import deliver_reference,deliver_batch,claim_delivery_request,finish_delivery_request
@@ -96,16 +96,16 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     speed = min(1.0, max(0.10, speed))
     mode = cfg.get("mode", "force_join_poster")
     target_id = separate_message_id if mode == "new_message" else gate_message.message_id
-    try:
-        while True:
-            for frame in frames:
-                animated = f"{prefix} {html.escape(str(frame))}"
+    while True:
+        for frame in frames:
+            animated = f"{prefix} {html.escape(str(frame))}"
+            try:
                 if mode == "new_message":
                     await bot.edit_message_text(
                         chat_id=user_id, message_id=target_id, text=animated,
                     )
                 else:
-                    content = f"{base_text}\n\n<i>{animated}</i>"
+                    content = f"{base_text}\\n\\n<i>{animated}</i>"
                     if gate_message.photo or gate_message.animation or gate_message.document:
                         await bot.edit_message_caption(
                             chat_id=user_id, message_id=target_id, caption=content,
@@ -116,11 +116,19 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                             chat_id=user_id, message_id=target_id, text=content,
                             parse_mode="HTML", reply_markup=markup,
                         )
-                await asyncio.sleep(speed)
-    except asyncio.CancelledError:
-        raise
-    except TelegramAPIError:
-        log.debug("Force Join animation stopped because its message could not be edited", exc_info=True)
+            except TelegramBadRequest as exc:
+                # The first frame is often already visible when the loop starts.
+                # Telegram reports an unchanged edit as an error; keep the loop alive.
+                if "message is not modified" not in str(exc).lower():
+                    log.debug("Force Join animation edit rejected", exc_info=True)
+                    return
+            except RetryAfter as exc:
+                await asyncio.sleep(max(speed, float(exc.retry_after)))
+                continue
+            except TelegramAPIError:
+                log.debug("Force Join animation stopped because its message could not be edited", exc_info=True)
+                return
+            await asyncio.sleep(speed)
 
 
 async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: Message,
