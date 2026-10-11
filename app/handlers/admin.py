@@ -90,5 +90,8 @@ async def stats(message: Message, settings: Settings, database):
     await message.answer(text, reply_markup=keyboard)
 
 @router.callback_query(F.data == "stats:ok")
-async def stats_ok(query: CallbackQuery):
-    await query.answer("Statistics", show_alert=True)
+async def stats_ok(query: CallbackQuery, database):
+    total = await database.db.users.count_documents({})
+    blocked = await database.db.users.count_documents({"blocked": True})
+    me = await query.bot.get_me()
+    await query.answer(f"{me.full_name}\\n\\nUSERS: {total}\\n\\nBLOCKED: {blocked}", show_alert=True)
