@@ -98,7 +98,7 @@ async def invalid_about(query: CallbackQuery, database, bot):
         return
     me = await bot.get_me()
     raw = cfg.get("about_text") or DEFAULT_ABOUT
-    rendered = escape(raw).replace("{bot_name}", escape(me.full_name))
+    rendered = str(raw).replace("{bot_name}", escape(me.full_name))
     rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
     rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
     rendered = rendered.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
