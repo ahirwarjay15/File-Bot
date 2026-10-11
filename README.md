@@ -11,6 +11,7 @@ Async Telegram file/batch delivery bot built with Python 3.12, aiogram 3 and Mon
 - Expiry tasks and broadcast queues persist in MongoDB. Broadcast tracks per-recipient outcomes and resumes after restart.
 - Owner-only moderator management (maximum three), moderator/owner ban protection, /ban, /unban, and /stats.
 - Manual /shortener URL or reply-to-message shortening; file and batch links are not automatically shortened.
+- Shortener setup includes a GPlinks adapter plus a generic JSON API adapter for compatible providers.
 
 ## Required Telegram setup
 1. Create a private source channel for stored messages.
@@ -34,6 +35,6 @@ Run tests with pytest -q. GitHub Actions compiles Python and runs the test suite
 Code changes are still awaiting successful automated checks and end-to-end tests against a real Telegram bot, MongoDB Atlas, and the Oracle VM. Do not treat it as production-ready until those checks pass.
 - MongoDB stores references; the source channel contains actual posts. Deleted or inaccessible source posts cannot be reconstructed.
 - Telegram cannot guarantee exactly-once delivery across a crash between a successful send and recording the result. An interrupted in-flight broadcast recipient is marked unknown rather than blindly resent.
-- Generic shortener configuration only supports APIs accepting JSON url/token and returning short_url, shortenedUrl, or shortlink; other providers need a dedicated adapter.
+- GPlinks uses its documented API endpoint; other shortener providers need to match the generic JSON url/token contract or have a dedicated adapter.
 - Telegram does not expose a universal exact count of users who blocked the bot.
 - Telegram Bot API cannot delete user-authored messages in ordinary private chats.
