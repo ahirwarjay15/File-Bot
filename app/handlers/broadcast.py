@@ -1,6 +1,7 @@
 """Durable, confirmed broadcast queue with restart-safe per-recipient progress."""
 import asyncio
 import logging
+from secrets import token_urlsafe
 from datetime import datetime, timezone
 from pymongo.errors import BulkWriteError
 from aiogram import Router, F
@@ -24,22 +25,22 @@ async def broadcast(message: Message, settings: Settings, database):
         await message.answer("Reply to the message you want to broadcast, then send /broadcast.")
         return
     admin_id = message.from_user.id
-    active = await database.db.broadcast_drafts.find_one({"admin_id": admin_id, "status": {"$in": ["queued", "running"]}})
+    active = await database.db.broadcast_drafts.find_one({"admin_id": admin_id, "status": {"$in": ["draft", "queued", "running"]}})
     if active:
-        await message.answer("Your previous broadcast is still queued or running.")
+        await message.answer("You already have a pending broadcast draft or active broadcast. Finish it before starting another.")
         return
     source = message.reply_to_message
     recipients = await database.db.users.count_documents({"banned": {"$ne": True}})
     await database.db.broadcast_drafts.update_one(
         {"admin_id": admin_id},
         {"$set": {"admin_id": admin_id, "chat_id": source.chat.id, "message_id": source.message_id,
-                  "created_at": now(), "status": "draft"}},
+                  "created_at": now(), "draft_key": token_urlsafe(8), "status": "draft"}},
         upsert=True,
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="CONFIRM", callback_data="broadcast:yes"),
-        InlineKeyboardButton(text="CANCEL", callback_data="broadcast:no"),
-    ], [InlineKeyboardButton(text="BACK", callback_data="broadcast:back")]])
+        InlineKeyboardButton(text="CONFIRM", callback_data=f"broadcast:yes:{(await database.db.broadcast_drafts.find_one({'admin_id': admin_id, 'status': 'draft'}))['draft_key']}"),
+        InlineKeyboardButton(text="CANCEL", callback_data=f"broadcast:no:{(await database.db.broadcast_drafts.find_one({'admin_id': admin_id, 'status': 'draft'}))['draft_key']}"),
+    ], [InlineKeyboardButton(text="BACK", callback_data=f"broadcast:back:{(await database.db.broadcast_drafts.find_one({'admin_id': admin_id, 'status': 'draft'}))['draft_key']}")]])
     await message.answer(f"BROADCAST CONFIRMATION\nReview the message before sending it to users.\nRecipients: {recipients}", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("broadcast:"))
@@ -47,16 +48,21 @@ async def confirm(query: CallbackQuery, settings: Settings, database):
     if not query.from_user or not await is_owner_or_moderator(database.db, query.from_user.id, settings):
         await query.answer("Not authorized.", show_alert=True)
         return
-    action = query.data.split(":", 1)[1]
+    parts = query.data.split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    draft_key = parts[2] if len(parts) > 2 else ""
     admin_id = query.from_user.id
     if action in ("no", "back"):
-        await database.db.broadcast_drafts.delete_one({"admin_id": admin_id, "status": "draft"})
+        deleted = await database.db.broadcast_drafts.delete_one({"admin_id": admin_id, "status": "draft", "draft_key": draft_key})
+        if not deleted.deleted_count:
+            await query.answer("This broadcast draft is no longer active.", show_alert=True)
+            return
         await query.answer("Broadcast cancelled.")
         if query.message:
             await query.message.edit_text("Broadcast cancelled." if action == "no" else "Back. Draft cancelled.")
         return
     draft = await database.db.broadcast_drafts.find_one_and_update(
-        {"admin_id": admin_id, "status": "draft"},
+        {"admin_id": admin_id, "status": "draft", "draft_key": draft_key},
         {"$set": {"status": "queued", "queued_at": now(),
                   "report_chat_id": query.message.chat.id if query.message else admin_id,
                   "report_message_id": query.message.message_id if query.message else None}},
