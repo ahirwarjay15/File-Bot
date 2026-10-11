@@ -201,7 +201,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         channels = await effective_force_join_channels(database, settings)
         rows = [[(channel, f"settings:forcejoin_del:{i}")] for i, channel in enumerate(channels)]
         rows.append([("BACK", "settings:forcejoin")])
-        await edit_page(query, "REMOVE FORCE JOIN CHANNEL\\nSelect a channel to remove.", kb(rows))
+        await edit_page(query, "REMOVE FORCE JOIN CHANNEL\nSelect a channel to remove.", kb(rows))
     elif action.startswith("forcejoin_del:"):
         channels = await effective_force_join_channels(database, settings)
         index = int(action.split(":", 1)[1])
@@ -291,7 +291,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "forcejoin_animation":
         cfg = await db.settings.find_one({"key": "force_join_animation"}) or {}
         status = "CONFIGURED" if cfg.get("file_id") else "NOT SET"
-        await edit_page(query, f"FORCE JOIN ANIMATION\\nStatus: {status}\\nThis GIF is shown after Force Join verification and removed after delivery. It is not part of Auto Delete.", kb([
+        await edit_page(query, f"FORCE JOIN ANIMATION\nStatus: {status}\nThis GIF is shown after Force Join verification and removed after delivery. It is not part of Auto Delete.", kb([
             [("SET / REPLACE", "settings:forcejoin_animation_set"), ("REMOVE", "settings:forcejoin_animation_remove")],
             [("BACK", "settings:home")],
         ]))
