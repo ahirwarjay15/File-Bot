@@ -99,7 +99,7 @@ async def run_broadcast_worker(bot, db, poll_seconds: int = 2):
     await db.broadcast_recipients.update_many({"status": "sending"}, {"$set": {"status": "unknown", "error": "process restarted during send"}})
     while True:
         job = await db.broadcast_jobs.find_one_and_update(
-            {"status": {"$in": ["pending", "processing"]}},
+            {"status": {"$in": ["preparing", "pending", "processing"]}},
             {"$set": {"status": "processing", "worker_seen_at": now()}},
             sort=[("created_at", 1)],
         )
@@ -107,6 +107,18 @@ async def run_broadcast_worker(bot, db, poll_seconds: int = 2):
             await asyncio.sleep(poll_seconds)
             continue
         job_id = job["_id"]
+        if not job.get("recipients_loaded", False):
+            ids = []
+            async for user in db.users.find({"banned": {"$ne": True}}, {"user_id": 1}):
+                ids.append({"job_id": job_id, "user_id": user["user_id"], "status": "pending"})
+            if ids:
+                try:
+                    await db.broadcast_recipients.insert_many(ids, ordered=False)
+                except BulkWriteError:
+                    pass
+            await db.broadcast_jobs.update_one(
+                {"_id": job_id}, {"$set": {"recipients_loaded": True, "recipient_count": len(ids), "status": "processing"}}
+            )
         recipient = await db.broadcast_recipients.find_one_and_update(
             {"job_id": job_id, "status": "pending"},
             {"$set": {"status": "sending", "attempted_at": now()}},
