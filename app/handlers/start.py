@@ -15,9 +15,15 @@ router=Router(name="start");log=logging.getLogger(__name__)
 
 async def effective_force_join_channels(database, settings) -> list[str]:
     cfg = await database.db.settings.find_one({"key": "force_join"})
-    if cfg is not None and isinstance(cfg.get("channels"), list):
-        return [str(channel).strip() for channel in cfg["channels"] if str(channel).strip()]
-    return list(settings.force_join_channels)
+    raw_channels = cfg.get("channels", []) if cfg is not None and isinstance(cfg.get("channels"), list) else settings.force_join_channels
+    channels = []
+    for raw in raw_channels:
+        channel = str(raw).strip()
+        if channel.startswith("https://t.me/"):
+            channel = "@" + channel.removeprefix("https://t.me/").strip("/").split("/", 1)[0].lstrip("@")
+        if channel:
+            channels.append(channel)
+    return channels
 
 def _join_signature(channels: list[str]) -> str:
     return hashlib.sha256(",".join(sorted(c.strip() for c in channels if c.strip())).encode()).hexdigest()
