@@ -55,9 +55,9 @@ async def edit_page(query, text, keyboard):
     if not query.message:
         return
     try:
-        await query.message.edit_text(text, reply_markup=keyboard)
+        await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except TelegramAPIError:
-        await query.message.answer(text, reply_markup=keyboard)
+        await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 async def render_home(query):
     await edit_page(query, "C̲U̲S̲T̲O̲M̲I̲Z̲E̲\n\nName: {mention}\n\nConfigure Your Bot Settings Using the Buttons Below.", kb([
