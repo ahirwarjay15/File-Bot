@@ -192,7 +192,7 @@ async def render_poster(query):
 
 async def render_about(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
-    await edit_page(query, f"ABOUT BUTTON\nChoose whether to show the About button with invalid posts.\nStatus: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
+    await edit_page(query, f"ABOUT BUTTON\nChoose whether to show the About button with invalid posts.\nStatus: {'ENABLED' if cfg.get('about_enabled', True) else 'DISABLED'}", kb([
         [("ENABLE / DISABLE", "settings:invalid_about_toggle")],
         [("EDIT ABOUT TEXT", "settings:invalid_about_text")],
         [("BACK", "settings:invalid")],
@@ -398,7 +398,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         ]))
     elif action == "start_about_toggle":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", False)}, {"enabled": True, "text": "👋 Welcome! Send a valid file link to receive your file."})
+        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", True)}, {"enabled": True, "text": "👋 Welcome! Send a valid file link to receive your file."})
         await render_start(query, db)
     elif action == "start_about_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_about_text")
@@ -691,7 +691,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         return
     if field == "start_text":
         await patch(db, "start_message", {"text": value}, {"enabled": True})
-        await message.answer("Start Message text updated successfully.")
+        await message.answer("✨ Successfully updated your start message text.")
     elif field == "start_button_text":
         await patch(db, "start_message", {"button_text": value, "button_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT, "button_url": "http://t.me/lexiAnime", "about_enabled": True})
         await message.answer("✨ Successfully updated start message button text.")
