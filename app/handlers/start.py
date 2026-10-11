@@ -42,15 +42,21 @@ async def _mark_verified(db, user_id: int, channels: list[str]):
         {"$set": {"force_join_signature": _join_signature(channels), "force_join_verified_at": datetime.now(timezone.utc)}},
     )
 
-async def join_status(bot,user_id:int,channels:list[str])->list[str]:
+async def join_status(bot,user_id:int,channels:list[str],db=None)->list[str]:
     missing=[]
     for raw in channels:
         channel=raw.strip()
         if not channel:continue
         try:
-            member=await bot.get_chat_member(chat_id=channel,user_id=user_id)
-            if member.status not in ("creator","administrator","member") and not(member.status=="restricted" and getattr(member,"is_member",False)):missing.append(channel)
-        except TelegramAPIError:missing.append(channel)
+            chat = await bot.get_chat(channel)
+            member=await bot.get_chat_member(chat_id=chat.id,user_id=user_id)
+            verified = member.status in ("creator","administrator","member") or (member.status=="restricted" and getattr(member,"is_member",False))
+            if not verified and db is not None:
+                pending = await db.pending_join_requests.find_one({"chat_id": chat.id, "user_id": user_id})
+                verified = bool(pending)
+            if not verified: missing.append(channel)
+        except TelegramAPIError:
+            missing.append(channel)
     return missing
 
 async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->bool:
@@ -59,7 +65,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     channels = await effective_force_join_channels(database, settings)
     # External links alone never create a verification gate.
     if not channels or await _is_verified(database.db, user.id, channels): return False
-    missing=await join_status(bot,user.id,channels)
+    missing=await join_status(bot,user.id,channels,database.db)
     if not missing:
         await _mark_verified(database.db, user.id, channels)
         return False
@@ -187,13 +193,23 @@ async def start_about(query: CallbackQuery, database):
     except TelegramAPIError:
         pass
 
+@router.chat_join_request()
+async def remember_pending_join_request(event, database):
+    # Telegram emits this only when the bot has the appropriate channel admin rights.
+    await database.db.pending_join_requests.update_one(
+        {"chat_id": event.chat.id, "user_id": event.from_user.id},
+        {"$set": {"chat_id": event.chat.id, "user_id": event.from_user.id,
+                  "requested_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+
 @router.callback_query(F.data.startswith("forcejoin:check:"))
 async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     await query.answer()
     payload=query.data.split(":",2)[2]
     if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):return
     channels = await effective_force_join_channels(database, settings)
-    missing=[] if await is_owner_or_moderator(database.db, query.from_user.id, settings) else await join_status(bot,query.from_user.id,channels)
+    missing=[] if await is_owner_or_moderator(database.db, query.from_user.id, settings) else await join_status(bot,query.from_user.id,channels,database.db)
     if missing:
         if query.message:
             cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
