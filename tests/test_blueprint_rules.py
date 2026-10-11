@@ -18,7 +18,7 @@ async def test_generating_batch_is_not_expired_mid_generation():
 
 def test_batch_menu_exposes_generate_cancel_and_back():
     labels = [button.text for row in menu().inline_keyboard for button in row]
-    assert labels == ["GENERATE LINK", "CANCEL", "BACK"]
+    assert labels == ["ɢᴇɴᴇʀᴀᴛᴇ ʟɪɴᴋ", "ᴄᴀɴᴄᴇʟ", "《 BACK"]
 
 
 def test_force_join_signature_is_order_independent_but_configuration_sensitive():

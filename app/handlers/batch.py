@@ -23,9 +23,9 @@ class BatchState(StatesGroup):
 
 def menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="GENERATE LINK", callback_data="batch:generate")],
-        [InlineKeyboardButton(text="CANCEL", callback_data="batch:cancel"),
-         InlineKeyboardButton(text="BACK", callback_data="batch:back")],
+        [InlineKeyboardButton(text="ɢᴇɴᴇʀᴀᴛᴇ ʟɪɴᴋ", callback_data="batch:generate")],
+        [InlineKeyboardButton(text="ᴄᴀɴᴄᴇʟ", callback_data="batch:cancel"),
+         InlineKeyboardButton(text="《 BACK", callback_data="batch:back")],
     ])
 
 def _now():
@@ -49,8 +49,8 @@ async def _expire_session(db, user_id: int):
 
 async def _render_status(message: Message, count: int, session=None, database=None):
     text = (
-        f"BATCH STORAGE\\n\\nStored files: {count}/100\\n\\n"
-        "Want to add more messages? Just send them here!\\n\\n"
+        f"BATCH STORAGE\n\nStored files: {count}/100\n\n"
+        "Want to add more messages? Just send them here!\n\n"
         "✨ You can now send multiple messages at once."
     )
     session = session or (await _session(database.db, message.from_user.id) if database and message.from_user else None)
@@ -149,7 +149,7 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
                 await message.bot.delete_message(session.get("status_chat_id", message.chat.id), status_id)
             except TelegramAPIError:
                 pass
-        await message.answer("Time's up. Try again.\\n/batch")
+        await message.answer("Time's up. Try again.\n/batch")
         return True
     if message.text and message.text.startswith("/"):
         return False
