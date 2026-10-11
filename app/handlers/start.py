@@ -1,6 +1,7 @@
 """Start command, Force Join gate, and single/batch deeplink delivery."""
 import logging
 import hashlib
+import html
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from aiogram import Router,F
@@ -122,9 +123,12 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         if cfg.get("about_enabled", True):
             rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ＡＢＯＵＴ"), callback_data="start:about")])
         markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-        text = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi"
-        text = text.replace("{first_name}", user.first_name or "").replace("{last_name}", user.last_name or "")
+        raw_text = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi"
+        text = html.escape(raw_text)
+        text = text.replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or ""))
         text = text.replace("{mention}", user.mention_html())
+        text = text.replace("Lexi Anime", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
+        text = text.replace("Developer: Lexi", 'Developer: <a href="https://t.me/lexxiowner">Lexi</a>')
         if cfg.get("poster_file_id"):
             await message.answer_animation(cfg["poster_file_id"], caption=text, reply_markup=markup, parse_mode="HTML")
         elif cfg.get("poster_photo_id"):
@@ -140,9 +144,16 @@ async def start_about(query: CallbackQuery, database):
     cfg = await database.db.settings.find_one({"key": "start_message"}) or {}
     if not cfg.get("enabled", True) or not cfg.get("about_enabled", False) or not query.message:
         return
-    about_text = cfg.get("about_text") or "This bot delivers files using permanent source-channel references."
+    me = await query.bot.get_me()
+    about_text = cfg.get("about_text") or "✨ ᴀʙᴏᴜᴛ ᴍᴇ\\n\\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\\n\\n✰ creator: Lexi\\n\\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\\n\\n✰ made for: Lexi Anime\\n\\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
+    rendered = html.escape(about_text).replace("{bot_name}", html.escape(me.full_name))
+    rendered = rendered.replace("Lexi Anime", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
+    rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
     try:
-        await query.message.edit_text(about_text)
+        if query.message.photo or query.message.animation:
+            await query.message.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=None)
+        else:
+            await query.message.edit_text(rendered, parse_mode="HTML", reply_markup=None)
     except TelegramAPIError:
         pass
 
