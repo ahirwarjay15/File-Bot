@@ -22,6 +22,9 @@ class Database:
             await self.db.tasks.create_index([("status",ASCENDING),("deadline",ASCENDING)])
             await self.db.batches.create_index([("batch_id",ASCENDING)],unique=True,sparse=True)
             await self.db.broadcast_drafts.create_index([("admin_id",ASCENDING)],unique=True)
+            await self.db.batch_sessions.create_index([("admin_id",ASCENDING)],unique=True)
+            await self.db.batch_sessions.create_index([("status",ASCENDING),("last_activity_ts",ASCENDING)])
+            await self.db.users.create_index([("blocked",ASCENDING)])
             # Re-queue jobs interrupted while the process was down.
             await self.db.tasks.update_many({"status":"processing"},{"$set":{"status":"pending"}})
             logger.info("MongoDB ready; interrupted delete tasks recovered")
