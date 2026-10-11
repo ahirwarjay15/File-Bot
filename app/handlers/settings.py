@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramAPIError
 from app.config import Settings
 from app.services.permissions import is_owner_or_moderator
 from app.services.links import shorten_url
+from app.handlers.start import effective_force_join_channels
 
 router = Router(name="settings")
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
@@ -49,8 +50,17 @@ async def render_home(query):
         [("START MESSAGE", "settings:start"), ("AUTO DELETE", "settings:auto")],
         [("INVALID POST", "settings:invalid")],
         [("LINK SHORTENER", "settings:shortener"), ("MODERATORS", "settings:mods")],
-        [("FORCE JOIN ANIMATION", "settings:forcejoin_animation")],
+        [("FORCE JOIN", "settings:forcejoin"), ("FORCE JOIN ANIMATION", "settings:forcejoin_animation")],
         [("STATS", "settings:stats")],
+    ]))
+
+async def render_forcejoin(query, db, settings):
+    channels = await effective_force_join_channels(type("DatabaseView", (), {"db": db})(), settings)
+    channel_text = "\\n".join(f"• {channel}" for channel in channels) if channels else "No Force Join channels configured."
+    await edit_page(query, "FORCE JOIN\\nRequired channels:\\n" + channel_text, kb([
+        [("ADD CHANNEL", "settings:forcejoin_add")],
+        [("REMOVE CHANNEL", "settings:forcejoin_remove")],
+        [("BACK", "settings:home")],
     ]))
 
 async def render_start(query, db):
@@ -182,6 +192,22 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     action = query.data.split(":", 1)[1]
     db = database.db
     if action == "home": await render_home(query)
+    elif action == "forcejoin": await render_forcejoin(query, db, settings)
+    elif action == "forcejoin_add":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_channel")
+        if query.message: await query.message.answer("Send a public channel username such as @mychannel. Public username is required so users can open the Join button.")
+    elif action == "forcejoin_remove":
+        channels = await effective_force_join_channels(database, settings)
+        rows = [[(channel, f"settings:forcejoin_del:{i}")] for i, channel in enumerate(channels)]
+        rows.append([("BACK", "settings:forcejoin")])
+        await edit_page(query, "REMOVE FORCE JOIN CHANNEL\\nSelect a channel to remove.", kb(rows))
+    elif action.startswith("forcejoin_del:"):
+        channels = await effective_force_join_channels(database, settings)
+        index = int(action.split(":", 1)[1])
+        if 0 <= index < len(channels):
+            channels.pop(index)
+            await patch(db, "force_join", {"channels": channels})
+        await render_forcejoin(query, db, settings)
     elif action == "start": await render_start(query, db)
     elif action == "start_toggle":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
@@ -320,6 +346,23 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     field = data.get("field")
     db = database.db
     value = (message.text or "").strip()
+    if field == "forcejoin_channel":
+        channel = value.strip()
+        if channel.startswith("https://t.me/"):
+            channel = "@" + channel.removeprefix("https://t.me/").strip("/").split("/", 1)[0].lstrip("@")
+        if not channel.startswith("@") or len(channel) < 6 or not channel[1:].replace("_", "").isalnum():
+            await message.answer("Send a public channel username such as @mychannel.")
+            return
+        channels = await effective_force_join_channels(database, settings)
+        if channel in channels:
+            await message.answer("That Force Join channel is already configured.")
+            await state.clear()
+            return
+        channels.append(channel)
+        await patch(db, "force_join", {"channels": channels})
+        await state.clear()
+        await message.answer(f"Force Join channel {channel} added.")
+        return
     if field == "forcejoin_animation":
         if not message.animation:
             await message.answer("Send a GIF animation to use after Force Join verification.")
