@@ -19,6 +19,7 @@ def unicode_buttons(value: str) -> str:
     return "".join(ch.translate(table) if ch.isascii() and ch.isalpha() else ch for ch in str(value))
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."
+DEFAULT_START_TEXT = "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\n\nBy: Lexi Anime\n\nDeveloper: Lexi"
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
 DEFAULT_AFTER_BUTTON = "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ"
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
@@ -83,6 +84,13 @@ async def render_start(query, db):
         [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
         [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")],
         [("BACK", "settings:home")],
+    ]))
+
+async def render_start_text(query):
+    await edit_page(query, "S̲T̲A̲R̲T̲ ̲T̲E̲X̲T̲\n\nCustomize your bot's start message.", kb([
+        [("EDIT", "settings:start_text_edit"), ("SEE", "settings:start_text_see")],
+        [("DEFAULT", "settings:start_text_default")],
+        [("BACK", "settings:start")],
     ]))
 
 async def render_start_button(query):
@@ -242,9 +250,21 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
         await patch(db, "start_message", {"enabled": not cfg.get("enabled", True)}, {"text": "👋 Welcome! Send a valid file link to receive your file."})
         await render_start(query, db)
-    elif action == "start_text":
+    elif action == "start_text": await render_start_text(query)
+    elif action == "start_text_edit":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_text")
-        if query.message: await query.message.answer("Send your new Start Message text.")
+        if query.message: await query.message.answer("Variables:\n{first_name} — User first name\n{last_name} — User last name\n{mention} — Clickable mention of the user\n\nNow send your new start message text.")
+    elif action == "start_text_see":
+        cfg = await db.settings.find_one({"key": "start_message"}) or {}
+        me = await query.bot.get_me()
+        await query.answer(f"{me.full_name}\n\n{cfg.get('text') or DEFAULT_START_TEXT}", show_alert=True)
+        return
+    elif action == "start_text_default":
+        await patch(db, "start_message", {"text": DEFAULT_START_TEXT}, {"enabled": True})
+        me = await query.bot.get_me()
+        await query.answer(f"{me.full_name}\n\n{DEFAULT_START_TEXT}", show_alert=True)
+        await render_start_text(query)
+        return
     elif action == "start_button": await render_start_button(query)
     elif action in ("start_button_text", "start_button_link"):
         await state.set_state(SettingInput.waiting); await state.update_data(field=action)
@@ -477,7 +497,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "start_message", {"text": value}, {"enabled": True})
         await message.answer("Start Message text updated successfully.")
     elif field == "start_button_text":
-        await patch(db, "start_message", {"button_text": value, "button_enabled": True}, {"enabled": True, "text": "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi", "button_url": "http://t.me/lexiAnime", "about_enabled": True})
+        await patch(db, "start_message", {"button_text": value, "button_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT, "button_url": "http://t.me/lexiAnime", "about_enabled": True})
         await message.answer("✨ Successfully updated start message button text.")
     elif field == "start_button_link":
         parsed = urlparse(value)
