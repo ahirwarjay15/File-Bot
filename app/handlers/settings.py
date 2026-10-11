@@ -54,7 +54,7 @@ async def render_home(query):
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
-    await edit_page(query, f"START MESSAGE\\nStatus: {'ENABLED' if cfg.get('enabled', True) else 'DISABLED'}", kb([
+    await edit_page(query, f"START MESSAGE\nStatus: {'ENABLED' if cfg.get('enabled', True) else 'DISABLED'}", kb([
         [("ENABLE / DISABLE", "settings:start_toggle")],
         [("TEXT", "settings:start_text")],
         [("BACK", "settings:home")],
@@ -167,7 +167,8 @@ async def settings_command(message: Message, settings: Settings, database):
     if not await allowed(message, settings, database):
         return
     await message.answer("BOT SETTINGS", reply_markup=kb([
-        [("AUTO DELETE", "settings:auto"), ("INVALID POST", "settings:invalid")],
+        [("START MESSAGE", "settings:start"), ("AUTO DELETE", "settings:auto")],
+        [("INVALID POST", "settings:invalid")],
         [("LINK SHORTENER", "settings:shortener"), ("MODERATORS", "settings:mods")],
         [("STATS", "settings:stats")],
     ]))
