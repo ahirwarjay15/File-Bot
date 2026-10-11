@@ -1,16 +1,20 @@
-"""Delivery services and durable expiry worker."""
+"""Delivery services, durable batch progress, and expiry worker."""
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from secrets import token_urlsafe
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramBadRequest
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-log = logging.getLogger(__name__)
 
+log = logging.getLogger(__name__)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."
+
 
 def _now():
     return datetime.now(timezone.utc)
+
 
 async def claim_delivery_request(db, request_key: str, user_id: int, payload: str) -> bool:
     try:
@@ -31,16 +35,22 @@ async def claim_delivery_request(db, request_key: str, user_id: int, payload: st
         )
         return bool(result.modified_count)
 
+
 async def finish_delivery_request(db, request_key: str, success: bool):
     await db.delivery_requests.update_one(
         {"request_key": request_key, "status": "processing"},
         {"$set": {"status": "done" if success else "failed", "updated_at": _now()}},
     )
 
+
 def _minutes(cfg):
     allowed = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
-    value = int((cfg or {}).get("minutes", 30))
+    try:
+        value = int((cfg or {}).get("minutes", 30))
+    except (TypeError, ValueError):
+        return 30
     return value if value in allowed else 30
+
 
 def _notice(cfg, minutes):
     value = (cfg or {}).get("notice") or DEFAULT_NOTICE
@@ -53,14 +63,23 @@ def _notice(cfg, minutes):
         label = f"{minutes // 60}h {minutes % 60}m"
     return value.replace("{auto_delete_time}", label)
 
-async def _save_expiry_task(db, user_id, message_ids, deadline, deeplink):
-    await db.tasks.insert_one({
+
+async def _save_expiry_task(db, user_id, message_ids, deadline, deeplink, request_key=None):
+    task = {
         "kind": "delete_delivery", "user_id": user_id,
         "message_ids": list(message_ids), "deadline": deadline,
         "deeplink": deeplink, "status": "pending",
         "created_at": _now(), "messages_deleted": False,
         "after_delete_attempted": False,
-    })
+    }
+    if request_key:
+        task["request_key"] = request_key
+        await db.tasks.update_one(
+            {"request_key": request_key}, {"$setOnInsert": task}, upsert=True
+        )
+    else:
+        await db.tasks.insert_one(task)
+
 
 async def deliver_reference(bot: Bot, db, settings, *, user_id: int, file_doc: dict, deeplink: str):
     sent = await bot.copy_message(chat_id=user_id, from_chat_id=file_doc["source_chat_id"], message_id=file_doc["source_message_id"])
@@ -78,31 +97,175 @@ async def deliver_reference(bot: Bot, db, settings, *, user_id: int, file_doc: d
     await _save_expiry_task(db, user_id, message_ids, deadline, deeplink)
     return sent
 
-async def deliver_batch(bot: Bot, db, *, user_id: int, batch: dict, deeplink: str):
-    auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
-    minutes = _minutes(auto) if auto else None
-    deadline = None
-    delivered = []
-    failed = 0
-    for item in batch.get("items", []):
-        try:
-            sent = await bot.copy_message(chat_id=user_id, from_chat_id=item["source_chat_id"], message_id=item["source_message_id"])
-            delivered.append(sent.message_id)
-            if auto and deadline is None:
-                deadline = _now() + timedelta(minutes=minutes)
-        except TelegramAPIError:
-            failed += 1
-            log.exception("Batch item delivery failed")
-    if auto and deadline and delivered:
-        message_ids = list(delivered)
-        if deadline > _now():
+
+async def _process_batch_delivery(bot: Bot, db, request_key: str):
+    """Resume a persisted batch at the next not-yet-attempted item."""
+    try:
+        doc = await db.batch_deliveries.find_one({"request_key": request_key})
+        if not doc or doc.get("status") == "done":
+            return (len((doc or {}).get("delivered_message_ids", [])), int((doc or {}).get("failed_count", 0)))
+        items = doc.get("items", [])
+        while int(doc.get("next_index", 0)) < len(items):
+            index = int(doc.get("next_index", 0))
+            state = (doc.get("item_states") or [{} for _ in items])[index]
+            if state.get("status") == "sending":
+                # The process may have died after Telegram accepted the copy but before MongoDB recorded it.
+                await db.batch_deliveries.update_one(
+                    {"request_key": request_key, "status": "processing", "next_index": index},
+                    {"$set": {f"item_states.{index}.status": "unknown", "next_index": index + 1},
+                     "$inc": {"failed_count": 1}},
+                )
+                doc = await db.batch_deliveries.find_one({"request_key": request_key})
+                continue
+            claim = await db.batch_deliveries.update_one(
+                {"request_key": request_key, "status": "processing", "next_index": index,
+                 f"item_states.{index}.status": "pending"},
+                {"$set": {f"item_states.{index}.status": "sending",
+                          f"item_states.{index}.started_at": _now()}},
+            )
+            if not claim.modified_count:
+                doc = await db.batch_deliveries.find_one({"request_key": request_key})
+                if not doc or doc.get("status") != "processing":
+                    return (len((doc or {}).get("delivered_message_ids", [])), int((doc or {}).get("failed_count", 0)))
+                continue
+            item = items[index]
             try:
-                alert = await bot.send_message(user_id, _notice(auto, minutes))
-                message_ids.append(alert.message_id)
-            except TelegramAPIError:
-                log.exception("Batch delivered, but auto-delete notice could not be sent")
-        await _save_expiry_task(db, user_id, message_ids, deadline, deeplink)
-    return len(delivered), failed
+                sent = await bot.copy_message(
+                    chat_id=doc["user_id"], from_chat_id=item["source_chat_id"],
+                    message_id=item["source_message_id"],
+                )
+                deadline = doc.get("deadline")
+                if doc.get("auto_delete") and deadline is None:
+                    deadline = _now() + timedelta(minutes=int(doc["minutes"]))
+                fields = {
+                    f"item_states.{index}.status": "delivered",
+                    f"item_states.{index}.message_id": sent.message_id,
+                    f"item_states.{index}.finished_at": _now(),
+                    "next_index": index + 1,
+                }
+                if deadline is not None:
+                    fields["deadline"] = deadline
+                await db.batch_deliveries.update_one(
+                    {"request_key": request_key, "status": "processing", "next_index": index},
+                    {"$set": fields, "$push": {"delivered_message_ids": sent.message_id}},
+                )
+            except TelegramAPIError as exc:
+                await db.batch_deliveries.update_one(
+                    {"request_key": request_key, "status": "processing", "next_index": index},
+                    {"$set": {f"item_states.{index}.status": "failed",
+                              f"item_states.{index}.error": type(exc).__name__,
+                              f"item_states.{index}.finished_at": _now(),
+                              "next_index": index + 1},
+                     "$inc": {"failed_count": 1}},
+                )
+                log.warning("Batch item %s failed for user %s: %s", index, doc["user_id"], type(exc).__name__)
+            doc = await db.batch_deliveries.find_one({"request_key": request_key})
+
+        doc = await db.batch_deliveries.find_one({"request_key": request_key})
+        delivered_ids = list(doc.get("delivered_message_ids", []))
+        deadline = doc.get("deadline")
+        if doc.get("auto_delete") and deadline and deadline > _now() and doc.get("alert_status") == "pending":
+            claimed = await db.batch_deliveries.update_one(
+                {"request_key": request_key, "status": "processing", "alert_status": "pending"},
+                {"$set": {"alert_status": "sending", "alert_started_at": _now()}},
+            )
+            if claimed.modified_count:
+                try:
+                    alert = await bot.send_message(doc["user_id"], _notice({"notice": doc.get("notice")}, int(doc["minutes"])))
+                    await db.batch_deliveries.update_one(
+                        {"request_key": request_key, "status": "processing"},
+                        {"$set": {"alert_status": "sent", "alert_message_id": alert.message_id, "alert_sent_at": _now()}},
+                    )
+                except TelegramAPIError as exc:
+                    await db.batch_deliveries.update_one(
+                        {"request_key": request_key, "status": "processing"},
+                        {"$set": {"alert_status": "failed", "alert_error": type(exc).__name__}},
+                    )
+                    log.exception("Batch delivered but auto-delete notice could not be sent")
+        elif doc.get("alert_status") == "sending":
+            # Do not resend an alert with an ambiguous outcome after restart.
+            await db.batch_deliveries.update_one(
+                {"request_key": request_key, "status": "processing", "alert_status": "sending"},
+                {"$set": {"alert_status": "unknown"}},
+            )
+        doc = await db.batch_deliveries.find_one({"request_key": request_key})
+        if doc.get("auto_delete") and doc.get("deadline"):
+            message_ids = list(doc.get("delivered_message_ids", []))
+            if doc.get("alert_status") == "sent" and doc.get("alert_message_id"):
+                message_ids.append(doc["alert_message_id"])
+            await _save_expiry_task(
+                db, doc["user_id"], message_ids, doc["deadline"], doc["deeplink"],
+                request_key=f"batch-expiry:{request_key}",
+            )
+        await db.batch_deliveries.update_one(
+            {"request_key": request_key, "status": "processing"},
+            {"$set": {"status": "done", "finished_at": _now()}},
+        )
+        final = await db.batch_deliveries.find_one({"request_key": request_key})
+        return (len(final.get("delivered_message_ids", [])), int(final.get("failed_count", 0)))
+    except Exception:
+        log.exception("Batch delivery processing interrupted; persisted progress will be resumed")
+        await db.batch_deliveries.update_one(
+            {"request_key": request_key, "status": "processing"},
+            {"$set": {"status": "pending", "last_error_at": _now()}},
+        )
+        raise
+
+
+async def deliver_batch(bot: Bot, db, *, user_id: int, batch: dict, deeplink: str, request_key: str | None = None):
+    """Persist every batch item before sending, so restarts can resume safely."""
+    request_key = request_key or f"batch:{user_id}:{token_urlsafe(12)}"
+    existing = await db.batch_deliveries.find_one({"request_key": request_key})
+    if not existing:
+        auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
+        items = list(batch.get("items", []))
+        if not items:
+            return (0, 0)
+        doc = {
+            "request_key": request_key, "user_id": user_id, "batch_id": batch.get("batch_id"),
+            "items": items, "item_states": [{"status": "pending"} for _ in items],
+            "next_index": 0, "delivered_message_ids": [], "failed_count": 0,
+            "auto_delete": bool(auto), "minutes": _minutes(auto) if auto else None,
+            "notice": (auto or {}).get("notice", DEFAULT_NOTICE), "deadline": None,
+            "alert_status": "pending", "deeplink": deeplink, "status": "processing",
+            "created_at": _now(),
+        }
+        try:
+            await db.batch_deliveries.insert_one(doc)
+        except Exception as exc:
+            if getattr(exc, "code", None) != 11000:
+                raise
+    else:
+        if existing.get("status") == "done":
+            return (len(existing.get("delivered_message_ids", [])), int(existing.get("failed_count", 0)))
+        if existing.get("status") == "pending":
+            claim = await db.batch_deliveries.update_one(
+                {"request_key": request_key, "status": "pending"},
+                {"$set": {"status": "processing", "resumed_at": _now()}},
+            )
+            if not claim.modified_count:
+                return (len(existing.get("delivered_message_ids", [])), int(existing.get("failed_count", 0)))
+    return await _process_batch_delivery(bot, db, request_key)
+
+
+async def run_batch_delivery_worker(bot: Bot, db, poll_seconds: int = 2):
+    """Resume durable batch deliveries left pending by a prior interruption."""
+    while True:
+        doc = await db.batch_deliveries.find_one_and_update(
+            {"status": "pending"},
+            {"$set": {"status": "processing", "worker_claimed_at": _now()}},
+            sort=[("created_at", 1)],
+            return_document=True,
+        )
+        if not doc:
+            await asyncio.sleep(poll_seconds)
+            continue
+        try:
+            await _process_batch_delivery(bot, db, doc["request_key"])
+        except Exception:
+            log.exception("Background batch delivery remains pending and will retry")
+        await asyncio.sleep(0.05)
+
 
 async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
     while True:
@@ -131,7 +294,6 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                     try:
                         await bot.send_message(task["user_id"], text, reply_markup=markup)
                     except (TelegramForbiddenError, TelegramBadRequest):
-                        # Permanent recipient/request errors cannot succeed on retry; finish cleanup safely.
                         log.warning("After-delete replacement cannot be sent for user %s", task["user_id"])
                     except TelegramAPIError:
                         await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": False}})
