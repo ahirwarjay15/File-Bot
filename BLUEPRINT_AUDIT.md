@@ -32,7 +32,7 @@ The supplied blueprint file starts at section 5 (Auto Delete). Sections 1–4 ar
 
 ## Known remaining gaps before production
 
-- Request-level deduplication is now persisted for repeated /start updates and Force Join callbacks. Exactly-once delivery still cannot be guaranteed across the Telegram-send/database-write crash window; broadcast marks an interrupted in-flight recipient as unknown to avoid blindly duplicating it.
+- Request-level deduplication is persisted for repeated /start updates and Force Join callbacks. Broadcast now recovers queued drafts even if the process stops before job creation, skips users banned after queueing, and marks interrupted in-flight recipients as unknown. Automatic replay of an interrupted single/batch delivery request still needs a durable per-item delivery queue; exactly-once delivery cannot be guaranteed across the Telegram-send/database-write crash window.
 - The blueprint mentions a separate last-two-message retention rule. That retention/cleanup behavior is not implemented because the supplied section does not define its trigger/cleanup sequence. Telegram also does not generally allow the bot to delete user-authored messages in private chats.
 - The supplied file lacks blueprint sections 1–4, so the complete A-to-Z comparison requires the missing source sections.
 - No automated test run or end-to-end Telegram/Atlas/Oracle test has been confirmed yet. The repository workflow now runs syntax compilation and pytest on pushes/PRs, but this audit does not claim a passing run.
