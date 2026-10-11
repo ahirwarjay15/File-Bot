@@ -91,6 +91,6 @@ def test_all_runtime_handlers_import_cleanly():
 def test_settings_pages_get_shared_heading_and_body_style():
     from app.handlers.settings import format_settings_page
 
-    rendered = format_settings_page("AUTO DELETE\\nAutomatically delete delivered files.\\nStatus: DISABLED")
-    assert rendered.startswith("<b><u>AUTO DELETE</u></b>\\n\\n<i>")
+    rendered = format_settings_page("AUTO DELETE\nAutomatically delete delivered files.\nStatus: DISABLED")
+    assert rendered.startswith("<b><u>AUTO DELETE</u></b>\n\n<i>")
     assert rendered.endswith("</i>")
