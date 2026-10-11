@@ -104,7 +104,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                         chat_id=user_id, message_id=target_id, text=animated,
                     )
                 else:
-                    content = f"{base_text}\\n\\n<i>{animated}</i>"
+                    content = f"{base_text}\n\n<i>{animated}</i>"
                     if gate_message.photo or gate_message.animation or gate_message.document:
                         await bot.edit_message_caption(
                             chat_id=user_id, message_id=target_id, caption=content,
@@ -355,6 +355,9 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                     await query.message.edit_text(rendered, reply_markup=markup, parse_mode="HTML")
             except TelegramAPIError:
                 pass
+            animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
+            if animation_cfg.get("enabled") and query.message:
+                await _start_gate_animation(bot, query.from_user.id, payload, query.message, rendered, markup, animation_cfg)
         return
     repo=FileRepository(database.db)
     if payload.startswith("file_"):record=await repo.get_file(payload[5:])
