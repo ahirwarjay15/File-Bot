@@ -86,6 +86,10 @@ def test_all_runtime_handlers_import_cleanly():
     import app.handlers.broadcast
     import app.handlers.settings
     import app.services.delivery
+    import app.handlers.file
+    import app.handlers.admin
+    import app.handlers.shortener
+    import main
 
 
 def test_settings_pages_get_shared_heading_and_body_style():
