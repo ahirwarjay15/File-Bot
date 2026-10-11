@@ -135,6 +135,7 @@ async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: M
                                 base_text: str, markup: InlineKeyboardMarkup, cfg: dict):
     if not cfg.get("enabled"):
         return
+    await _cancel_gate_animation(bot, user_id, payload)
     mode = cfg.get("mode", "force_join_poster")
     separate_id = None
     if mode == "new_message":
