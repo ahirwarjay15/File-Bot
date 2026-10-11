@@ -87,7 +87,6 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
             await message.answer("This link is invalid or expired.");return
         if not record or len(payload.split("_",1)[1])>40:
             await message.answer("This link is invalid or expired.");return
-        channels = await effective_force_join_channels(database, settings)
         if await gate_or_prompt(message,payload,settings,database,bot):return
         request_key = f"start:{user.id}:{message.message_id}"
         if not await claim_delivery_request(database.db, request_key, user.id, payload):
