@@ -64,10 +64,10 @@ def _notice(cfg, minutes):
     return value.replace("{auto_delete_time}", label)
 
 
-async def _save_expiry_task(db, user_id, message_ids, deadline, deeplink, request_key=None):
+async def _save_expiry_task(db, user_id, message_ids, deadline, deeplink, request_key=None, notice_message_id=None):
     task = {
         "kind": "delete_delivery", "user_id": user_id,
-        "message_ids": list(message_ids), "deadline": deadline,
+        "message_ids": list(message_ids), "notice_message_id": notice_message_id, "deadline": deadline,
         "deeplink": deeplink, "status": "pending",
         "created_at": _now(), "messages_deleted": False,
         "after_delete_attempted": False,
@@ -186,11 +186,10 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
         doc = await db.batch_deliveries.find_one({"request_key": request_key})
         if doc.get("auto_delete") and doc.get("deadline"):
             message_ids = list(doc.get("delivered_message_ids", []))
-            if doc.get("alert_status") == "sent" and doc.get("alert_message_id"):
-                message_ids.append(doc["alert_message_id"])
+            notice_message_id = doc.get("alert_message_id") if doc.get("alert_status") == "sent" else None
             await _save_expiry_task(
                 db, doc["user_id"], message_ids, doc["deadline"], doc["deeplink"],
-                request_key=f"batch-expiry:{request_key}",
+                request_key=f"batch-expiry:{request_key}", notice_message_id=notice_message_id,
             )
         await db.batch_deliveries.update_one(
             {"request_key": request_key, "status": "processing"},
@@ -283,21 +282,30 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                     await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"messages_deleted": True}})
                 auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
                 after = await db.settings.find_one({"key": "after_delete", "enabled": True}) if auto else None
+                notice_id = task.get("notice_message_id")
                 if after and not task.get("after_delete_attempted", False):
                     await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": True}})
-                    text = after.get("text") or "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
+                    text = after.get("text") or "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
                     link = task.get("deeplink")
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text=after.get("button_text") or "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ", url=link)
                     ]]) if link else None
                     try:
-                        await bot.send_message(task["user_id"], text, reply_markup=markup)
+                        if notice_id:
+                            await bot.edit_message_text(chat_id=task["user_id"], message_id=notice_id, text=text, reply_markup=markup)
+                        else:
+                            await bot.send_message(task["user_id"], text, reply_markup=markup)
                     except (TelegramForbiddenError, TelegramBadRequest):
-                        log.warning("After-delete replacement cannot be sent for user %s", task["user_id"])
+                        log.warning("After-delete replacement cannot be edited for user %s", task["user_id"])
                     except TelegramAPIError:
                         await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": False}})
                         log.exception("Transient After-delete replacement failure; expiry task will retry")
                         raise
+                elif notice_id:
+                    try:
+                        await bot.delete_message(task["user_id"], notice_id)
+                    except TelegramAPIError:
+                        log.info("Could not delete auto-delete notice %s for user %s", notice_id, task["user_id"])
                 await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "done", "finished_at": _now()}})
             except Exception:
                 log.exception("Expiry task failed")
