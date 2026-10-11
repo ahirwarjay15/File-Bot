@@ -16,7 +16,7 @@ class FileStates(StatesGroup):waiting_for_message=State()
 async def file_command(message:Message,state:FSMContext,settings:Settings,database):
     if not message.from_user or not await is_owner_or_moderator(database.db,message.from_user.id,settings):return
     if not settings.source_channel_id:await message.answer("Storage isn't configured. Set SOURCE_CHANNEL_ID first.");return
-    await state.set_state(FileStates.waiting_for_message);await message.answer("Send one file or supported message. Use /cancel to stop.")
+    await state.set_state(FileStates.waiting_for_message);await message.answer("Send me the files you want to store. Send one message for this /file link, or use /cancel to stop.")
 
 @router.message(FileStates.waiting_for_message,Command("cancel"))
 async def cancel_file(message:Message,state:FSMContext):

@@ -8,7 +8,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, CopyTextButton
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
 from app.database.files import FileRepository
@@ -47,12 +47,33 @@ async def _expire_session(db, user_id: int):
         {"$set": {"status": "expired", "finished_at": _now()}},
     )
 
-async def _render_status(message: Message, count: int):
-    await message.answer(
-        f"BATCH STORAGE\nStored messages: {count}/100\n"
-        "Want to add more? Send them here. You can send multiple messages across updates.",
-        reply_markup=menu(),
+async def _render_status(message: Message, count: int, session=None, database=None):
+    text = (
+        f"BATCH STORAGE\\n\\nStored files: {count}/100\\n\\n"
+        "Want to add more messages? Just send them here!\\n\\n"
+        "✨ You can now send multiple messages at once."
     )
+    session = session or (await _session(database.db, message.from_user.id) if database and message.from_user else None)
+    if session and session.get("status_message_id"):
+        try:
+            await message.bot.edit_message_text(
+                chat_id=session.get("status_chat_id", message.chat.id),
+                message_id=session["status_message_id"],
+                text=text,
+                reply_markup=menu(),
+            )
+            return
+        except TelegramBadRequest:
+            pass
+        except TelegramAPIError:
+            log.warning("Could not update the existing batch status panel", exc_info=True)
+            return
+    sent = await message.answer(text, reply_markup=menu())
+    if session and database:
+        await database.db.batch_sessions.update_one(
+            {"_id": session["_id"]},
+            {"$set": {"status_message_id": sent.message_id, "status_chat_id": message.chat.id}},
+        )
 
 @router.message(Command("batch"))
 async def batch_start(message: Message, state: FSMContext, settings: Settings, database):
@@ -86,8 +107,7 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
             )
         await state.set_state(BatchState.collecting)
         await state.set_data({"admin_id": uid})
-        await message.answer("Your existing batch session was recovered.", reply_markup=menu())
-        await _render_status(message, len(existing.get("items", [])))
+        await _render_status(message, len(existing.get("items", [])), existing, database)
         return
     if existing:
         await _expire_session(database.db, uid)
@@ -101,11 +121,8 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
     )
     await state.set_state(BatchState.collecting)
     await state.set_data({"admin_id": uid})
-    await message.answer(
-        "Send the files or messages you want to include in your batch. "
-        "Maximum 100 messages; original order is preserved. Session expires after 200 seconds of inactivity.",
-        reply_markup=menu(),
-    )
+    fresh = await _session(database.db, uid)
+    await _render_status(message, 0, fresh, database)
 
 @router.message(BatchState.collecting, Command("cancel"))
 async def cancel_command(message: Message, state: FSMContext, settings: Settings, database):
@@ -126,7 +143,13 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
         return False
     if await _expired(session):
         await _expire_session(database.db, uid)
-        await message.answer("Time's up. Try again.")
+        status_id = session.get("status_message_id")
+        if status_id:
+            try:
+                await message.bot.delete_message(session.get("status_chat_id", message.chat.id), status_id)
+            except TelegramAPIError:
+                pass
+        await message.answer("Time's up. Try again.\\n/batch")
         return True
     if message.text and message.text.startswith("/"):
         return False
@@ -162,7 +185,7 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
             await message.answer("Batch session changed. Use /batch to resume or start again.")
             return True
         latest = await _session(database.db, uid)
-        await _render_status(message, len(latest.get("items", [])) if latest else len(items) + 1)
+        await _render_status(message, len(latest.get("items", [])) if latest else len(items) + 1, latest, database)
     except TelegramAPIError:
         log.exception("Batch source copy failed")
         await message.answer("Couldn't save this message. Check source-channel permissions.")
