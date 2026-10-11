@@ -1,5 +1,4 @@
 """Batch creator: collects up to 100 messages, then emits one deep link per item."""
-import asyncio
 import logging
 import time
 from aiogram import Router, F
@@ -23,11 +22,10 @@ def menu():
 
 @router.message(Command("batch"))
 async def batch_start(message: Message, state: FSMContext, settings: Settings, database):
-    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
-        return
+    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings): return
     await state.set_state(BatchState.collecting)
-    await state.set_data({"items": [], "started": time.time(), "last_activity": time.time()})
-    await message.answer("Send up to 100 files/messages in the order you want. Tap Generate links when finished. Session expires after 200 seconds.", reply_markup=menu())
+    await state.set_data({"items": [], "last_activity": time.time()})
+    await message.answer("Send up to 100 messages in order. Tap Generate links when finished. Session expires after 200 seconds of inactivity.", reply_markup=menu())
 
 @router.message(BatchState.collecting, F.text == "/cancel")
 async def batch_cancel_text(message: Message, state: FSMContext):
@@ -36,61 +34,52 @@ async def batch_cancel_text(message: Message, state: FSMContext):
 
 @router.message(BatchState.collecting)
 async def batch_collect(message: Message, state: FSMContext, settings: Settings, database):
-    if message.text and message.text.startswith("/"):
-        return
-    data = await state.get_data()
-    if time.time() - data.get("last_activity", 0) > 200:
-        await state.clear()
-        await message.answer("Batch session expired. Start again with /batch.")
-        return
-    items = data.get("items", [])
-    if len(items) >= 100:
-        await message.answer("Maximum 100 messages reached. Tap Generate links.")
-        return
+    if message.text and message.text.startswith("/"): return
+    data=await state.get_data()
+    if time.time()-data.get("last_activity",0)>200:
+        await state.clear(); await message.answer("Batch session expired. Start again with /batch."); return
+    items=data.get("items",[])
+    if len(items)>=100:
+        await message.answer("Maximum 100 messages reached. Tap Generate links."); return
     if not settings.source_channel_id:
-        await message.answer("Owner must configure SOURCE_CHANNEL_ID first.")
-        return
+        await message.answer("Configure SOURCE_CHANNEL_ID first."); return
     try:
-        copied = await message.bot.copy_message(chat_id=settings.source_channel_id, from_chat_id=message.chat.id, message_id=message.message_id)
-        items.append({"source_chat_id": settings.source_channel_id, "source_message_id": copied.message_id, "file_name": (message.document.file_name if message.document else None)})
-        await state.update_data(items=items, last_activity=time.time())
-        await message.answer(f"Added {len(items)}/100.", reply_markup=menu())
+        copied=await message.bot.copy_message(chat_id=settings.source_channel_id,from_chat_id=message.chat.id,message_id=message.message_id)
+        items.append({"source_chat_id":settings.source_channel_id,"source_message_id":copied.message_id,"file_name":message.document.file_name if message.document else None})
+        await state.update_data(items=items,last_activity=time.time())
+        await message.answer(f"Added {len(items)}/100.",reply_markup=menu())
     except TelegramAPIError:
         log.exception("Batch source copy failed")
-        await message.answer("Couldn't save this message to the source channel. Check bot admin permissions.")
+        await message.answer("Couldn't save this message. Check source-channel bot admin permissions.")
 
 @router.callback_query(F.data.startswith("batch:"))
-async def batch_actions(query: CallbackQuery, state: FSMContext, settings: Settings, database):
+async def batch_actions(query:CallbackQuery,state:FSMContext,settings:Settings,database):
     await query.answer()
-    if not query.from_user or not await is_owner_or_moderator(database.db, query.from_user.id, settings):
-        return
-    action = query.data.split(":", 1)[1]
-    if action == "cancel":
+    if not query.from_user or not await is_owner_or_moderator(database.db,query.from_user.id,settings): return
+    action=query.data.split(":",1)[1]
+    if action=="cancel":
         await state.clear()
-        if query.message:
-            await query.message.edit_text("Batch cancelled.")
+        if query.message: await query.message.edit_text("Batch cancelled.")
         return
-    data = await state.get_data()
-    if await state.get_state() != BatchState.collecting.state or time.time() - data.get("last_activity", 0) > 200:
+    data=await state.get_data()
+    if await state.get_state()!=BatchState.collecting.state or time.time()-data.get("last_activity",0)>200:
         await state.clear()
-        if query.message:
-            await query.message.edit_text("Batch session expired. Start again with /batch.")
+        if query.message: await query.message.edit_text("Batch session expired. Start again with /batch.")
         return
-    items = data.get("items", [])
+    items=data.get("items",[])
     if not items:
-        if query.message:
-            await query.message.answer("No messages collected yet.")
+        if query.message: await query.message.answer("No messages collected yet.")
         return
-    repo = FileRepository(database.db)
-    me = await query.bot.get_me()
-    lines = []
+    repo=FileRepository(database.db); me=await query.bot.get_me(); links=[]
     for item in items:
-        doc = await repo.save_file(source_chat_id=item["source_chat_id"], source_message_id=item["source_message_id"], created_by=query.from_user.id, file_name=item.get("file_name"))
-        lines.append(f"https://t.me/{me.username}?start=file_{doc['file_key']}")
+        doc=await repo.save_file(source_chat_id=item["source_chat_id"],source_message_id=item["source_message_id"],created_by=query.from_user.id,file_name=item.get("file_name"))
+        links.append(f"https://t.me/{me.username}?start=file_{doc['file_key']}")
     await state.clear()
-    text = "Batch links (same order as received):\n" + "\n".join(f"{i}. {url}" for i, url in enumerate(lines, 1))
-    # Split long output safely under Telegram's message limit.
-    for offset in range(0, len(text), 3500):
-        await query.message.answer(text[offset:offset+3500])
-    if query.message:
-        await query.message.answer(f"Generated {len(lines)} links.")
+    # Split on lines so links are never cut mid-URL.
+    chunk="Batch links (original order):"
+    for i,url in enumerate(links,1):
+        line=f"\n{i}. {url}"
+        if len(chunk)+len(line)>3500:
+            await query.message.answer(chunk); chunk="Batch links (continued):"
+        chunk+=line
+    if query.message: await query.message.answer(chunk+f"\n\nGenerated: {len(links)}")
