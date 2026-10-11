@@ -4,12 +4,14 @@ from aiogram import Router
 from aiogram.types import Message,InlineKeyboardMarkup,InlineKeyboardButton
 from app.config import Settings
 from app.services.permissions import is_owner_or_moderator,is_banned
+from app.database.files import FileRepository
 router=Router(name="misc")
 
 @router.message()
 async def invalid_post(message:Message,settings:Settings,database):
     user=message.from_user
     if not user or (message.text and message.text.startswith("/")):return
+    await FileRepository(database.db).save_user(user)
     if await is_banned(database.db,user.id) or await is_owner_or_moderator(database.db,user.id,settings):return
     cfg=await database.db.settings.find_one({"key":"invalid_post","enabled":True})
     if not cfg:return
