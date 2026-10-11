@@ -544,6 +544,11 @@ async def setshortener(m: Message, settings: Settings, database):
     if len(p)!=3: await m.answer("Usage: /setshortener API_URL API_TOKEN"); return
     parsed=urlparse(p[1])
     if parsed.scheme not in ("https","http") or not parsed.netloc: await m.answer("API URL must be a valid http/https URL."); return
+    try:
+        await shorten_url(p[1], p[2], "https://example.com")
+    except Exception:
+        await m.answer("Provider validation failed. Check the API URL/token and try again.")
+        return
     await patch(database.db, "shortener", {"enabled":True,"url":p[1],"token":p[2]})
     await m.answer(f"Shortener provider configured: {parsed.netloc}. API token is stored privately.")
 
