@@ -40,3 +40,11 @@ The supplied blueprint file starts at section 5 (Auto Delete). Sections 1–4 ar
 ## Release gate
 
 Do not deploy as production-ready until the GitHub Actions checks pass, test cases cover settings callbacks and permission boundaries, and the full flow is tested with a real bot and Atlas database—including restart during batch collection, batch generation, expiry, and broadcast.
+
+## Implementation pass — 2026-10-11
+
+- Work is being applied on branch `blueprint-implementation-pass-2026-10-11`; `main` has not been changed.
+- Added Force Join Media submenu with ADD/REMOVE controls; removal clears the saved poster IDs.
+- Aligned Force Join default copy in both the initial prompt and verification-refresh path with the agreed `{remaining_count}` wording.
+- Start settings fallback defaults now use the approved Start Text instead of the old generic welcome copy, and the default Start Button URL is explicitly seeded when the button text is customized.
+- These edits are not yet runtime-verified. Continue the Blueprint audit before deployment; no end-to-end Telegram/Atlas test has been run.
