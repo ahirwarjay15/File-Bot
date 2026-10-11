@@ -59,9 +59,22 @@ def kb(rows):
         for row in rows
     ])
 
+def format_settings_page(text: str) -> str:
+    """Apply the shared blueprint heading/body style to plain settings pages."""
+    heading, separator, body = str(text).partition("\n")
+    heading = heading.strip()
+    body = body.lstrip("\n")
+    if not heading.startswith("<b>") and not heading.startswith("<u>"):
+        heading = f"<b><u>{heading}</u></b>"
+    if body and "<i>" not in body and "</i>" not in body:
+        body = f"<i>{body}</i>"
+    return heading + (f"\n\n{body}" if separator and body else "")
+
+
 async def edit_page(query, text, keyboard):
     if not query.message:
         return
+    text = format_settings_page(text)
     try:
         await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except TelegramBadRequest as exc:
