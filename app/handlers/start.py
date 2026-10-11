@@ -362,21 +362,42 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                     join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
             rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
             rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
-            raw_text = cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"
-            rendered = html.escape(raw_text).replace("{first_name}", html.escape(query.from_user.first_name or "")).replace("{last_name}", html.escape(query.from_user.last_name or ""))
-            rendered = rendered.replace("{mention}", query.from_user.mention_html()).replace("{remaining_count}", str(len(missing)))
+            rendered = html.escape(cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!")
+            rendered = rendered.replace("{first_name}", html.escape(query.from_user.first_name or ""))
+            rendered = rendered.replace("{last_name}", html.escape(query.from_user.last_name or ""))
+            rendered = rendered.replace("{mention}", query.from_user.mention_html())
+            rendered = rendered.replace("{remaining_count}", str(len(missing)))
             markup = InlineKeyboardMarkup(inline_keyboard=rows)
-            try:
-                if query.message.photo or query.message.animation:
-                    await query.message.edit_caption(caption=rendered, reply_markup=markup, parse_mode="HTML")
-                else:
-                    await query.message.edit_text(rendered, reply_markup=markup, parse_mode="HTML")
-            except TelegramAPIError:
-                pass
             animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
-            if animation_cfg.get("enabled") and query.message:
-                await _start_gate_animation(bot, query.from_user.id, payload, query.message, rendered, markup, animation_cfg)
-        return
+            gate_message = query.message
+            replace_gate = animation_cfg.get("enabled") and animation_cfg.get("mode") == "new_message"
+            if replace_gate:
+                try:
+                    if cfg.get("poster_file_id"):
+                        gate_message = await bot.send_animation(query.from_user.id, cfg["poster_file_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
+                    elif cfg.get("poster_photo_id"):
+                        gate_message = await bot.send_photo(query.from_user.id, cfg["poster_photo_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
+                    else:
+                        gate_message = await bot.send_message(query.from_user.id, rendered, reply_markup=markup, parse_mode="HTML")
+                    try:
+                        await query.message.delete()
+                    except TelegramAPIError:
+                        log.debug("Could not remove previous Force Join post after replacement")
+                except TelegramAPIError:
+                    log.warning("Could not replace the Force Join post; updating the existing post instead", exc_info=True)
+                    gate_message = query.message
+                    replace_gate = False
+            if not replace_gate:
+                try:
+                    if query.message.photo or query.message.animation or query.message.document:
+                        await query.message.edit_caption(caption=rendered, reply_markup=markup, parse_mode="HTML")
+                    else:
+                        await query.message.edit_text(rendered, reply_markup=markup, parse_mode="HTML")
+                except TelegramAPIError:
+                    pass
+            if animation_cfg.get("enabled"):
+                await _start_gate_animation(bot, query.from_user.id, payload, gate_message, rendered, markup, animation_cfg)
+        return        return
     repo=FileRepository(database.db)
     if payload.startswith("file_"):record=await repo.get_file(payload[5:])
     elif payload.startswith("batch_"):record=await repo.get_batch(payload[6:])
