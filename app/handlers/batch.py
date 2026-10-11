@@ -184,7 +184,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
     uid = query.from_user.id
     action = query.data.split(":", 1)[1]
     session = await _session(database.db, uid)
-    if action == "cancel":
+    if action in ("cancel", "back"):
         if session:
             await database.db.batch_sessions.update_one(
                 {"_id": session["_id"], "status": "collecting"},
