@@ -398,7 +398,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                     pass
             if animation_cfg.get("enabled"):
                 await _start_gate_animation(bot, query.from_user.id, payload, gate_message, rendered, markup, animation_cfg)
-        return        return
+        return
     repo=FileRepository(database.db)
     if payload.startswith("file_"):record=await repo.get_file(payload[5:])
     elif payload.startswith("batch_"):record=await repo.get_batch(payload[6:])
