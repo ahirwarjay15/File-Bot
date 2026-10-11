@@ -368,6 +368,14 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if not channel.startswith("@") or len(channel) < 6 or not channel[1:].replace("_", "").isalnum():
             await message.answer("Send a public channel username such as @mychannel.")
             return
+        try:
+            chat = await message.bot.get_chat(channel)
+            if chat.type not in ("channel", "supergroup"):
+                await message.answer("Force Join target must be a channel or supergroup.")
+                return
+        except TelegramAPIError:
+            await message.answer("The bot cannot access that channel. Check the public username and bot permissions.")
+            return
         channels = await effective_force_join_channels(database, settings)
         if channel in channels:
             await message.answer("That Force Join channel is already configured.")
