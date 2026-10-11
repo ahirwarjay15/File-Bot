@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramAPIError
+from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
 from app.services.permissions import is_owner_or_moderator
 from app.services.links import shorten_url
@@ -345,8 +346,15 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         return
     await query.answer()
 
+@router.message(SettingInput.waiting, Command("cancel"))
+async def cancel_setting_input(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Setting change cancelled.")
+
 @router.message(SettingInput.waiting)
 async def receive_setting_input(message: Message, state: FSMContext, settings: Settings, database):
+    if message.text and message.text.startswith("/"):
+        raise SkipHandler
     if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
         return
     data = await state.get_data()
