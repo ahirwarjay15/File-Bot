@@ -39,7 +39,7 @@ class FileRepository:
     async def save_user(self,user)->None:
         if user is None:return
         now=datetime.now(timezone.utc)
-        await self.db.users.update_one({"user_id":user.id},{"$set":{"first_name":user.first_name,"last_name":user.last_name,"username":user.username,"last_seen":now},"$setOnInsert":{"created_at":now,"banned":False}},upsert=True)
+        await self.db.users.update_one({"user_id":user.id},{"$set":{"first_name":user.first_name,"last_name":user.last_name,"username":user.username,"last_seen":now,"blocked":False},"$setOnInsert":{"created_at":now,"banned":False}},upsert=True)
 
     async def is_banned(self,user_id:int)->bool:
         user=await self.db.users.find_one({"user_id":user_id},{"banned":1})
