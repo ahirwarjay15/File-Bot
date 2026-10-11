@@ -87,7 +87,7 @@ async def stats(message: Message, settings: Settings, database):
     if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
         return
     total = await database.db.users.count_documents({})
-    blocked = await database.db.users.count_documents({"blocked": True})
+    blocked = await database.db.users.count_documents({"$or": [{"blocked": True}, {"last_delivery_error": {"$exists": True}}]})
     me = await message.bot.get_me()
     text = f"{me.full_name}\n\nUSERS: {total}\n\nBLOCKED: {blocked}"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="OK", callback_data="stats:ok")]])
@@ -99,6 +99,6 @@ async def stats_ok(query: CallbackQuery, settings: Settings, database):
         await query.answer("Not authorized.", show_alert=True)
         return
     total = await database.db.users.count_documents({})
-    blocked = await database.db.users.count_documents({"blocked": True})
+    blocked = await database.db.users.count_documents({"$or": [{"blocked": True}, {"last_delivery_error": {"$exists": True}}]})
     me = await query.bot.get_me()
     await query.answer(f"{me.full_name}\n\nUSERS: {total}\n\nBLOCKED: {blocked}", show_alert=True)

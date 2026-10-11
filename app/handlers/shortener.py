@@ -1,5 +1,6 @@
 """Manual URL shortening through the configured provider adapter."""
 import re
+from urllib.parse import urlparse
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton
@@ -21,10 +22,19 @@ async def shortener_command(message: Message, settings: Settings, database):
     if not source and message.reply_to_message:
         source = message.reply_to_message.text or message.reply_to_message.caption or ""
     urls = re.findall(r"https?://[^\s<>]+", source)
-    if not urls:
-        await message.answer("Usage: /shortener https://example.com — or reply to a message containing a URL with /shortener.")
+    if urls:
+        target = urls[0].rstrip(").,;]")
+    else:
+        candidate = source.strip().rstrip(").,;]")
+        if candidate and not candidate.startswith("/"):
+            target = candidate if "://" in candidate else "https://" + candidate
+        else:
+            await message.answer("Usage: /shortener https://example.com — or reply to a message containing a URL with /shortener.")
+            return
+    parsed_target = urlparse(target)
+    if parsed_target.scheme not in ("http", "https") or not parsed_target.netloc:
+        await message.answer("Please provide a valid URL.")
         return
-    target = urls[0].rstrip(").,;]")
     try:
         result = await shorten_url(cfg["url"], cfg["token"], target)
         await message.answer(result, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[

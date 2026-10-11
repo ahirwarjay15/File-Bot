@@ -819,11 +819,12 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "invalid_post", {"about_text": value}, {"enabled": False, "about_enabled": True})
         await message.answer("Invalid About text updated.")
     elif field == "shortener_url":
-        parsed = urlparse(value)
+        normalized_url = value if "://" in value else "https://" + value
+        parsed = urlparse(normalized_url)
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
             await message.answer("Please send a valid http/https shortener URL.")
             return
-        await state.update_data(shortener_url=value, field="shortener_token")
+        await state.update_data(shortener_url=normalized_url, field="shortener_token")
         await message.answer("Send your API token. It will be masked in settings and never logged.")
         return
     elif field == "shortener_token":
