@@ -78,3 +78,11 @@ def test_invalid_post_template_replaces_user_variables_safely():
     assert 'tg://user?id=42' in rendered
     assert "A&amp;B" in rendered
     assert "User" in rendered
+
+
+def test_all_runtime_handlers_import_cleanly():
+    import app.handlers.start
+    import app.handlers.misc
+    import app.handlers.broadcast
+    import app.handlers.settings
+    import app.services.delivery

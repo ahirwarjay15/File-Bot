@@ -7,7 +7,7 @@ from pymongo.errors import BulkWriteError
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.exceptions import TelegramAPIError, RetryAfter, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter as RetryAfter, TelegramForbiddenError
 from app.config import Settings
 from app.services.permissions import is_owner_or_moderator
 

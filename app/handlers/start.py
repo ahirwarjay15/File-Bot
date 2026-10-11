@@ -9,7 +9,7 @@ from aiogram import Router,F
 from aiogram.filters import CommandStart
 from aiogram.filters.command import CommandObject
 from aiogram.types import Message,InlineKeyboardMarkup,InlineKeyboardButton,CallbackQuery
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, RetryAfter
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramRetryAfter
 from app.config import Settings
 from app.database.files import FileRepository
 from app.services.delivery import deliver_reference,deliver_batch,claim_delivery_request,finish_delivery_request
@@ -122,7 +122,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                 if "message is not modified" not in str(exc).lower():
                     log.debug("Force Join animation edit rejected", exc_info=True)
                     return
-            except RetryAfter as exc:
+            except TelegramRetryAfter as exc:
                 await asyncio.sleep(max(speed, float(exc.retry_after)))
                 continue
             except TelegramAPIError:
