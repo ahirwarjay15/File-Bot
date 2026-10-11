@@ -32,6 +32,9 @@ async def patch(db, key, values, defaults=None):
         update["$setOnInsert"] = defaults
     await db.settings.update_one({"key": key}, update, upsert=True)
 
+def time_label(minutes: int) -> str:
+    return f"{minutes // 60}h" if minutes >= 60 else f"{minutes}m"
+
 def kb(rows):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data=data) for label, data in row]
@@ -79,7 +82,7 @@ async def render_auto(query, db):
     minutes = int(cfg.get("minutes", 30))
     status = "ENABLED" if cfg.get("enabled", False) else "DISABLED"
     after_status = "ENABLED" if after.get("enabled", False) and cfg.get("enabled", False) else "DISABLED"
-    await edit_page(query, f"AUTO DELETE\nAutomatically delete delivered files and the auto-delete message after {minutes} minutes.\nStatus: {status}", kb([
+    await edit_page(query, f"AUTO DELETE\nAutomatically delete delivered files and the auto-delete message after {time_label(minutes)}.\nStatus: {status}", kb([
         [("ENABLE / DISABLE", "settings:auto_toggle")],
         [("TIME", "settings:auto_time"), ("MESSAGE", "settings:auto_message")],
         [(f"AFTER DELETE ({after_status})", "settings:after")],
@@ -89,7 +92,7 @@ async def render_auto(query, db):
 async def render_auto_time(query, db):
     cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
     minutes = int(cfg.get("minutes", 30))
-    label = f"{minutes // 60}h" if minutes >= 60 else f"{minutes}m"
+    label = time_label(minutes)
     await edit_page(query, f"AUTO DELETE TIME\nCurrent time: {label}\nTap below to change the auto-delete time.", kb([
         [("CHANGE TIME", "settings:auto_time_change")],
         [("BACK", "settings:auto")],
@@ -246,7 +249,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         current = int(cfg.get("minutes", 30))
         next_value = AUTO_DELETE_MINUTES[(AUTO_DELETE_MINUTES.index(current) + 1) % len(AUTO_DELETE_MINUTES)] if current in AUTO_DELETE_MINUTES else 2
         await patch(db, "auto_delete", {"minutes": next_value}, {"enabled": False, "notice": DEFAULT_NOTICE})
-        if query.message: await query.message.answer(f"✨ Auto-delete time changed to {next_value} minutes.")
+        if query.message: await query.message.answer(f"✨ Auto-delete time changed to {time_label(next_value)}.")
         await render_auto_time(query, db)
     elif action == "auto_message": await render_auto_message(query, db)
     elif action == "auto_message_edit":
@@ -544,7 +547,7 @@ async def setautodeletemin(m: Message, settings: Settings, database):
     if len(p)!=2 or not p[1].isdigit() or int(p[1]) not in AUTO_DELETE_MINUTES:
         await m.answer("Choose one: 2, 5, 15, 30, 60, 180, 360, 720, or 1440 minutes."); return
     await patch(database.db, "auto_delete", {"minutes":int(p[1])}, {"enabled":False,"notice":DEFAULT_NOTICE})
-    await m.answer(f"✨ Auto-delete time changed to {p[1]} minutes.")
+    await m.answer(f"✨ Auto-delete time changed to {time_label(int(p[1]))}.")
 
 @router.message(Command("setnotice"))
 async def setnotice(m: Message, settings: Settings, database):
