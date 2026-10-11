@@ -49,7 +49,8 @@ async def join_status(bot,user_id:int,channels:list[str],db=None)->list[str]:
         channel=raw.strip()
         if not channel:continue
         try:
-            chat = await bot.get_chat(channel)
+            chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
+            chat = await bot.get_chat(chat_arg)
             member=await bot.get_chat_member(chat_id=chat.id,user_id=user_id)
             verified = member.status in ("creator","administrator","member") or (member.status=="restricted" and getattr(member,"is_member",False))
             if not verified and db is not None:
@@ -163,7 +164,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     rows=[]
     for index, channel in enumerate(missing):
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        target=channel if channel.startswith("https://") else ("https://t.me/"+channel.lstrip("@") if not channel.lstrip("-").isdigit() else None)
+        target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
         if target:
             rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}",url=target)])
     for item in other_links:
@@ -344,7 +345,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
             rows = []
             for index, channel in enumerate(missing):
                 channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-                target = channel if channel.startswith("https://") else ("https://t.me/" + channel.lstrip("@") if not channel.lstrip("-").isdigit() else None)
+                target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
                 if target:
                     rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}", url=target)])
             for item in other_links:

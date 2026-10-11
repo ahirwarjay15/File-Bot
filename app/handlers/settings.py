@@ -727,13 +727,21 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         return
     if field == "forcejoin_channel":
         channel = value.strip()
-        if channel.startswith("https://t.me/"):
+        forwarded_origin = getattr(message, "forward_origin", None)
+        forwarded_chat = getattr(forwarded_origin, "chat", None)
+        if forwarded_chat is not None:
+            # A forwarded post is a reliable way to identify a private channel too.
+            channel = forwarded_chat.username or str(forwarded_chat.id)
+        elif channel.startswith("https://t.me/"):
             channel = "@" + channel.removeprefix("https://t.me/").strip("/").split("/", 1)[0].lstrip("@")
-        if not channel.startswith("@") or len(channel) < 6 or not channel[1:].replace("_", "").isalnum():
-            await message.answer("Send a public channel username such as @mychannel.")
+        elif channel.startswith("t.me/"):
+            channel = "@" + channel.removeprefix("t.me/").strip("/").split("/", 1)[0].lstrip("@")
+        if channel.startswith("@") and (len(channel) < 6 or not channel[1:].replace("_", "").isalnum()):
+            await message.answer("Send a valid public channel username or forward a post from the channel.")
             return
         try:
-            chat = await message.bot.get_chat(channel)
+            chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
+            chat = await message.bot.get_chat(chat_arg)
             if chat.type not in ("channel", "supergroup"):
                 await message.answer("Force Join target must be a channel or supergroup.")
                 return
@@ -742,16 +750,37 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             if bot_member.status not in ("administrator", "creator"):
                 await message.answer("Make the bot an administrator in that channel before adding it to Force Join.")
                 return
+            button_url = getattr(chat, "invite_link", None)
+            if chat.username:
+                button_url = f"https://t.me/{chat.username}"
+            elif not button_url:
+                try:
+                    button_url = await message.bot.export_chat_invite_link(chat.id)
+                except TelegramAPIError:
+                    button_url = None
+            if not button_url:
+                await message.answer("The bot can verify this private channel, but it could not create an invite link. Give it permission to invite users and try again.")
+                return
+            channel = chat.username and "@" + chat.username or str(chat.id)
         except TelegramAPIError:
-            await message.answer("The bot cannot access that channel. Check the public username and bot permissions.")
+            await message.answer("The bot cannot access that channel. Check the username/forwarded post and bot permissions.")
             return
         channels = await effective_force_join_channels(database, settings)
         if channel in channels:
             await message.answer("That Force Join channel is already configured.")
             await state.clear()
             return
+        if len(channels) >= 10:
+            await message.answer("Maximum 10 Force Join channels are allowed.")
+            await state.clear()
+            return
         channels.append(channel)
         await patch(db, "force_join", {"channels": channels})
+        await db.settings.update_one(
+            {"key": "force_join_channel", "channel": channel},
+            {"$set": {"key": "force_join_channel", "channel": channel, "button_url": button_url}},
+            upsert=True,
+        )
         await state.clear()
         await message.answer(f"Force Join channel {channel} added.")
         return
