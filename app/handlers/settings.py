@@ -641,6 +641,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await message.answer("✨ Animation prefix updated successfully.")
         return
     if field in ("animation_frame_1", "animation_frame_2", "animation_frame_3"):
+        if not message.text or not value:
+            await message.answer("Please send a non-empty text frame.")
+            return
         frames = list(data.get("pending_frames", []))
         frames.append(value)
         if len(frames) < 3:
