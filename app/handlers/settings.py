@@ -223,8 +223,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
         turning_on = not cfg.get("enabled", False)
         await patch(db, "auto_delete", {"enabled": turning_on}, {"minutes": 30, "notice": DEFAULT_NOTICE})
-        if not turning_on:
-            await patch(db, "after_delete", {"enabled": False}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
+        # Keep the After Delete preference saved; it is functionally inactive while Auto Delete is off.
         await render_auto(query, db)
     elif action == "auto_time": await render_auto_time(query, db)
     elif action == "auto_time_change":
