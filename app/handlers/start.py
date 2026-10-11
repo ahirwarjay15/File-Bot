@@ -224,7 +224,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 if item.get("url"):
                     rows.append([InlineKeyboardButton(text=item.get("button_text") or "Join", url=item["url"])])
             rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "I Joined — Check Again", callback_data=f"forcejoin:check:{payload}")])
-            raw_text = cfg.get("message") or "Hey {mention}\\n\\nPlease join my {remaining_count} channels to use me!"
+            raw_text = cfg.get("message") or "Hey {mention}\\nPlease Join My {remaining_count} Channel's To Use Me!"
             rendered = html.escape(raw_text).replace("{first_name}", html.escape(query.from_user.first_name or "")).replace("{last_name}", html.escape(query.from_user.last_name or ""))
             rendered = rendered.replace("{mention}", query.from_user.mention_html()).replace("{remaining_count}", str(len(missing)))
             markup = InlineKeyboardMarkup(inline_keyboard=rows)
