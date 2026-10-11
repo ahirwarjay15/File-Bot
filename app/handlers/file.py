@@ -35,15 +35,15 @@ async def file_command(message: Message, state: FSMContext, settings: Settings, 
     await message.answer("Send one file or one supported message to generate its file link.")
 
 
-@router.message(FileStates.waiting_for_message, F.text.startswith("/"))
-async def file_command_while_waiting(message: Message) -> None:
-    await message.answer("Please send the file/message, or use /cancel to leave this step.")
-
-
 @router.message(FileStates.waiting_for_message, Command("cancel"))
 async def cancel_file(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("File link creation cancelled.")
+
+
+@router.message(FileStates.waiting_for_message, F.text.startswith("/"))
+async def file_command_while_waiting(message: Message) -> None:
+    await message.answer("Please send the file/message, or use /cancel to leave this step.")
 
 
 @router.message(FileStates.waiting_for_message)
