@@ -63,8 +63,9 @@ async def _render_status(message: Message, count: int, session=None, database=No
                 reply_markup=menu(),
             )
             return
-        except TelegramBadRequest:
-            pass
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return
         except TelegramAPIError:
             log.warning("Could not update the existing batch status panel", exc_info=True)
             return

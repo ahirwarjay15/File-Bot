@@ -273,6 +273,10 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
             if not claimed.modified_count:
                 continue
             try:
+                auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
+                if not auto:
+                    await db.tasks.update_one({"_id": task["_id"], "status": "processing"}, {"$set": {"status": "cancelled", "cancelled_at": _now()}})
+                    continue
                 if not task.get("messages_deleted", False):
                     for mid in task.get("message_ids", []):
                         try:
@@ -280,8 +284,7 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                         except TelegramAPIError:
                             log.info("Could not delete delivered message %s for user %s", mid, task["user_id"])
                     await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"messages_deleted": True}})
-                auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
-                after = await db.settings.find_one({"key": "after_delete", "enabled": True}) if auto else None
+                after = await db.settings.find_one({"key": "after_delete", "enabled": True})
                 notice_id = task.get("notice_message_id")
                 if after and not task.get("after_delete_attempted", False):
                     text = after.get("text") or "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"

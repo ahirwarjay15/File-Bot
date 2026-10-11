@@ -458,6 +458,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await patch(db, "auto_delete", {"enabled": turning_on}, {"minutes": 30, "notice": DEFAULT_NOTICE})
         if not turning_on:
             await patch(db, "after_delete", {"enabled": False}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
+            await db.tasks.update_many(
+                {"kind": "delete_delivery", "status": {"$in": ["pending", "processing"]}},
+                {"$set": {"status": "cancelled", "cancelled_at": datetime.now(timezone.utc)}},
+            )
         await render_auto(query, db)
     elif action == "auto_time": await render_auto_time(query, db)
     elif action == "auto_time_change":
