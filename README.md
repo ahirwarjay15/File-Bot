@@ -1,30 +1,31 @@
 # File-Bot
 
-Modular async Telegram file-link bot built with Python 3.12, aiogram 3 and MongoDB Atlas via PyMongo Async.
+Async Telegram file/batch delivery bot built with Python 3.12, aiogram 3 and MongoDB Atlas through PyMongo Async.
 
-## Features implemented in the codebase
-- `/file`: copy one message into the configured private source channel and generate a deep link.
-- `/batch`: collect up to 100 messages and generate links in received order.
-- `/start file_KEY`: validate a stored key, enforce configured Force Join channels, and deliver the source message.
-- Owner/moderator management: `/addmod`, `/delmod`, `/ban`, `/unban`, `/stats`.
-- Start-message and invalid-post settings; auto-delete and after-delete settings.
-- `/broadcast`: reply to a message and confirm before sending to tracked, non-banned users.
-- `/shortener`: manually shorten a URL through a configurable provider adapter.
-- MongoDB-backed delivery deletion tasks, allowing due tasks to be picked up after process restarts.
+## Current implementation
+- `/file`: copies one message to the configured source channel and returns a deeplink with a copy button.
+- `/batch`: collects up to 100 messages in order and stores one persistent batch deeplink in MongoDB.
+- `/start file_KEY` and `/start batch_KEY`: file/batch delivery with configured Force Join membership checks.
+- Owner-only moderator management: `/addmod`, `/delmod`; moderators can use bot-management commands.
+- `/ban ID`, `/unban ID`, `/stats`.
+- Configurable Start Message, Invalid Post text/button/About, Auto Delete timer/message, After Delete text/button, and shortener provider.
+- Confirmed broadcast with rate limiting, forbidden-user tracking, and send/failure report.
+- MongoDB-backed deletion tasks and startup recovery for interrupted task processing.
 
 ## Required Telegram setup
-1. Create a **private source channel** dedicated to stored posts.
-2. Add the bot as an administrator with permission to post messages.
+1. Create a private source channel used only for stored messages.
+2. Add the bot as an administrator with permission to post/copy messages.
 3. Set `SOURCE_CHANNEL_ID` to the channel's numeric ID.
-4. Add every Force Join channel to `FORCE_JOIN_CHANNELS` as comma-separated usernames/IDs and make the bot able to check membership (normally admin in each channel).
-5. Set `BOT_TOKEN`, `OWNER_ID`, and `MONGODB_URI` in the server's private `.env` file. Never commit `.env`.
+4. Set `FORCE_JOIN_CHANNELS` as comma-separated channel usernames/IDs; bot must be able to check member status.
+5. Set `BOT_TOKEN`, `OWNER_ID`, and `MONGODB_URI` in a private server-side `.env`. Never commit real secrets.
 
 ## Settings commands
-- `/settings` — list settings commands
+- `/settings`
 - `/setstart on|off`, `/setstarttext TEXT`
-- `/setinvalid on|off`, `/setinvalidtext TEXT`
-- `/setautodelete on|off`, `/setautodeletemin MINUTES`, `/setnotice TEXT`
-- `/setafterdelete on|off`
+- `/setinvalid on|off`, `/setinvalidtext TEXT`, `/setinvalidbutton TEXT URL`
+- `/setinvalidabout on|off`, `/setinvalidabouttext TEXT`
+- `/setautodelete on|off`, `/setautodeletemin 2|5|15|30|60|180|360|720|1440`, `/setnotice TEXT`
+- `/setafterdelete on|off`, `/setafterdeletetext TEXT`, `/setafterdeletebutton TEXT`
 - `/setshortener API_URL API_TOKEN`
 
 ## Install and run
@@ -35,11 +36,13 @@ pip install -r requirements.txt
 cp .env.example .env
 python main.py
 ```
+Run `pytest -q`. Example systemd unit is at `deploy/file-bot.service.example`.
 
-Run checks with `pytest -q`. For production, run under systemd and keep logs. Add the Oracle server public IP to MongoDB Atlas Network Access if IP allowlisting is enabled.
+## Important limitations / test status
+This repository's implementation is still awaiting runtime and end-to-end tests against Telegram, MongoDB Atlas and the Oracle VM. Do not treat it as production-ready until those checks pass.
 
-## Storage and delivery notes
-Actual media posts live in the Telegram source channel; MongoDB stores metadata and message references. Do not delete the source posts or remove the bot's access. No design can guarantee permanent availability if Telegram removes a post/account or access is revoked.
-
-## Important test status
-The code has been assembled but **has not yet been integration-tested** against your Telegram bot, MongoDB Atlas and Oracle instance. Complete deployment, run unit and end-to-end checks, then fix any discovered incompatibilities before relying on it. Batch collection currently uses aiogram's in-memory FSM; an interrupted batch session will not survive a process restart. The persisted delete queue does survive restarts.
+- The source channel contains the actual Telegram posts; MongoDB stores references/metadata. If a source post is deleted or access is revoked, the bot cannot reconstruct the media.
+- Batch collection currently uses in-memory FSM state; if the process restarts while a moderator is still collecting a batch, that *unfinished collection session* is lost. Completed batch links and queued expiry tasks are persisted.
+- Generic shortener configuration only works with providers whose API accepts JSON `url` and `token` and returns `short_url`, `shortenedUrl`, or `shortlink`. Provider-specific adapters may be required.
+- Telegram does not expose a universal exact count of users who have blocked a bot.
+- Telegram Bot API cannot delete user-authored messages in ordinary private chats; only eligible bot messages can be managed.
