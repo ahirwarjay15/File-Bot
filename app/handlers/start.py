@@ -127,8 +127,11 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         text = html.escape(raw_text)
         text = text.replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or ""))
         text = text.replace("{mention}", user.mention_html())
-        text = text.replace("Lexi Anime", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
-        text = text.replace("Developer: Lexi", 'Developer: <a href="https://t.me/lexxiowner">Lexi</a>')
+        # Avoid nested anchors: replace the longer brand phrase first, then link
+        # standalone "Lexi" mentions in the rendered start text.
+        text = text.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
+        text = text.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
+        text = text.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
         if cfg.get("poster_file_id"):
             await message.answer_animation(cfg["poster_file_id"], caption=text, reply_markup=markup, parse_mode="HTML")
         elif cfg.get("poster_photo_id"):
