@@ -49,6 +49,7 @@ async def render_home(query):
         [("START MESSAGE", "settings:start"), ("AUTO DELETE", "settings:auto")],
         [("INVALID POST", "settings:invalid")],
         [("LINK SHORTENER", "settings:shortener"), ("MODERATORS", "settings:mods")],
+        [("FORCE JOIN ANIMATION", "settings:forcejoin_animation")],
         [("STATS", "settings:stats")],
     ]))
 
@@ -260,6 +261,20 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "invalid_about_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_about_text")
         if query.message: await query.message.answer("Send the About text to show when the About button is tapped.")
+    elif action == "forcejoin_animation":
+        cfg = await db.settings.find_one({"key": "force_join_animation"}) or {}
+        status = "CONFIGURED" if cfg.get("file_id") else "NOT SET"
+        await edit_page(query, f"FORCE JOIN ANIMATION\\nStatus: {status}\\nThis GIF is shown after Force Join verification and removed after delivery. It is not part of Auto Delete.", kb([
+            [("SET / REPLACE", "settings:forcejoin_animation_set"), ("REMOVE", "settings:forcejoin_animation_remove")],
+            [("BACK", "settings:home")],
+        ]))
+    elif action == "forcejoin_animation_set":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_animation")
+        if query.message: await query.message.answer("Send a GIF animation to use after Force Join verification.")
+    elif action == "forcejoin_animation_remove":
+        await db.settings.update_one({"key": "force_join_animation"}, {"$unset": {"file_id": ""}}, upsert=True)
+        if query.message: await query.message.answer("Force Join animation removed.")
+        await render_home(query)
     elif action == "shortener": await render_shortener(query, db)
     elif action == "shortener_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="shortener_url")
