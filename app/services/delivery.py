@@ -3,7 +3,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramBadRequest
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 log = logging.getLogger(__name__)
 
@@ -130,9 +130,12 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                     ]]) if link else None
                     try:
                         await bot.send_message(task["user_id"], text, reply_markup=markup)
+                    except (TelegramForbiddenError, TelegramBadRequest):
+                        # Permanent recipient/request errors cannot succeed on retry; finish cleanup safely.
+                        log.warning("After-delete replacement cannot be sent for user %s", task["user_id"])
                     except TelegramAPIError:
                         await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": False}})
-                        log.exception("After-delete replacement message could not be sent; expiry task will retry")
+                        log.exception("Transient After-delete replacement failure; expiry task will retry")
                         raise
                 await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "done", "finished_at": _now()}})
             except Exception:
