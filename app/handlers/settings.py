@@ -14,6 +14,9 @@ from app.services.links import shorten_url
 from app.handlers.start import effective_force_join_channels
 
 router = Router(name="settings")
+def unicode_buttons(value: str) -> str:
+    table = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ")
+    return "".join(ch.translate(table) if ch.isascii() and ch.isalpha() else ch for ch in str(value))
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
@@ -43,7 +46,7 @@ def time_words(minutes: int) -> str:
 
 def kb(rows):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=label, callback_data=data) for label, data in row]
+        [InlineKeyboardButton(text=unicode_buttons(label), callback_data=data) for label, data in row]
         for row in rows
     ])
 
@@ -56,12 +59,12 @@ async def edit_page(query, text, keyboard):
         await query.message.answer(text, reply_markup=keyboard)
 
 async def render_home(query):
-    await edit_page(query, "BOT SETTINGS", kb([
-        [("START MESSAGE", "settings:start"), ("AUTO DELETE", "settings:auto")],
-        [("INVALID POST", "settings:invalid")],
-        [("LINK SHORTENER", "settings:shortener"), ("MODERATORS", "settings:mods")],
-        [("FORCE JOIN", "settings:forcejoin"), ("FORCE JOIN ANIMATION", "settings:forcejoin_animation")],
-        [("STATS", "settings:stats")],
+    await edit_page(query, "C̲U̲S̲T̲O̲M̲I̲Z̲E̲\n\nName: {mention}\n\nConfigure Your Bot Settings Using the Buttons Below.", kb([
+        [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
+        [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
+        [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
+        [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
+        [("BACK", "settings:home_back")],
     ]))
 
 async def render_forcejoin(query, db, settings):
@@ -75,11 +78,23 @@ async def render_forcejoin(query, db, settings):
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
-    await edit_page(query, f"START MESSAGE\nStatus: {'ENABLED' if cfg.get('enabled', True) else 'DISABLED'}\nAbout button: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
-        [("ENABLE / DISABLE", "settings:start_toggle")],
-        [("TEXT", "settings:start_text")],
-        [("ABOUT BUTTON", "settings:start_about")],
+    await edit_page(query, f"S̲T̲A̲R̲T̲ ̲M̲E̲S̲S̲A̲G̲E̲\n\nCustomize your bot's start message using the following options.\n\nStatus: {'ENABLED' if cfg.get('enabled', True) else 'DISABLED'}", kb([
+        [("DISABLE / ENABLE", "settings:start_toggle")],
+        [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
+        [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")],
         [("BACK", "settings:home")],
+    ]))
+
+async def render_start_button(query):
+    await edit_page(query, "S̲T̲A̲R̲T̲ ̲B̲U̲T̲T̲O̲N̲\n\nCustomize the button shown with your start message.", kb([
+        [("BUTTON TEXT", "settings:start_button_text"), ("BUTTON LINK", "settings:start_button_link")],
+        [("BACK", "settings:start")],
+    ]))
+
+async def render_start_poster(query):
+    await edit_page(query, "S̲T̲A̲R̲T̲ ̲M̲E̲D̲I̲A̲\n\nInclude an image or GIF with your start message.", kb([
+        [("ADD", "settings:start_poster_add"), ("REMOVE", "settings:start_poster_remove")],
+        [("BACK", "settings:start")],
     ]))
 
 async def render_auto(query, db):
@@ -188,12 +203,12 @@ async def render_mods(query, db):
 async def settings_command(message: Message, settings: Settings, database):
     if not await allowed(message, settings, database):
         return
-    await message.answer("BOT SETTINGS", reply_markup=kb([
-        [("START MESSAGE", "settings:start"), ("AUTO DELETE", "settings:auto")],
-        [("INVALID POST", "settings:invalid")],
-        [("LINK SHORTENER", "settings:shortener"), ("MODERATORS", "settings:mods")],
-        [("FORCE JOIN", "settings:forcejoin"), ("FORCE JOIN ANIMATION", "settings:forcejoin_animation")],
-        [("STATS", "settings:stats")],
+    await message.answer("C̲U̲S̲T̲O̲M̲I̲Z̲E̲\n\nName: {mention}\n\nConfigure Your Bot Settings Using the Buttons Below.", reply_markup=kb([
+        [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
+        [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
+        [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
+        [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
+        [("BACK", "settings:home_back")],
     ]))
 
 @router.callback_query(F.data.startswith("settings:"))
@@ -203,7 +218,9 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         return
     action = query.data.split(":", 1)[1]
     db = database.db
-    if action == "home": await render_home(query)
+    if action in {"home", "home_back", "start", "auto", "invalid", "forcejoin", "mods", "shortener", "after", "after_text", "start_button", "start_poster", "forcejoin_animation"}:
+        await state.clear()
+    if action in {"home", "home_back"}: await render_home(query)
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
     elif action == "forcejoin_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_channel")
@@ -228,6 +245,19 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "start_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_text")
         if query.message: await query.message.answer("Send your new Start Message text.")
+    elif action == "start_button": await render_start_button(query)
+    elif action in ("start_button_text", "start_button_link"):
+        await state.set_state(SettingInput.waiting); await state.update_data(field=action)
+        if query.message:
+            await query.message.answer("Send new button text for the start message." if action == "start_button_text" else "Send the new button link for the start message.")
+    elif action == "start_poster": await render_start_poster(query)
+    elif action == "start_poster_add":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="start_poster")
+        if query.message: await query.message.answer("Only GIFs and images are supported. Send the new start message poster here.")
+    elif action == "start_poster_remove":
+        await db.settings.update_one({"key": "start_message"}, {"$unset": {"poster_file_id": "", "poster_photo_id": ""}}, upsert=True)
+        if query.message: await query.message.answer("✨ Successfully removed your bot start poster.")
+        await render_start_poster(query)
     elif action == "start_about":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
         await edit_page(query, f"START ABOUT BUTTON\nStatus: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
@@ -422,6 +452,15 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await state.clear()
         await message.answer("Force Join animation updated successfully.")
         return
+    if field == "start_poster":
+        if message.animation:
+            await patch(db, "start_message", {"poster_file_id": message.animation.file_id, "poster_photo_id": None}, {"enabled": True})
+        elif message.photo:
+            await patch(db, "start_message", {"poster_photo_id": message.photo[-1].file_id, "poster_file_id": None}, {"enabled": True})
+        else:
+            await message.answer("Only GIFs and images are supported. Send a photo or GIF.")
+            return
+        await state.clear(); await message.answer("✨ Start poster updated successfully."); return
     if field == "poster":
         if message.animation:
             await patch(db, "invalid_post", {"poster_file_id": message.animation.file_id, "poster_photo_id": None}, {"enabled": False})
@@ -437,6 +476,16 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     if field == "start_text":
         await patch(db, "start_message", {"text": value}, {"enabled": True})
         await message.answer("Start Message text updated successfully.")
+    elif field == "start_button_text":
+        await patch(db, "start_message", {"button_text": value, "button_enabled": True}, {"enabled": True, "text": "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi", "button_url": "http://t.me/lexiAnime", "about_enabled": True})
+        await message.answer("✨ Successfully updated start message button text.")
+    elif field == "start_button_link":
+        parsed = urlparse(value)
+        if parsed.scheme not in ("https", "http") or not parsed.netloc:
+            await message.answer("Button link must be a valid http/https URL.")
+            return
+        await patch(db, "start_message", {"button_url": value, "button_enabled": True}, {"enabled": True, "button_text": "📟 UPDATE CHANNEL"})
+        await message.answer("✨ Successfully updated start message button link.")
     elif field == "auto_notice":
         await patch(db, "auto_delete", {"notice": value}, {"enabled": False, "minutes": 30})
         await message.answer("✨ Auto-delete message updated successfully.")
