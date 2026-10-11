@@ -71,12 +71,16 @@ async def render_home(query):
 
 async def render_forcejoin(query, db, settings):
     channels = await effective_force_join_channels(type("DatabaseView", (), {"db": db})(), settings)
+    cfg = await db.settings.find_one({"key": "force_join"}) or {}
+    other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
     rows = []
     for i, channel in enumerate(channels[:10]):
         cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
         label = cfg.get("button_text") or f"Join {i + 1}"
         rows.append([(label, f"settings:forcejoin_channel:{i}")])
-    if len(channels) < 10:
+    for i, item in enumerate(other_links[:10]):
+        rows.append([(item.get("button_text") or f"Join {len(channels)+i+1}", f"settings:forcejoin_other_settings:{i}")])
+    if len(channels) + len(other_links) < 10:
         rows.append([("✚ ADD", "settings:forcejoin_add")])
     rows.extend([
         [("FORCE JOIN MESSAGE", "settings:forcejoin_message"), ("FORCE JOIN MEDIA", "settings:forcejoin_media")],
@@ -251,6 +255,32 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "forcejoin_other":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_other_url")
         if query.message: await query.message.answer("Send the link of any platform. Example: Facebook, Instagram or YouTube.")
+    elif action.startswith("forcejoin_other_settings:"):
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        links = cfg.get("other_links", [])
+        index = int(action.split(":", 1)[1])
+        if 0 <= index < len(links):
+            item = links[index]
+            await edit_page(query, f"C̲H̲A̲N̲N̲E̲L̲ ̲S̲E̲T̲T̲I̲N̲G̲S̲\\n\\n{item.get('url', '')}\\n\\nSelect an option below.", kb([
+                [("BUTTON TEXT", f"settings:forcejoin_other_label:{index}"), ("REMOVE", f"settings:forcejoin_other_remove:{index}")],
+                [("《 BACK", "settings:forcejoin")],
+            ]))
+    elif action.startswith("forcejoin_other_label:"):
+        index = int(action.split(":", 1)[1])
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        links = cfg.get("other_links", [])
+        if 0 <= index < len(links):
+            await state.set_state(SettingInput.waiting)
+            await state.update_data(field="forcejoin_existing_other_label", other_index=index)
+            if query.message: await query.message.answer("Send new button text for force-join channel button.")
+    elif action.startswith("forcejoin_other_remove:"):
+        index = int(action.split(":", 1)[1])
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        links = cfg.get("other_links", [])
+        if 0 <= index < len(links):
+            links.pop(index)
+            await patch(db, "force_join", {"other_links": links})
+        await render_forcejoin(query, db, settings)
     elif action == "forcejoin_other_default":
         data = await state.get_data()
         url = data.get("pending_url")
