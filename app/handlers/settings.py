@@ -123,7 +123,7 @@ async def render_start_poster(query):
 
 async def render_animation(query, db):
     cfg = await db.settings.find_one({"key": "animation"}) or {}
-    await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\\n\\n<i>Add a custom animation for the verification process.</i>\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', [])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+    await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\\n\\n<i>Add a custom animation for the verification process.</i>\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
         [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
         [("ENABLE / DISABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
         [("MODE", "settings:animation_mode")],
@@ -432,7 +432,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
         turning_on = not cfg.get("enabled", False)
         await patch(db, "auto_delete", {"enabled": turning_on}, {"minutes": 30, "notice": DEFAULT_NOTICE})
-        # Keep the After Delete preference saved; it is functionally inactive while Auto Delete is off.
+        if not turning_on:
+            await patch(db, "after_delete", {"enabled": False}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
         await render_auto(query, db)
     elif action == "auto_time": await render_auto_time(query, db)
     elif action == "auto_time_change":
@@ -505,7 +506,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Send the About text to show when the About button is tapped.")
     elif action == "forcejoin_animation":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\\n\\nAdd a custom animation for the verification process.\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', [])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+        await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\\n\\nAdd a custom animation for the verification process.\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
             [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
             [("ENABLE / DISABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
             [("MODE", "settings:animation_mode")],
@@ -519,22 +520,22 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Send the first frame for the loop animation.")
     elif action == "animation_toggle":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await patch(db, "animation", {"enabled": not cfg.get("enabled", False)}, {"prefix": "Checking..", "frames": [], "speed": 0.10, "mode": "new_message"})
+        await patch(db, "animation", {"enabled": not cfg.get("enabled", False)}, {"prefix": "Checking..", "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
         await render_animation(query, db)
     elif action == "animation_speed":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
         speed = float(cfg.get("speed", 0.10))
         next_speed = round(0.10 + ((round((speed - 0.10) / 0.05) + 1) % 19) * 0.05, 2)
-        await patch(db, "animation", {"speed": next_speed}, {"enabled": False, "prefix": "Checking..", "frames": [], "mode": "new_message"})
+        await patch(db, "animation", {"speed": next_speed}, {"enabled": False, "prefix": "Checking..", "frames": [".", "..", "..."], "mode": "force_join_poster"})
         await render_animation(query, db)
     elif action == "animation_mode":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await edit_page(query, f"M̲O̲D̲E̲\\n\\nNew Message: Run the animation in a separate message.\\n\\nForce Join Poster: Run the animation on the force-join poster.\\n\\nCurrent mode: {cfg.get('mode', 'new_message')}", kb([
+        await edit_page(query, f"M̲O̲D̲E̲\\n\\nNew Message: Run the animation in a separate message.\\n\\nForce Join Poster: Run the animation on the force-join poster.\\n\\nCurrent mode: {cfg.get('mode', 'force_join_poster')}", kb([
             [("NEW MESSAGE", "settings:animation_mode_new"), ("FORCE JOIN POSTER", "settings:animation_mode_poster")],
             [("《 BACK", "settings:forcejoin_animation")],
         ]))
     elif action in ("animation_mode_new", "animation_mode_poster"):
-        await patch(db, "animation", {"mode": "new_message" if action.endswith("_new") else "force_join_poster"}, {"enabled": False, "prefix": "Checking..", "frames": [], "speed": 0.10})
+        await patch(db, "animation", {"mode": "force_join_poster" if action.endswith("_new") else "force_join_poster"}, {"enabled": False, "prefix": "Checking..", "frames": [], "speed": 0.10})
         await render_animation(query, db)
     elif action == "shortener": await render_shortener(query, db)
     elif action == "shortener_add":
@@ -589,7 +590,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     db = database.db
     value = (message.text or "").strip()
     if field == "animation_prefix":
-        await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [], "speed": 0.10, "mode": "new_message"})
+        await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
         await state.clear()
         await message.answer("✨ Animation prefix updated successfully.")
         return
@@ -602,7 +603,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             prompt = "Now send the middle frame." if len(frames) == 1 else "Send the last frame."
             await message.answer(prompt)
             return
-        await patch(db, "animation", {"frames": frames}, {"enabled": False, "prefix": "Checking..", "speed": 0.10, "mode": "new_message"})
+        await patch(db, "animation", {"frames": frames}, {"enabled": False, "prefix": "Checking..", "speed": 0.10, "mode": "force_join_poster"})
         await state.clear()
         await message.answer("✨ Animation frames updated successfully.")
         return
