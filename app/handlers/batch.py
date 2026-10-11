@@ -22,10 +22,11 @@ class BatchState(StatesGroup):
     collecting = State()
 
 def menu():
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="GENERATE LINK", callback_data="batch:generate"),
-        InlineKeyboardButton(text="CANCEL", callback_data="batch:cancel"),
-    ]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="GENERATE LINK", callback_data="batch:generate")],
+        [InlineKeyboardButton(text="CANCEL", callback_data="batch:cancel"),
+         InlineKeyboardButton(text="BACK", callback_data="batch:back")],
+    ])
 
 def _now():
     return datetime.now(timezone.utc)
@@ -189,7 +190,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
             )
         await state.clear()
         if query.message:
-            await query.message.edit_text("Batch process cancelled. No changes were made to previously saved files.")
+            await query.message.edit_text("Batch process cancelled. No changes were made to previously saved files." if action == "cancel" else "Back. Batch collection ended; previously saved files were not changed.")
         return
     if not session or await _expired(session):
         if session:
