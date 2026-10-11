@@ -9,7 +9,7 @@ from aiogram.types import Message,InlineKeyboardMarkup,InlineKeyboardButton,Call
 from aiogram.exceptions import TelegramAPIError
 from app.config import Settings
 from app.database.files import FileRepository
-from app.services.delivery import deliver_reference,deliver_batch
+from app.services.delivery import deliver_reference,deliver_batch,claim_delivery_request,finish_delivery_request
 from app.services.permissions import is_owner_or_moderator
 router=Router(name="start");log=logging.getLogger(__name__)
 
@@ -84,7 +84,11 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         channels = await effective_force_join_channels(database, settings)
         was_verified = await _is_verified(database.db, user.id, channels)
         if await gate_or_prompt(message,payload,settings,database,bot):return
+        request_key = f"start:{user.id}:{message.message_id}"
+        if not await claim_delivery_request(database.db, request_key, user.id, payload):
+            return
         animation_message = None
+        success = False
         animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
         try:
             if not was_verified and channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, user.id, settings):
@@ -92,9 +96,15 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
             result=await deliver_payload(bot,database,settings,message.chat.id,payload,record)
             if payload.startswith("batch_") and result[0]==0:await message.answer("None of the batch files could be delivered. The source messages may be unavailable.")
             elif payload.startswith("batch_") and result[1]:log.warning("Batch delivery partial: %s delivered, %s failed",*result)
+            success = True
         except TelegramAPIError:
             log.exception("Delivery failed for %s",payload);await message.answer("This file is currently unavailable. Please contact the bot owner.")
+        except Exception:
+            log.exception("Unexpected delivery failure for %s", payload)
+            await message.answer("Delivery failed due to a temporary error. Please try the link again.")
         finally:
+            try: await finish_delivery_request(database.db, request_key, success)
+            except Exception: log.exception("Could not update delivery request status")
             if animation_message:
                 try: await bot.delete_message(message.chat.id, animation_message.message_id)
                 except TelegramAPIError: pass
