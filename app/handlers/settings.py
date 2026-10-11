@@ -354,8 +354,17 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_message")
         if query.message: await query.message.answer("Send your bot's new force-join message. Variables: {first_name}, {last_name}, {mention}, {remaining_count}.")
     elif action == "forcejoin_media":
+        await edit_page(query, "F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲ ̲M̲E̲D̲I̲A̲\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
+            [("ADD", "settings:forcejoin_media_add"), ("REMOVE", "settings:forcejoin_media_remove")],
+            [("《 BACK", "settings:forcejoin")],
+        ]))
+    elif action == "forcejoin_media_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_media")
         if query.message: await query.message.answer("Only GIFs and images are supported. Send the new force-join poster here.")
+    elif action == "forcejoin_media_remove":
+        await db.settings.update_one({"key": "force_join"}, {"$unset": {"poster_file_id": "", "poster_photo_id": ""}}, upsert=True)
+        if query.message: await query.message.answer("✨ Force-join poster removed successfully.")
+        await render_forcejoin(query, db, settings)
     elif action == "forcejoin_verify_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_verify_text")
         if query.message: await query.message.answer("Send your new verification button text.")
@@ -374,7 +383,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "start": await render_start(query, db)
     elif action == "start_toggle":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        await patch(db, "start_message", {"enabled": not cfg.get("enabled", True)}, {"text": "👋 Welcome! Send a valid file link to receive your file."})
+        await patch(db, "start_message", {"enabled": not cfg.get("enabled", True)}, {"text": DEFAULT_START_TEXT})
         await render_start(query, db)
     elif action == "start_text": await render_start_text(query)
     elif action == "start_text_edit":
@@ -413,7 +422,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         ]))
     elif action == "start_about_toggle":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", True)}, {"enabled": True, "text": "👋 Welcome! Send a valid file link to receive your file."})
+        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", True)}, {"enabled": True, "text": DEFAULT_START_TEXT})
         await render_start(query, db)
     elif action == "start_about_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_about_text")
@@ -752,7 +761,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
             await message.answer("Button link must be a valid http/https URL.")
             return
-        await patch(db, "start_message", {"button_url": value, "button_enabled": True}, {"enabled": True, "button_text": "📟 UPDATE CHANNEL"})
+        await patch(db, "start_message", {"button_url": value, "button_enabled": True}, {"enabled": True, "button_text": "📟 UPDATE CHANNEL", "button_url": "http://t.me/lexiAnime"})
         await message.answer("✨ Successfully updated start message button link.")
     elif field == "auto_notice":
         await patch(db, "auto_delete", {"notice": value}, {"enabled": False, "minutes": 30})
