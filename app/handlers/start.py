@@ -173,16 +173,14 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     markup = InlineKeyboardMarkup(inline_keyboard=rows)
     try:
         if cfg.get("poster_file_id"):
-            await message.answer_animation(cfg["poster_file_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
+            gate_message = await message.answer_animation(cfg["poster_file_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
         elif cfg.get("poster_photo_id"):
-            await message.answer_photo(cfg["poster_photo_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
+            gate_message = await message.answer_photo(cfg["poster_photo_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
         else:
-            await message.answer(rendered,reply_markup=markup,parse_mode="HTML")
+            gate_message = await message.answer(rendered,reply_markup=markup,parse_mode="HTML")
     except TelegramAPIError:
         # If a configured media item is invalid, preserve a usable verification interface.
         gate_message = await message.answer(rendered, reply_markup=markup, parse_mode="HTML")
-    else:
-        gate_message = locals().get("gate_message")
     animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
     if animation_cfg.get("enabled") and gate_message:
         await _start_gate_animation(bot, user.id, payload, gate_message, rendered, markup, animation_cfg)
