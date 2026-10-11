@@ -131,26 +131,26 @@ async def render_start(query, db):
         [("DISABLE / ENABLE", "settings:start_toggle")],
         [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
         [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")],
-        [("BACK", "settings:home")],
+        [("《 BACK", "settings:home")],
     ]))
 
 async def render_start_text(query):
     await edit_page(query, "S̲T̲A̲R̲T̲ ̲T̲E̲X̲T̲\n\nCustomize your bot's start message.", kb([
         [("EDIT", "settings:start_text_edit"), ("SEE", "settings:start_text_see")],
         [("DEFAULT", "settings:start_text_default")],
-        [("BACK", "settings:start")],
+        [("《 BACK", "settings:start")],
     ]))
 
 async def render_start_button(query):
     await edit_page(query, "S̲T̲A̲R̲T̲ ̲B̲U̲T̲T̲O̲N̲\n\nCustomize the button shown with your start message.", kb([
         [("BUTTON TEXT", "settings:start_button_text"), ("BUTTON LINK", "settings:start_button_link")],
-        [("BACK", "settings:start")],
+        [("《 BACK", "settings:start")],
     ]))
 
 async def render_start_poster(query):
     await edit_page(query, "S̲T̲A̲R̲T̲ ̲M̲E̲D̲I̲A̲\n\nInclude an image or GIF with your start message.", kb([
-        [("ADD", "settings:start_poster_add"), ("REMOVE", "settings:start_poster_remove")],
-        [("BACK", "settings:start")],
+        [("✚ ADD", "settings:start_poster_add"), ("REMOVE", "settings:start_poster_remove")],
+        [("《 BACK", "settings:start")],
     ]))
 
 def _animation_mode_for_action(action: str) -> str:
@@ -177,7 +177,7 @@ async def render_auto(query, db):
         [("ENABLE / DISABLE", "settings:auto_toggle")],
         [("TIME", "settings:auto_time"), ("MESSAGE", "settings:auto_message")],
         [(f"AFTER DELETE ({after_status})", "settings:after")],
-        [("BACK", "settings:home")],
+        [("《 BACK", "settings:home")],
     ]))
 
 async def render_auto_time(query, db):
@@ -186,7 +186,7 @@ async def render_auto_time(query, db):
     label = time_label(minutes)
     await edit_page(query, f"AUTO DELETE TIME\nCurrent time: {label}\nTap below to change the auto-delete time.", kb([
         [("CHANGE TIME", "settings:auto_time_change")],
-        [("BACK", "settings:auto")],
+        [("《 BACK", "settings:auto")],
     ]))
 
 async def render_auto_message(query, db):
@@ -194,7 +194,7 @@ async def render_auto_message(query, db):
     await edit_page(query, "AUTO DELETE MESSAGE\nCustomize the message sent after file delivery.", kb([
         [("EDIT", "settings:auto_message_edit"), ("SEE", "settings:auto_message_see")],
         [("DEFAULT", "settings:auto_message_default")],
-        [("BACK", "settings:auto")],
+        [("《 BACK", "settings:auto")],
     ]))
 
 async def render_after(query, db):
@@ -204,14 +204,14 @@ async def render_after(query, db):
     await edit_page(query, f"AFTER DELETE\nCustomize the message and button shown after delivered files are deleted.\nStatus: {'ENABLED' if enabled else 'DISABLED'}", kb([
         [("ENABLE / DISABLE", "settings:after_toggle")],
         [("TEXT", "settings:after_text")],
-        [("BACK", "settings:auto")],
+        [("《 BACK", "settings:auto")],
     ]))
 
 async def render_after_text(query):
     await edit_page(query, "AFTER DELETE TEXT\nCustomize the message and button text shown after file deletion.", kb([
         [("MESSAGE TEXT", "settings:after_text_message")],
         [("BUTTON TEXT", "settings:after_text_button")],
-        [("BACK", "settings:after")],
+        [("《 BACK", "settings:after")],
     ]))
 
 async def render_invalid(query, db):
@@ -220,20 +220,20 @@ async def render_invalid(query, db):
         [("ENABLE / DISABLE", "settings:invalid_toggle")],
         [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
         [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")],
-        [("BACK", "settings:home")],
+        [("《 BACK", "settings:home")],
     ]))
 
 async def render_invalid_button(query):
     await edit_page(query, "INVALID BUTTON\nSelect an option below.", kb([
         [("BUTTON TEXT", "settings:invalid_button_text")],
         [("BUTTON LINK", "settings:invalid_button_link")],
-        [("BACK", "settings:invalid")],
+        [("《 BACK", "settings:invalid")],
     ]))
 
 async def render_poster(query):
     await edit_page(query, "INVALID POSTER\nAdd an image or GIF to your invalid post.", kb([
-        [("ADD", "settings:poster_add"), ("REMOVE", "settings:poster_remove")],
-        [("BACK", "settings:invalid")],
+        [("✚ ADD", "settings:poster_add"), ("REMOVE", "settings:poster_remove")],
+        [("《 BACK", "settings:invalid")],
     ]))
 
 async def render_about(query, db):
@@ -247,14 +247,14 @@ async def render_shortener(query, db):
     cfg = await db.settings.find_one({"key": "shortener", "enabled": True})
     if not cfg:
         await edit_page(query, "LINK SHORTENER\nAdd a shortener provider to shorten links.", kb([
-            [("✚ ADD", "settings:shortener_add")], [("BACK", "settings:home")],
+            [("✚ ADD", "settings:shortener_add")], [("《 BACK", "settings:home")],
         ]))
         return
     host = urlparse(cfg.get("url", "")).netloc or "Configured provider"
     token = cfg.get("token", "")
     masked = (token[:2] + "••••••" + token[-2:]) if len(token) > 4 else "••••••"
     await edit_page(query, f"LINK SHORTENER\nShortener: {host}\nShortener API: {masked}\nYou can now use /shortener to shorten links.", kb([
-        [("REMOVE", "settings:shortener_remove")], [("BACK", "settings:home")],
+        [("REMOVE", "settings:shortener_remove")], [("《 BACK", "settings:home")],
     ]))
 
 async def render_mods(query, db):
@@ -265,7 +265,7 @@ async def render_mods(query, db):
         rows.append([("✚ ADD", "settings:mod_add")])
     if mods:
         rows.append([("REMOVE", "settings:mod_remove")])
-    rows.append([("BACK", "settings:home")])
+    rows.append([("《 BACK", "settings:home")])
     await edit_page(query, "MODERATORS\nModerators can manage bot features, including broadcasting.\n\nModerators List\n" + ("\n".join(lines) if lines else "No moderators added."), kb(rows))
 
 @router.message(Command("settings"))
@@ -396,7 +396,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Send your bot's new force-join message. Variables: {first_name}, {last_name}, {mention}, {remaining_count}.")
     elif action == "forcejoin_media":
         await edit_page(query, "F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲ ̲M̲E̲D̲I̲A̲\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
-            [("ADD", "settings:forcejoin_media_add"), ("REMOVE", "settings:forcejoin_media_remove")],
+            [("✚ ADD", "settings:forcejoin_media_add"), ("REMOVE", "settings:forcejoin_media_remove")],
             [("《 BACK", "settings:forcejoin")],
         ]))
     elif action == "forcejoin_media_add":
@@ -412,7 +412,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "forcejoin_remove":
         channels = await effective_force_join_channels(database, settings)
         rows = [[(channel, f"settings:forcejoin_del:{i}")] for i, channel in enumerate(channels)]
-        rows.append([("BACK", "settings:forcejoin")])
+        rows.append([("《 BACK", "settings:forcejoin")])
         await edit_page(query, "REMOVE FORCE JOIN CHANNEL\nSelect a channel to remove.", kb(rows))
     elif action.startswith("forcejoin_del:"):
         channels = await effective_force_join_channels(database, settings)
@@ -459,7 +459,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await edit_page(query, f"START ABOUT BUTTON\nStatus: {'ENABLED' if cfg.get('about_enabled', True) else 'DISABLED'}", kb([
             [("ENABLE / DISABLE", "settings:start_about_toggle")],
             [("EDIT ABOUT TEXT", "settings:start_about_text")],
-            [("BACK", "settings:start")],
+            [("《 BACK", "settings:start")],
         ]))
     elif action == "start_about_toggle":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
@@ -603,7 +603,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             await query.answer("Only the owner can remove moderators.", show_alert=True); return
         mods = await db.moderators.find({}).sort("user_id", 1).to_list(length=3)
         rows = [[(m.get("first_name") or f"User {m['user_id']}", f"settings:mod_del:{m['user_id']}")] for m in mods]
-        rows.append([("BACK", "settings:mods")])
+        rows.append([("《 BACK", "settings:mods")])
         await edit_page(query, "REMOVE MODERATOR\nSelect the moderator you want to remove.", kb(rows))
     elif action.startswith("mod_del:"):
         if query.from_user.id != settings.owner_id:
