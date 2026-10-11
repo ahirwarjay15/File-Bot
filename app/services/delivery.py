@@ -81,22 +81,17 @@ async def _save_expiry_task(db, user_id, message_ids, deadline, deeplink, reques
         await db.tasks.insert_one(task)
 
 
-async def deliver_reference(bot: Bot, db, settings, *, user_id: int, file_doc: dict, deeplink: str):
-    sent = await bot.copy_message(chat_id=user_id, from_chat_id=file_doc["source_chat_id"], message_id=file_doc["source_message_id"])
-    auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
-    if not auto:
-        return sent
-    minutes = _minutes(auto)
-    deadline = _now() + timedelta(minutes=minutes)
-    message_ids = [sent.message_id]
-    try:
-        alert = await bot.send_message(user_id, _notice(auto, minutes))
-        message_ids.append(alert.message_id)
-    except TelegramAPIError:
-        log.exception("File delivered, but auto-delete notice could not be sent")
-    await _save_expiry_task(db, user_id, message_ids, deadline, deeplink)
-    return sent
-
+async def deliver_reference(bot: Bot, db, settings, *, user_id: int, file_doc: dict, deeplink: str, request_key: str | None = None):
+    """Use the durable per-item queue for a single-file delivery as well."""
+    item = {
+        "source_chat_id": file_doc["source_chat_id"],
+        "source_message_id": file_doc["source_message_id"],
+        "file_name": file_doc.get("file_name"),
+    }
+    return await deliver_batch(
+        bot, db, user_id=user_id, batch={"batch_id": None, "items": [item]},
+        deeplink=deeplink, request_key=request_key,
+    )
 
 async def _process_batch_delivery(bot: Bot, db, request_key: str):
     """Resume a persisted batch at the next not-yet-attempted item."""
