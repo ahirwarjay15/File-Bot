@@ -537,8 +537,10 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         return
     if field == "forcejoin_other_label":
         prev = await state.get_data()
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
         channels = await effective_force_join_channels(database, settings)
-        if len(channels) >= 10:
+        other_links = list(cfg.get("other_links", []))
+        if len(channels) + len(other_links) >= 10:
             await message.answer("Maximum 10 force-join channels allowed.")
             await state.clear()
             return
@@ -547,12 +549,11 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.answer("Add process expired. Please start again.")
             await state.clear()
             return
-        channel_key = f"other:{len(channels)+1}"
-        channels.append(channel_key)
-        await patch(db, "force_join", {"channels": channels})
-        await patch(db, "force_join_channel", {"channel": channel_key, "url": url, "button_text": value, "mode": "other"})
+        channel_key = f"other:{len(other_links)+1}"
+        other_links.append({"key": channel_key, "url": url, "button_text": value})
+        await patch(db, "force_join", {"other_links": other_links})
         await state.clear()
-        await message.answer(f"✨ Successfully added {channel_key} as your force-join channel.")
+        await message.answer(f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
         return
     if field == "forcejoin_label":
         prev = await state.get_data()
