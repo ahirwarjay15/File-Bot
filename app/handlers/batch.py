@@ -1,70 +1,215 @@
-"""Persistent batch creation: up to 100 ordered messages, one permanent batch deeplink."""
-import logging,time
-from aiogram import Router,F
+"""MongoDB-backed batch collection with one permanent deeplink per batch."""
+import logging
+import time
+from datetime import datetime, timezone
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State,StatesGroup
-from aiogram.types import Message,InlineKeyboardMarkup,InlineKeyboardButton,CallbackQuery
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, CopyTextButton
 from aiogram.exceptions import TelegramAPIError
 from app.config import Settings
 from app.database.files import FileRepository
 from app.services.permissions import is_owner_or_moderator
 
-router=Router(name="batch"); log=logging.getLogger(__name__)
-class BatchState(StatesGroup): collecting=State()
+router = Router(name="batch")
+log = logging.getLogger(__name__)
+SESSION_TTL = 200
+
+class BatchState(StatesGroup):
+    collecting = State()
+
 def menu():
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Generate link",callback_data="batch:generate"),InlineKeyboardButton(text="Cancel",callback_data="batch:cancel")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="GENERATE LINK", callback_data="batch:generate"),
+        InlineKeyboardButton(text="CANCEL", callback_data="batch:cancel"),
+    ]])
+
+def _now():
+    return datetime.now(timezone.utc)
+
+async def _session(db, user_id: int):
+    return await db.batch_sessions.find_one({"admin_id": user_id, "status": "collecting"})
+
+async def _expired(session) -> bool:
+    return not session or time.time() - float(session.get("last_activity_ts", 0)) > SESSION_TTL
+
+async def _expire_session(db, user_id: int):
+    await db.batch_sessions.update_one(
+        {"admin_id": user_id, "status": "collecting"},
+        {"$set": {"status": "expired", "finished_at": _now()}},
+    )
+
+async def _render_status(message: Message, count: int):
+    await message.answer(
+        f"BATCH STORAGE\nStored messages: {count}/100\n"
+        "Want to add more? Send them here. You can send multiple messages across updates.",
+        reply_markup=menu(),
+    )
 
 @router.message(Command("batch"))
-async def batch_start(message:Message,state:FSMContext,settings:Settings,database):
-    if not message.from_user or not await is_owner_or_moderator(database.db,message.from_user.id,settings):return
+async def batch_start(message: Message, state: FSMContext, settings: Settings, database):
+    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
+        return
     if not settings.source_channel_id:
-        await message.answer("Configure SOURCE_CHANNEL_ID first.");return
+        await message.answer("Configure SOURCE_CHANNEL_ID first.")
+        return
+    uid = message.from_user.id
+    existing = await _session(database.db, uid)
+    if existing and not await _expired(existing):
+        await state.set_state(BatchState.collecting)
+        await state.set_data({"admin_id": uid})
+        await message.answer("Your existing batch session was recovered.", reply_markup=menu())
+        await _render_status(message, len(existing.get("items", [])))
+        return
+    if existing:
+        await _expire_session(database.db, uid)
+    await database.db.batch_sessions.update_one(
+        {"admin_id": uid},
+        {"$set": {"admin_id": uid, "items": [], "status": "collecting",
+                  "started_at": _now(), "last_activity_at": _now(),
+                  "last_activity_ts": time.time()}},
+        upsert=True,
+    )
     await state.set_state(BatchState.collecting)
-    await state.set_data({"items":[],"last_activity":time.time()})
-    await message.answer("Send up to 100 messages in original order. You can send multiple messages across updates. Tap Generate link when finished. Session ends after 200 seconds of inactivity.",reply_markup=menu())
+    await state.set_data({"admin_id": uid})
+    await message.answer(
+        "Send the files or messages you want to include in your batch. "
+        "Maximum 100 messages; original order is preserved. Session expires after 200 seconds of inactivity.",
+        reply_markup=menu(),
+    )
 
-@router.message(BatchState.collecting,Command("cancel"))
-async def cancel(message:Message,state:FSMContext):
-    await state.clear();await message.answer("Batch process cancelled. No changes were made to previously saved files.")
+@router.message(Command("cancel"))
+async def cancel_command(message: Message, state: FSMContext, settings: Settings, database):
+    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
+        return
+    session = await _session(database.db, message.from_user.id)
+    if session:
+        await database.db.batch_sessions.update_one(
+            {"_id": session["_id"], "status": "collecting"},
+            {"$set": {"status": "cancelled", "finished_at": _now()}},
+        )
+    await state.clear()
+    await message.answer("Batch process cancelled. No changes were made to previously saved files.")
+
+async def _collect_message(message: Message, settings: Settings, database, uid: int):
+    session = await _session(database.db, uid)
+    if not session:
+        return False
+    if await _expired(session):
+        await _expire_session(database.db, uid)
+        await message.answer("Time's up. Try again.")
+        return True
+    if message.text and message.text.startswith("/"):
+        return False
+    items = session.get("items", [])
+    if len(items) >= 100:
+        await message.answer("Maximum 100 messages reached. Generate the batch link.")
+        return True
+    try:
+        copied = await message.bot.copy_message(
+            chat_id=settings.source_channel_id,
+            from_chat_id=message.chat.id,
+            message_id=message.message_id,
+        )
+        item = {
+            "source_chat_id": settings.source_channel_id,
+            "source_message_id": copied.message_id,
+            "file_name": message.document.file_name if message.document else None,
+            "source_message_date": message.date.isoformat() if message.date else None,
+        }
+        # Conditional update prevents adding to a session cancelled or expired concurrently.
+        result = await database.db.batch_sessions.update_one(
+            {"_id": session["_id"], "status": "collecting",
+             "last_activity_ts": session.get("last_activity_ts")},
+            {"$push": {"items": item},
+             "$set": {"last_activity_at": _now(), "last_activity_ts": time.time()}},
+        )
+        if not result.modified_count:
+            await message.answer("Batch session changed. Use /batch to resume or start again.")
+            return True
+        latest = await _session(database.db, uid)
+        await _render_status(message, len(latest.get("items", [])) if latest else len(items) + 1)
+    except TelegramAPIError:
+        log.exception("Batch source copy failed")
+        await message.answer("Couldn't save this message. Check source-channel permissions.")
+    return True
 
 @router.message(BatchState.collecting)
-async def collect(message:Message,state:FSMContext,settings:Settings,database):
-    if message.text and message.text.startswith("/"):return
-    data=await state.get_data()
-    if time.time()-data.get("last_activity",0)>200:
-        await state.clear();await message.answer("Time's up. Try again.");return
-    items=data.get("items",[])
-    if len(items)>=100:
-        await message.answer("Maximum 100 messages reached. Generate the batch link.");return
-    try:
-        copied=await message.bot.copy_message(chat_id=settings.source_channel_id,from_chat_id=message.chat.id,message_id=message.message_id)
-        items.append({"source_chat_id":settings.source_channel_id,"source_message_id":copied.message_id,"file_name":message.document.file_name if message.document else None})
-        await state.update_data(items=items,last_activity=time.time())
-        await message.answer(f"Batch storage\nStored messages: {len(items)}/100\nWant to add more? Send them here.",reply_markup=menu())
-    except TelegramAPIError:
-        log.exception("Batch source copy failed");await message.answer("Couldn't save this message. Check source-channel permissions.")
+async def collect_in_state(message: Message, state: FSMContext, settings: Settings, database):
+    if not message.from_user:
+        return
+    await _collect_message(message, settings, database, message.from_user.id)
+
+# This fallback restores active sessions after a process restart, when MemoryStorage is empty.
+@router.message()
+async def recover_and_collect(message: Message, settings: Settings, database):
+    if not message.from_user or (message.text and message.text.startswith("/")):
+        return
+    if not await is_owner_or_moderator(database.db, message.from_user.id, settings):
+        return
+    await _collect_message(message, settings, database, message.from_user.id)
 
 @router.callback_query(F.data.startswith("batch:"))
-async def actions(query:CallbackQuery,state:FSMContext,settings:Settings,database):
+async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, database):
     await query.answer()
-    if not query.from_user or not await is_owner_or_moderator(database.db,query.from_user.id,settings):return
-    action=query.data.split(":",1)[1]
-    if action=="cancel":
-        await state.clear()
-        if query.message:await query.message.edit_text("Batch process cancelled. No changes were made to previously saved files.")
+    if not query.from_user or not await is_owner_or_moderator(database.db, query.from_user.id, settings):
         return
-    data=await state.get_data()
-    if await state.get_state()!=BatchState.collecting.state or time.time()-data.get("last_activity",0)>200:
+    uid = query.from_user.id
+    action = query.data.split(":", 1)[1]
+    session = await _session(database.db, uid)
+    if action == "cancel":
+        if session:
+            await database.db.batch_sessions.update_one(
+                {"_id": session["_id"], "status": "collecting"},
+                {"$set": {"status": "cancelled", "finished_at": _now()}},
+            )
         await state.clear()
-        if query.message:await query.message.edit_text("Time's up. Try again.")
+        if query.message:
+            await query.message.edit_text("Batch process cancelled. No changes were made to previously saved files.")
         return
-    items=data.get("items",[])
+    if not session or await _expired(session):
+        if session:
+            await _expire_session(database.db, uid)
+        await state.clear()
+        if query.message:
+            await query.message.edit_text("Time's up. Try again.")
+        return
+    items = session.get("items", [])
     if not items:
-        if query.message:await query.message.answer("Add at least one message first.")
+        if query.message:
+            await query.message.answer("Add at least one message first.")
         return
-    batch=await FileRepository(database.db).save_batch(items,query.from_user.id)
-    await state.clear()
-    me=await query.bot.get_me();link=f"https://t.me/{me.username}?start=batch_{batch['batch_id']}"
-    if query.message:
-        await query.message.answer(link,reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="COPY",copy_text={"text":link})]]))
+    # Mark as generating before saving to prevent double-click duplicate batches.
+    claim = await database.db.batch_sessions.update_one(
+        {"_id": session["_id"], "status": "collecting"},
+        {"$set": {"status": "generating", "finished_at": _now()}},
+    )
+    if not claim.modified_count:
+        if query.message:
+            await query.message.answer("This batch is already being generated.")
+        return
+    try:
+        batch = await FileRepository(database.db).save_batch(items, uid)
+        me = await query.bot.get_me()
+        link = f"https://t.me/{me.username}?start=batch_{batch['batch_id']}"
+        await database.db.batch_sessions.update_one(
+            {"_id": session["_id"]},
+            {"$set": {"status": "completed", "batch_id": batch["batch_id"], "completed_at": _now()}},
+        )
+        await state.clear()
+        if query.message:
+            await query.message.answer(
+                link,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="COPY", copy_text=CopyTextButton(text=link))
+                ]]),
+            )
+    except Exception:
+        log.exception("Batch generation failed")
+        await database.db.batch_sessions.update_one(
+            {"_id": session["_id"], "status": "generating"},
+            {"$set": {"status": "collecting", "last_error_at": _now()}},
+        )
+        if query.message:
+            await query.message.answer("Batch link generation failed. Your collected messages are still saved; tap Generate link again.")
