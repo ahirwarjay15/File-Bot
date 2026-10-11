@@ -230,7 +230,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
                 await query.message.delete()
             except TelegramAPIError:
                 pass
-            await query.message.answer("Time's up. Try again.\\n/batch")
+            await query.message.answer("Time's up. Try again.\n/batch")
         return
     items = sorted(session.get("items", []), key=lambda item: item.get("original_message_id", item.get("source_message_id", 0)))
     if not items:
@@ -291,7 +291,7 @@ async def run_batch_session_worker(bot, db, poll_seconds: int = 2):
                             await bot.delete_message(status_chat, status_id)
                         except TelegramAPIError:
                             pass
-                    await bot.send_message(session["admin_id"], "Time's up. Try again.\\n/batch")
+                    await bot.send_message(session["admin_id"], "Time's up. Try again.\n/batch")
                 except TelegramAPIError:
                     log.info("Could not notify moderator %s that batch session expired", session["admin_id"])
         await asyncio.sleep(poll_seconds)

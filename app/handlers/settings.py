@@ -147,7 +147,7 @@ def _animation_mode_for_action(action: str) -> str:
 
 async def render_animation(query, db):
     cfg = await db.settings.find_one({"key": "animation"}) or {}
-    await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\\n\\n<i>Add a custom animation for the verification process.</i>\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+    await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\n\n<i>Add a custom animation for the verification process.</i>\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\nSupported speed: 0.10 to 1.00 seconds per frame.\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
         [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
         [("ENABLE / DISABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
         [("MODE", "settings:animation_mode")],
@@ -225,7 +225,7 @@ async def render_poster(query):
 
 async def render_about(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
-    await edit_page(query, f"A̲B̲O̲U̲T̲ ̲B̲U̲T̲T̲O̲N̲\\n\\nChoose whether to show the About button with invalid posts.\\n\\nStatus: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
+    await edit_page(query, f"A̲B̲O̲U̲T̲ ̲B̲U̲T̲T̲O̲N̲\n\nChoose whether to show the About button with invalid posts.\n\nStatus: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
         [("ENABLE / DISABLE", "settings:invalid_about_toggle")],
         [("《 BACK", "settings:invalid")],
     ]))
@@ -288,10 +288,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
     elif action == "forcejoin_toggle":
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        await patch(db, "force_join", {"enabled": not cfg.get("enabled", False)}, {"channels": [], "other_links": [], "message": "Hey {mention}\\nPlease Join My {remaining_count} Channel's To Use Me!"})
+        await patch(db, "force_join", {"enabled": not cfg.get("enabled", False)}, {"channels": [], "other_links": [], "message": "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"})
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_add":
-        await edit_page(query, "A̲D̲D̲ ̲C̲H̲A̲N̲N̲E̲L̲\\n\\nSelect a verification mode.\\n\\nJoin Request: Verify membership or a pending join request.\\n\\nOther: Add an external platform link.", kb([
+        await edit_page(query, "A̲D̲D̲ ̲C̲H̲A̲N̲N̲E̲L̲\n\nSelect a verification mode.\n\nJoin Request: Verify membership or a pending join request.\n\nOther: Add an external platform link.", kb([
             [("OTHER", "settings:forcejoin_other"), ("JOIN REQUEST", "settings:forcejoin_join_request")],
             [("《 BACK", "settings:forcejoin")],
         ]))
@@ -304,7 +304,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         index = int(action.split(":", 1)[1])
         if 0 <= index < len(links):
             item = links[index]
-            await edit_page(query, f"C̲H̲A̲N̲N̲E̲L̲ ̲S̲E̲T̲T̲I̲N̲G̲S̲\\n\\n{item.get('url', '')}\\n\\nSelect an option below.", kb([
+            await edit_page(query, f"C̲H̲A̲N̲N̲E̲L̲ ̲S̲E̲T̲T̲I̲N̲G̲S̲\n\n{item.get('url', '')}\n\nSelect an option below.", kb([
                 [("BUTTON TEXT", f"settings:forcejoin_other_label:{index}"), ("REMOVE", f"settings:forcejoin_other_remove:{index}")],
                 [("《 BACK", "settings:forcejoin")],
             ]))
@@ -360,7 +360,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if index < len(channels):
             channel = channels[index]
             cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-            await edit_page(query, f"C̲H̲A̲N̲N̲E̲L̲ ̲S̲E̲T̲T̲I̲N̲G̲S̲\\n\\n{channel}\\n\\nSelect an option below.", kb([
+            await edit_page(query, f"C̲H̲A̲N̲N̲E̲L̲ ̲S̲E̲T̲T̲I̲N̲G̲S̲\n\n{channel}\n\nSelect an option below.", kb([
                 [("BUTTON TEXT", f"settings:forcejoin_label:{index}"), ("REMOVE", f"settings:forcejoin_remove_one:{index}")],
                 [("《 BACK", "settings:forcejoin")],
             ]))
@@ -538,7 +538,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Send the About text to show when the About button is tapped.")
     elif action == "forcejoin_animation":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\\n\\nAdd a custom animation for the verification process.\\n\\nPrefix: {cfg.get('prefix', 'Checking..')}\\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\\nSupported speed: 0.10 to 1.00 seconds per frame.\\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+        await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\n\nAdd a custom animation for the verification process.\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\nSupported speed: 0.10 to 1.00 seconds per frame.\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
             [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
             [("ENABLE / DISABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
             [("MODE", "settings:animation_mode")],
@@ -562,7 +562,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_animation(query, db)
     elif action == "animation_mode":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await edit_page(query, f"M̲O̲D̲E̲\\n\\nNew Message: Run the animation in a separate message.\\n\\nForce Join Poster: Run the animation on the force-join poster.\\n\\nCurrent mode: {cfg.get('mode', 'force_join_poster')}", kb([
+        await edit_page(query, f"M̲O̲D̲E̲\n\nNew Message: Run the animation in a separate message.\n\nForce Join Poster: Run the animation on the force-join poster.\n\nCurrent mode: {cfg.get('mode', 'force_join_poster')}", kb([
             [("NEW MESSAGE", "settings:animation_mode_new"), ("FORCE JOIN POSTER", "settings:animation_mode_poster")],
             [("《 BACK", "settings:forcejoin_animation")],
         ]))

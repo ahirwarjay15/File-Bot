@@ -242,7 +242,7 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         if cfg.get("about_enabled", True):
             rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="start:about")])
         markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-        raw_text = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi"
+        raw_text = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\n\nBy: Lexi Anime\n\nDeveloper: Lexi"
         text = html.escape(raw_text)
         text = text.replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or ""))
         text = text.replace("{mention}", user.mention_html())
@@ -267,7 +267,7 @@ async def start_about(query: CallbackQuery, database):
     if not cfg.get("enabled", True) or not cfg.get("about_enabled", False) or not query.message:
         return
     me = await query.bot.get_me()
-    about_text = cfg.get("about_text") or "✨ ᴀʙᴏᴜᴛ ᴍᴇ\\n\\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\\n\\n✰ creator: Lexi\\n\\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\\n\\n✰ made for: Lexi Anime\\n\\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
+    about_text = cfg.get("about_text") or "✨ ᴀʙᴏᴜᴛ ᴍᴇ\n\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\n\n✰ creator: Lexi\n\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\n\n✰ made for: Lexi Anime\n\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
     rendered = html.escape(about_text).replace("{bot_name}", html.escape(me.full_name))
     # Replace the longer phrase first via a placeholder so the "Lexi" link
     # cannot be nested inside the "Lexi Anime" anchor.
@@ -302,7 +302,7 @@ async def start_about_back(query: CallbackQuery, settings: Settings, database):
     if cfg.get("about_enabled", True):
         rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="start:about")])
     markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-    raw = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi"
+    raw = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\n\nBy: Lexi Anime\n\nDeveloper: Lexi"
     rendered = html.escape(raw).replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or "")).replace("{mention}", user.mention_html())
     rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__").replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>').replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
     try:
@@ -348,7 +348,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 if item.get("url"):
                     rows.append([InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"])])
             rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
-            raw_text = cfg.get("message") or "Hey {mention}\\nPlease Join My {remaining_count} Channel's To Use Me!"
+            raw_text = cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"
             rendered = html.escape(raw_text).replace("{first_name}", html.escape(query.from_user.first_name or "")).replace("{last_name}", html.escape(query.from_user.last_name or ""))
             rendered = rendered.replace("{mention}", query.from_user.mention_html()).replace("{remaining_count}", str(len(missing)))
             markup = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -413,7 +413,7 @@ async def invalid_about(query:CallbackQuery,settings:Settings,database):
     cfg=await database.db.settings.find_one({"key":"invalid_post","enabled":True})
     if not cfg or not cfg.get("about_enabled") or not query.message:return
     me = await query.bot.get_me()
-    about_text = "✨ ᴀʙᴏᴜᴛ ᴍᴇ\\n\\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\\n\\n✰ creator: Lexi\\n\\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\\n\\n✰ made for: Lexi Anime\\n\\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
+    about_text = "✨ ᴀʙᴏᴜᴛ ᴍᴇ\n\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\n\n✰ creator: Lexi\n\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\n\n✰ made for: Lexi Anime\n\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
     rendered = html.escape(about_text).replace("{bot_name}", html.escape(me.full_name))
     rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
     rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
