@@ -22,7 +22,9 @@ class Database:
             await self.db.tasks.create_index([("status",ASCENDING),("deadline",ASCENDING)])
             await self.db.batches.create_index([("batch_id",ASCENDING)],unique=True,sparse=True)
             await self.db.broadcast_drafts.create_index([("admin_id",ASCENDING)],unique=True)
-            logger.info("MongoDB ready")
+            # Re-queue jobs interrupted while the process was down.
+            await self.db.tasks.update_many({"status":"processing"},{"$set":{"status":"pending"}})
+            logger.info("MongoDB ready; interrupted delete tasks recovered")
         except Exception:
             await self.close()
             logger.exception("MongoDB startup check failed")
