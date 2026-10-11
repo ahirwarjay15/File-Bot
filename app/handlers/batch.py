@@ -169,6 +169,8 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
 async def collect_in_state(message: Message, state: FSMContext, settings: Settings, database):
     if not message.from_user:
         return
+    if message.text and message.text.startswith("/"):
+        raise SkipHandler
     handled = await _collect_message(message, settings, database, message.from_user.id)
     if not handled:
         await state.clear()
