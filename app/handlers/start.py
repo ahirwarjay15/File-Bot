@@ -123,10 +123,6 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     if missing:
         if query.message:await query.message.answer("You haven't joined all required channels yet.")
         return
-    await _mark_verified(database.db, query.from_user.id, channels)
-    if query.message:
-        try: await query.message.delete()
-        except TelegramAPIError: pass
     repo=FileRepository(database.db)
     if payload.startswith("file_"):record=await repo.get_file(payload[5:])
     elif payload.startswith("batch_"):record=await repo.get_batch(payload[6:])
@@ -134,17 +130,33 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     if not record:
         if query.message:await query.message.answer("This link is invalid or expired.")
         return
+    request_anchor = query.message.message_id if query.message else query.id
+    request_key = f"forcejoin:{query.from_user.id}:{request_anchor}:{payload}"
+    if not await claim_delivery_request(database.db, request_key, query.from_user.id, payload):
+        return
+    await _mark_verified(database.db, query.from_user.id, channels)
+    if query.message:
+        try: await query.message.delete()
+        except TelegramAPIError: pass
     animation_message = None
+    success = False
     try:
         animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
         if channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, query.from_user.id, settings):
             animation_message = await bot.send_animation(query.from_user.id, animation_cfg["file_id"])
         result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record)
-        if payload.startswith("batch_") and result[0]==0 and query.message:await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
+        if payload.startswith("batch_") and result[0]==0:
+            await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
+        success = True
     except TelegramAPIError:
         log.exception("Delivery after Force Join failed")
-        if query.message:await bot.send_message(query.from_user.id,"File delivery failed. Contact the owner.")
+        await bot.send_message(query.from_user.id,"File delivery failed. Contact the owner.")
+    except Exception:
+        log.exception("Unexpected delivery failure after Force Join")
+        await bot.send_message(query.from_user.id,"Delivery failed due to a temporary error.")
     finally:
+        try: await finish_delivery_request(database.db, request_key, success)
+        except Exception: log.exception("Could not update Force Join delivery request status")
         if animation_message:
             try: await bot.delete_message(query.from_user.id, animation_message.message_id)
             except TelegramAPIError: pass
