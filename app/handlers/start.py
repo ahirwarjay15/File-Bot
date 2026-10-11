@@ -105,7 +105,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                         chat_id=user_id, message_id=target_id, text=animated,
                     )
                 else:
-                    content = f"{base_text}\\n\\n<i>{animated}</i>"
+                    content = f"{base_text}\n\n<i>{animated}</i>"
                     if gate_message.photo or gate_message.animation or gate_message.document:
                         await bot.edit_message_caption(
                             chat_id=user_id, message_id=target_id, caption=content,
