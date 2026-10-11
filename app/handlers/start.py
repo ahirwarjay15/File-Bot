@@ -74,13 +74,22 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
             await message.answer("This link is invalid or expired.");return
         if not record or len(payload.split("_",1)[1])>40:
             await message.answer("This link is invalid or expired.");return
+        was_verified = await _is_verified(database.db, user.id, settings.force_join_channels)
         if await gate_or_prompt(message,payload,settings,database,bot):return
+        animation_message = None
+        animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
         try:
+            if not was_verified and settings.force_join_channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, user.id, settings):
+                animation_message = await bot.send_animation(message.chat.id, animation_cfg["file_id"])
             result=await deliver_payload(bot,database,settings,message.chat.id,payload,record)
             if payload.startswith("batch_") and result[0]==0:await message.answer("None of the batch files could be delivered. The source messages may be unavailable.")
             elif payload.startswith("batch_") and result[1]:log.warning("Batch delivery partial: %s delivered, %s failed",*result)
         except TelegramAPIError:
             log.exception("Delivery failed for %s",payload);await message.answer("This file is currently unavailable. Please contact the bot owner.")
+        finally:
+            if animation_message:
+                try: await bot.delete_message(message.chat.id, animation_message.message_id)
+                except TelegramAPIError: pass
         return
     if await is_owner_or_moderator(database.db,user.id,settings):return
     cfg=await database.db.settings.find_one({"key":"start_message"})
@@ -106,12 +115,20 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     if not record:
         if query.message:await query.message.answer("This link is invalid or expired.")
         return
+    animation_message = None
     try:
+        animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
+        if settings.force_join_channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, query.from_user.id, settings):
+            animation_message = await bot.send_animation(query.from_user.id, animation_cfg["file_id"])
         result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record)
-        if payload.startswith("batch_") and result[0]==0 and query.message:await query.message.answer("None of the batch files could be delivered.")
+        if payload.startswith("batch_") and result[0]==0 and query.message:await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
     except TelegramAPIError:
         log.exception("Delivery after Force Join failed")
-        if query.message:await query.message.answer("File delivery failed. Contact the owner.")
+        if query.message:await bot.send_message(query.from_user.id,"File delivery failed. Contact the owner.")
+    finally:
+        if animation_message:
+            try: await bot.delete_message(query.from_user.id, animation_message.message_id)
+            except TelegramAPIError: pass
 
 @router.callback_query(F.data=="invalid:about")
 async def invalid_about(query:CallbackQuery,settings:Settings,database):
