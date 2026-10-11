@@ -59,3 +59,22 @@ def test_settings_buttons_use_small_caps_with_required_exceptions():
     assert unicode_buttons("START TEXT") == "ꜱᴛᴀʀᴛ ᴛᴇxᴛ"
     assert unicode_buttons("《 BACK") == "《 BACK"
     assert unicode_buttons("📟 UPDATE CHANNEL") == "📟 UPDATE CHANNEL"
+
+
+def test_invalid_post_about_defaults_to_multiline_standard_about():
+    from app.handlers.misc import DEFAULT_ABOUT
+
+    assert "\\n" not in DEFAULT_ABOUT
+    assert "\n" in DEFAULT_ABOUT
+    assert "{bot_name}" in DEFAULT_ABOUT
+
+
+def test_invalid_post_template_replaces_user_variables_safely():
+    from types import SimpleNamespace
+    from app.handlers.misc import _render_user_text
+
+    user = SimpleNamespace(id=42, first_name="A&B", last_name="User")
+    rendered = _render_user_text("Hi {mention} / {first_name} / {last_name}", user)
+    assert 'tg://user?id=42' in rendered
+    assert "A&amp;B" in rendered
+    assert "User" in rendered

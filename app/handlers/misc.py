@@ -10,11 +10,11 @@ from app.database.files import FileRepository
 router = Router(name="misc")
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
 DEFAULT_ABOUT = (
-    "✨ ᴀʙᴏᴜᴛ ᴍᴇ\\n\\n"
-    "✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\\n\\n"
-    "✰ creator: Lexi\\n\\n"
-    "✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\\n\\n"
-    "✰ made for: Lexi Anime\\n\\n"
+    "✨ ᴀʙᴏᴜᴛ ᴍᴇ\n\n"
+    "✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\n\n"
+    "✰ creator: Lexi\n\n"
+    "✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\n\n"
+    "✰ made for: Lexi Anime\n\n"
     "✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
 )
 
