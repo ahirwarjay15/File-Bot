@@ -149,9 +149,12 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     if not cfg.get("enabled", False):
         return False
     channels = await effective_force_join_channels(database, settings)
-    # External links alone never create a verification gate.
-    if not channels or await _is_verified(database.db, user.id, channels): return False
-    missing=await join_status(bot,user.id,channels,database.db)
+    # External links alone never create a verification gate. Check the live
+    # Telegram membership state on every deeplink; a cached signature must not
+    # let a user who later leaves a required channel bypass verification.
+    if not channels:
+        return False
+    missing = await join_status(bot, user.id, channels, database.db)
     if not missing:
         await _mark_verified(database.db, user.id, channels)
         return False
