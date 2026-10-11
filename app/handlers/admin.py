@@ -94,4 +94,4 @@ async def stats_ok(query: CallbackQuery, database):
     total = await database.db.users.count_documents({})
     blocked = await database.db.users.count_documents({"blocked": True})
     me = await query.bot.get_me()
-    await query.answer(f"{me.full_name}\\n\\nUSERS: {total}\\n\\nBLOCKED: {blocked}", show_alert=True)
+    await query.answer(f"{me.full_name}\n\nUSERS: {total}\n\nBLOCKED: {blocked}", show_alert=True)
