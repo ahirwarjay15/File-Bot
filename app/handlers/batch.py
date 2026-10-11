@@ -1,6 +1,7 @@
 """MongoDB-backed batch collection with one permanent deeplink per batch."""
 import logging
 import time
+from secrets import token_urlsafe
 from datetime import datetime, timezone
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -30,10 +31,14 @@ def _now():
     return datetime.now(timezone.utc)
 
 async def _session(db, user_id: int):
-    return await db.batch_sessions.find_one({"admin_id": user_id, "status": "collecting"})
+    return await db.batch_sessions.find_one({"admin_id": user_id, "status": {"$in": ["collecting", "generating"]}})
 
 async def _expired(session) -> bool:
-    return not session or time.time() - float(session.get("last_activity_ts", 0)) > SESSION_TTL
+    if not session:
+        return True
+    if session.get("status") == "generating":
+        return False
+    return time.time() - float(session.get("last_activity_ts", 0)) > SESSION_TTL
 
 async def _expire_session(db, user_id: int):
     await db.batch_sessions.update_one(
@@ -58,6 +63,15 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
     uid = message.from_user.id
     existing = await _session(database.db, uid)
     if existing and not await _expired(existing):
+        await database.db.batch_sessions.update_one(
+            {"_id": existing["_id"]},
+            {"$set": {"status": "collecting", "last_activity_ts": time.time(), "last_activity_at": _now()}},
+        )
+        if not existing.get("batch_id"):
+            await database.db.batch_sessions.update_one(
+                {"_id": existing["_id"], "batch_id": {"$exists": False}},
+                {"$set": {"batch_id": token_urlsafe(9).replace("-", "").replace("_", "")[:12]}},
+            )
         await state.set_state(BatchState.collecting)
         await state.set_data({"admin_id": uid})
         await message.answer("Your existing batch session was recovered.", reply_markup=menu())
@@ -68,6 +82,7 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
     await database.db.batch_sessions.update_one(
         {"admin_id": uid},
         {"$set": {"admin_id": uid, "items": [], "status": "collecting",
+                  "batch_id": token_urlsafe(9).replace("-", "").replace("_", "")[:12],
                   "started_at": _now(), "last_activity_at": _now(),
                   "last_activity_ts": time.time()}},
         upsert=True,
@@ -187,7 +202,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
             await query.message.answer("This batch is already being generated.")
         return
     try:
-        batch = await FileRepository(database.db).save_batch(items, uid)
+        batch = await FileRepository(database.db).save_batch(items, uid, batch_id=session.get('batch_id'))
         me = await query.bot.get_me()
         link = f"https://t.me/{me.username}?start=batch_{batch['batch_id']}"
         await database.db.batch_sessions.update_one(
