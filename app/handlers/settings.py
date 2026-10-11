@@ -181,6 +181,7 @@ async def settings_command(message: Message, settings: Settings, database):
         [("START MESSAGE", "settings:start"), ("AUTO DELETE", "settings:auto")],
         [("INVALID POST", "settings:invalid")],
         [("LINK SHORTENER", "settings:shortener"), ("MODERATORS", "settings:mods")],
+        [("FORCE JOIN", "settings:forcejoin"), ("FORCE JOIN ANIMATION", "settings:forcejoin_animation")],
         [("STATS", "settings:stats")],
     ]))
 
