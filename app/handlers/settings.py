@@ -373,6 +373,11 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             if chat.type not in ("channel", "supergroup"):
                 await message.answer("Force Join target must be a channel or supergroup.")
                 return
+            me = await message.bot.get_me()
+            bot_member = await message.bot.get_chat_member(chat.id, me.id)
+            if bot_member.status not in ("administrator", "creator"):
+                await message.answer("Make the bot an administrator in that channel before adding it to Force Join.")
+                return
         except TelegramAPIError:
             await message.answer("The bot cannot access that channel. Check the public username and bot permissions.")
             return
