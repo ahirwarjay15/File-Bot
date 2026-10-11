@@ -110,6 +110,20 @@ async def run_broadcast_worker(bot, db, poll_seconds: int = 2):
     # If the process stopped mid-request, outcome is ambiguous; count it as failed instead of risking a duplicate.
     await db.broadcast_recipients.update_many({"status": "sending"}, {"$set": {"status": "unknown", "error": "process restarted during send"}})
     while True:
+        # Recover the narrow crash window after a draft is marked queued but before its job is inserted.
+        async for draft in db.broadcast_drafts.find({"status": "queued"}).limit(20):
+            await db.broadcast_jobs.update_one(
+                {"draft_id": draft["_id"]},
+                {"$setOnInsert": {
+                    "draft_id": draft["_id"], "admin_id": draft["admin_id"],
+                    "source_chat_id": draft["chat_id"], "source_message_id": draft["message_id"],
+                    "report_chat_id": draft.get("report_chat_id", draft["admin_id"]),
+                    "report_message_id": draft.get("report_message_id"),
+                    "status": "preparing", "created_at": draft.get("queued_at", draft.get("created_at", now())),
+                    "recipients_loaded": False,
+                }},
+                upsert=True,
+            )
         job = await db.broadcast_jobs.find_one_and_update(
             {"status": {"$in": ["preparing", "pending", "processing"]}},
             {"$set": {"status": "processing", "worker_seen_at": now()}},
