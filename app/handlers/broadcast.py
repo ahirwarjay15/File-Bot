@@ -154,6 +154,13 @@ async def run_broadcast_worker(bot, db, poll_seconds: int = 2):
             await db.broadcast_drafts.delete_one({"_id": job["draft_id"]})
             continue
         uid = recipient["user_id"]
+        latest_user = await db.users.find_one({"user_id": uid}, {"banned": 1})
+        if not latest_user or latest_user.get("banned", False):
+            await db.broadcast_recipients.update_one(
+                {"_id": recipient["_id"]},
+                {"$set": {"status": "skipped_banned", "finished_at": now()}},
+            )
+            continue
         try:
             await bot.copy_message(chat_id=uid, from_chat_id=job["source_chat_id"], message_id=job["source_message_id"])
             await db.broadcast_recipients.update_one({"_id": recipient["_id"]}, {"$set": {"status": "sent", "finished_at": now()}})
