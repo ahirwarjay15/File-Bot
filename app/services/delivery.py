@@ -12,6 +12,31 @@ DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_ti
 def _now():
     return datetime.now(timezone.utc)
 
+async def claim_delivery_request(db, request_key: str, user_id: int, payload: str) -> bool:
+    try:
+        await db.delivery_requests.insert_one({
+            "request_key": request_key, "user_id": user_id, "payload": payload,
+            "status": "processing", "created_at": _now(), "updated_at": _now(),
+        })
+        return True
+    except Exception as exc:
+        if getattr(exc, "code", None) != 11000:
+            raise
+        existing = await db.delivery_requests.find_one({"request_key": request_key})
+        if not existing or existing.get("status") in ("processing", "done"):
+            return False
+        result = await db.delivery_requests.update_one(
+            {"request_key": request_key, "status": "failed"},
+            {"$set": {"status": "processing", "updated_at": _now(), "last_retry_at": _now()}},
+        )
+        return bool(result.modified_count)
+
+async def finish_delivery_request(db, request_key: str, success: bool):
+    await db.delivery_requests.update_one(
+        {"request_key": request_key, "status": "processing"},
+        {"$set": {"status": "done" if success else "failed", "updated_at": _now()}},
+    )
+
 def _minutes(cfg):
     allowed = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
     value = int((cfg or {}).get("minutes", 30))
