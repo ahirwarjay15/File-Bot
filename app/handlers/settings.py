@@ -251,6 +251,33 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "forcejoin_other":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_other_url")
         if query.message: await query.message.answer("Send the link of any platform. Example: Facebook, Instagram or YouTube.")
+    elif action == "forcejoin_other_default":
+        data = await state.get_data()
+        url = data.get("pending_url")
+        if not url:
+            await state.clear()
+            if query.message: await query.message.answer("Add process expired. Please start again.")
+            return
+        channels = await effective_force_join_channels(database, settings)
+        if len(channels) >= 10:
+            await state.clear()
+            if query.message: await query.message.answer("Maximum 10 force-join channels allowed.")
+            return
+        key = f"other:{datetime.now(timezone.utc).timestamp():.0f}"
+        await patch(db, "force_join", {"other_links": (await db.settings.find_one({"key": "force_join"}) or {}).get("other_links", []) + [{"key": key, "url": url, "button_text": f"Join {len(channels)+1}"}]})
+        await state.clear()
+        if query.message: await query.message.answer(f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
+        await render_forcejoin(query, db, settings)
+        return
+    elif action == "forcejoin_other_custom":
+        data = await state.get_data()
+        if not data.get("pending_url"):
+            await state.clear()
+            if query.message: await query.message.answer("Add process expired. Please start again.")
+            return
+        await state.set_state(SettingInput.waiting)
+        await state.update_data(field="forcejoin_other_label")
+        if query.message: await query.message.answer("Send custom button text for force-join channel button.")
     elif action == "forcejoin_join_request":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_channel")
         if query.message: await query.message.answer("Send a public channel username or forward a message from the channel. Make sure the bot is an administrator in the selected channel.")
@@ -498,7 +525,8 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.answer("Maximum 10 force-join channels allowed.")
             await state.clear()
             return
-        if any((await db.settings.find_one({"key": "force_join_channel", "url": value} for _ in [0]))):
+        existing_other = await db.settings.find_one({"key": "force_join_channel", "url": value})
+        if existing_other:
             await message.answer("That link is already configured.")
             return
         await state.update_data(field="forcejoin_other_label", pending_url=value)
