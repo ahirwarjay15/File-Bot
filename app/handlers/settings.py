@@ -252,7 +252,14 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         return
     action = query.data.split(":", 1)[1]
     db = database.db
-    if action in {"home", "home_back", "start", "auto", "invalid", "forcejoin", "mods", "shortener", "after", "after_text", "start_button", "start_poster", "forcejoin_animation"}:
+    # Navigation/back actions always cancel an outstanding input flow without
+    # changing saved settings. Choice actions (SEE/DEFAULT, mode selection, etc.)
+    # are intentionally excluded so their pending data can be used.
+    if action in {"home", "home_back", "start", "start_text", "start_button", "start_poster", "start_about",
+                  "auto", "auto_time", "auto_message", "after", "after_text", "invalid", "invalid_text",
+                  "invalid_button", "invalid_poster", "invalid_about", "forcejoin", "forcejoin_add",
+                  "forcejoin_message", "forcejoin_media", "forcejoin_animation", "animation_mode",
+                  "mods", "shortener"}:
         await state.clear()
     if action in {"home", "home_back"}: await render_home(query)
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
