@@ -3,6 +3,7 @@ import pytest
 from app.handlers.batch import SESSION_TTL, _expired, menu
 from app.handlers.start import _join_signature
 from app.services.delivery import _minutes, _notice, DEFAULT_NOTICE
+from app.handlers.settings import time_label, time_words
 
 
 @pytest.mark.asyncio
@@ -35,3 +36,11 @@ def test_blueprint_auto_delete_cycles_and_labels():
 def test_notice_uses_readable_timer_label():
     assert _notice({"notice": DEFAULT_NOTICE, "minutes": 60}, 60) == "Your files will be automatically deleted after 1 hour."
     assert _notice({"notice": DEFAULT_NOTICE, "minutes": 180}, 180) == "Your files will be automatically deleted after 3 hours."
+
+
+def test_blueprint_timer_display_labels():
+    assert [time_label(m) for m in (2, 5, 15, 30, 60, 180, 360, 720, 1440)] == [
+        "2m", "5m", "15m", "30m", "1h", "3h", "6h", "12h", "24h"
+    ]
+    assert time_words(60) == "1 hour"
+    assert time_words(1440) == "24 hours"
