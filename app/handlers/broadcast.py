@@ -37,10 +37,15 @@ async def broadcast(message: Message, settings: Settings, database):
                   "created_at": now(), "draft_key": token_urlsafe(8), "status": "draft"}},
         upsert=True,
     )
+    draft = await database.db.broadcast_drafts.find_one({"admin_id": admin_id, "status": "draft"})
+    if not draft:
+        await message.answer("Could not create the broadcast draft. Please try again.")
+        return
+    draft_key = draft["draft_key"]
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="CONFIRM", callback_data=f"broadcast:yes:{(await database.db.broadcast_drafts.find_one({'admin_id': admin_id, 'status': 'draft'}))['draft_key']}"),
-        InlineKeyboardButton(text="CANCEL", callback_data=f"broadcast:no:{(await database.db.broadcast_drafts.find_one({'admin_id': admin_id, 'status': 'draft'}))['draft_key']}"),
-    ], [InlineKeyboardButton(text="BACK", callback_data=f"broadcast:back:{(await database.db.broadcast_drafts.find_one({'admin_id': admin_id, 'status': 'draft'}))['draft_key']}")]])
+        InlineKeyboardButton(text="CONFIRM", callback_data=f"broadcast:yes:{draft_key}"),
+        InlineKeyboardButton(text="CANCEL", callback_data=f"broadcast:no:{draft_key}"),
+    ], [InlineKeyboardButton(text="BACK", callback_data=f"broadcast:back:{draft_key}")]])
     await message.answer(f"BROADCAST CONFIRMATION\nReview the message before sending it to users.\nRecipients: {recipients}", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("broadcast:"))
