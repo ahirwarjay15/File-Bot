@@ -284,7 +284,6 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                 after = await db.settings.find_one({"key": "after_delete", "enabled": True}) if auto else None
                 notice_id = task.get("notice_message_id")
                 if after and not task.get("after_delete_attempted", False):
-                    await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": True}})
                     text = after.get("text") or "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
                     link = task.get("deeplink")
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
@@ -296,11 +295,13 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                         else:
                             await bot.send_message(task["user_id"], text, reply_markup=markup)
                     except (TelegramForbiddenError, TelegramBadRequest):
+                        await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": True}})
                         log.warning("After-delete replacement cannot be edited for user %s", task["user_id"])
                     except TelegramAPIError:
-                        await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": False}})
                         log.exception("Transient After-delete replacement failure; expiry task will retry")
                         raise
+                    else:
+                        await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": True}})
                 elif notice_id:
                     try:
                         await bot.delete_message(task["user_id"], notice_id)
