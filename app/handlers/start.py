@@ -145,6 +145,9 @@ async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: M
 async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->bool:
     user=message.from_user
     if not user or user.id==settings.owner_id or await is_owner_or_moderator(database.db,user.id,settings):return False
+    cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
+    if not cfg.get("enabled", False):
+        return False
     channels = await effective_force_join_channels(database, settings)
     # External links alone never create a verification gate.
     if not channels or await _is_verified(database.db, user.id, channels): return False
@@ -328,7 +331,8 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     payload=query.data.split(":",2)[2]
     if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):return
     await _cancel_gate_animation(bot, query.from_user.id, query.data.split(":", 2)[2])
-    channels = await effective_force_join_channels(database, settings)
+    force_cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
+    channels = await effective_force_join_channels(database, settings) if force_cfg.get("enabled", False) else []
     missing=[] if await is_owner_or_moderator(database.db, query.from_user.id, settings) else await join_status(bot,query.from_user.id,channels,database.db)
     if missing:
         if query.message:
