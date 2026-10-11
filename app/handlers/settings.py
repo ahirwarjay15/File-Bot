@@ -56,7 +56,7 @@ async def render_home(query):
 
 async def render_forcejoin(query, db, settings):
     channels = await effective_force_join_channels(type("DatabaseView", (), {"db": db})(), settings)
-    channel_text = \"\\n\".join(f\"• {channel}\" for channel in channels) if channels else \"No Force Join channels configured.\"
+    channel_text = "\n".join(f"• {channel}" for channel in channels) if channels else "No Force Join channels configured."
     await edit_page(query, "FORCE JOIN\nRequired channels:\n" + channel_text, kb([
         [("ADD CHANNEL", "settings:forcejoin_add")],
         [("REMOVE CHANNEL", "settings:forcejoin_remove")],
