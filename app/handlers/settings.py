@@ -118,7 +118,7 @@ async def render_forcejoin(query, db, settings):
         [("《 BACK", "settings:home")],
     ])
     text = ("F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲\n\n"
-            f"Status: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}\n\n"
+            f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\n\n"
             "Users must verify the required Join Request channels before receiving files.\n\n"
             "Join Request channels accept membership or a pending join request.\n\n"
             "Other links are treated as verified when all required Join Request channels are verified.\n\n"
@@ -127,7 +127,7 @@ async def render_forcejoin(query, db, settings):
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
-    await edit_page(query, f"S̲T̲A̲R̲T̲ ̲M̲E̲S̲S̲A̲G̲E̲\n\nCustomize your bot's start message using the following options.\n\nStatus: {'ENABLED' if cfg.get('enabled', True) else 'DISABLED'}", kb([
+    await edit_page(query, f"S̲T̲A̲R̲T̲ ̲M̲E̲S̲S̲A̲G̲E̲\n\nCustomize your bot's start message using the following options.\n\nStatus: {'ENABLED ✅' if cfg.get('enabled', True) else 'DISABLED ❌'}", kb([
         [("DISABLE" if cfg.get("enabled", True) else "ENABLE", "settings:start_toggle")],
         [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
         [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")],
@@ -156,7 +156,7 @@ async def render_start_poster(query):
 
 async def render_start_about(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
-    await edit_page(query, f"START ABOUT BUTTON\nStatus: {'ENABLED' if cfg.get('about_enabled', True) else 'DISABLED'}", kb([
+    await edit_page(query, f"START ABOUT BUTTON\nStatus: {'ENABLED ✅' if cfg.get('about_enabled', True) else 'DISABLED ❌'}", kb([
         [("DISABLE" if cfg.get("about_enabled", True) else "ENABLE", "settings:start_about_toggle")],
         [("EDIT ABOUT TEXT", "settings:start_about_text")],
         [("《 BACK", "settings:start")],
@@ -169,7 +169,7 @@ def _animation_mode_for_action(action: str) -> str:
 
 async def render_animation(query, db):
     cfg = await db.settings.find_one({"key": "animation"}) or {}
-    await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\n\n<i>Add a custom animation for the verification process.</i>\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\nSupported speed: 0.10 to 1.00 seconds per frame.\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+    await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\n\n<i>Add a custom animation for the verification process.</i>\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\nSupported speed: 0.10 to 1.00 seconds per frame.\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
         [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
         [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
         [("MODE", "settings:animation_mode")],
@@ -180,8 +180,8 @@ async def render_auto(query, db):
     cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
     after = await db.settings.find_one({"key": "after_delete"}) or {}
     minutes = int(cfg.get("minutes", 30))
-    status = "ENABLED" if cfg.get("enabled", False) else "DISABLED"
-    after_status = "ENABLED" if after.get("enabled", False) and cfg.get("enabled", False) else "DISABLED"
+    status = "ENABLED ✅" if cfg.get("enabled", False) else "DISABLED ❌"
+    after_status = "ENABLED ✅" if after.get("enabled", False) and cfg.get("enabled", False) else "DISABLED ❌"
     await edit_page(query, f"AUTO DELETE\nAutomatically delete delivered files and the auto-delete message after {time_label(minutes)}.\nStatus: {status}", kb([
         [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:auto_toggle")],
         [("TIME", "settings:auto_time"), ("MESSAGE", "settings:auto_message")],
@@ -210,7 +210,7 @@ async def render_after(query, db):
     auto = await db.settings.find_one({"key": "auto_delete"}) or {}
     after = await db.settings.find_one({"key": "after_delete"}) or {}
     enabled = bool(after.get("enabled", False) and auto.get("enabled", False))
-    await edit_page(query, f"AFTER DELETE\nCustomize the message and button shown after delivered files are deleted.\nStatus: {'ENABLED' if enabled else 'DISABLED'}", kb([
+    await edit_page(query, f"AFTER DELETE\nCustomize the message and button shown after delivered files are deleted.\nStatus: {'ENABLED ✅' if enabled else 'DISABLED ❌'}", kb([
         [("DISABLE" if enabled else "ENABLE", "settings:after_toggle")],
         [("TEXT", "settings:after_text")],
         [("《 BACK", "settings:auto")],
@@ -225,7 +225,7 @@ async def render_after_text(query):
 
 async def render_invalid(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
-    await edit_page(query, f"INVALID POST\nSet a response for users who send normal messages to the bot.\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+    await edit_page(query, f"INVALID POST\nSet a response for users who send normal messages to the bot.\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
         [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:invalid_toggle")],
         [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
         [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")],
@@ -247,7 +247,7 @@ async def render_poster(query):
 
 async def render_about(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
-    await edit_page(query, f"A̲B̲O̲U̲T̲ ̲B̲U̲T̲T̲O̲N̲\n\nChoose whether to show the About button with invalid posts.\n\nStatus: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
+    await edit_page(query, f"A̲B̲O̲U̲T̲ ̲B̲U̲T̲T̲O̲N̲\n\nChoose whether to show the About button with invalid posts.\n\nStatus: {'ENABLED ✅' if cfg.get('about_enabled', False) else 'DISABLED ❌'}", kb([
         [("DISABLE" if cfg.get("about_enabled", False) else "ENABLE", "settings:invalid_about_toggle")],
         [("《 BACK", "settings:invalid")],
     ]))
@@ -555,7 +555,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Send the About text to show when the About button is tapped.")
     elif action == "forcejoin_animation":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\n\nAdd a custom animation for the verification process.\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\nSupported speed: 0.10 to 1.00 seconds per frame.\nStatus: {'ENABLED' if cfg.get('enabled', False) else 'DISABLED'}", kb([
+        await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\n\nAdd a custom animation for the verification process.\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\nSupported speed: 0.10 to 1.00 seconds per frame.\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
             [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
             [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
             [("MODE", "settings:animation_mode")],
