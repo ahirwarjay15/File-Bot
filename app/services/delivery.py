@@ -305,7 +305,7 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                         raise
                     else:
                         await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": True}})
-                elif notice_id:
+                elif not after and notice_id:
                     try:
                         await bot.delete_message(task["user_id"], notice_id)
                     except TelegramAPIError:
