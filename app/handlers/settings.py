@@ -178,7 +178,6 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     if not query.from_user or not await is_owner_or_moderator(database.db, query.from_user.id, settings):
         await query.answer("Not authorized.", show_alert=True)
         return
-    await query.answer()
     action = query.data.split(":", 1)[1]
     db = database.db
     if action == "home": await render_home(query)
@@ -204,7 +203,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         current = int(cfg.get("minutes", 30))
         next_value = AUTO_DELETE_MINUTES[(AUTO_DELETE_MINUTES.index(current) + 1) % len(AUTO_DELETE_MINUTES)] if current in AUTO_DELETE_MINUTES else 2
         await patch(db, "auto_delete", {"minutes": next_value}, {"enabled": False, "notice": DEFAULT_NOTICE})
-        await query.answer(f"✨ Auto-delete time changed to {next_value} minutes.", show_alert=True)
+        if query.message: await query.message.answer(f"✨ Auto-delete time changed to {next_value} minutes.")
         await render_auto_time(query, db)
     elif action == "auto_message": await render_auto_message(query, db)
     elif action == "auto_message_edit":
@@ -213,9 +212,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "auto_message_see":
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
         await query.answer((cfg.get("notice") or DEFAULT_NOTICE).replace("{auto_delete_time}", f"{cfg.get('minutes',30)} minutes"), show_alert=True)
+        return
     elif action == "auto_message_default":
         await patch(db, "auto_delete", {"notice": DEFAULT_NOTICE}, {"enabled": False, "minutes": 30})
-        await query.answer("Default auto-delete message restored.", show_alert=True)
+        if query.message: await query.message.answer("Default auto-delete message restored.")
         await render_auto_message(query, db)
     elif action == "after": await render_after(query, db)
     elif action == "after_toggle":
@@ -250,7 +250,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Only GIFs and images are supported. Send the new invalid-post poster here.")
     elif action == "poster_remove":
         await db.settings.update_one({"key": "invalid_post"}, {"$unset": {"poster_file_id": "", "poster_photo_id": ""}}, upsert=True)
-        await query.answer("✨ Invalid-post poster removed successfully.", show_alert=True); await render_poster(query)
+        if query.message: await query.message.answer("✨ Invalid-post poster removed successfully.")
+        await render_poster(query)
     elif action == "invalid_about": await render_about(query, db)
     elif action == "invalid_about_toggle":
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
@@ -286,13 +287,15 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             await query.answer("Only the owner can remove moderators.", show_alert=True); return
         uid = int(action.split(":", 1)[1])
         result = await db.moderators.delete_one({"user_id": uid})
-        await query.answer("✨ Successfully removed moderator." if result.deleted_count else "Moderator not found.", show_alert=True)
+        if query.message: await query.message.answer("✨ Successfully removed moderator." if result.deleted_count else "Moderator not found.")
         await render_mods(query, db)
     elif action == "stats":
         total = await db.users.count_documents({})
         blocked = await db.users.count_documents({"blocked": True})
         me = await query.bot.get_me()
         await query.answer(f"{me.full_name}\n\nUSERS: {total}\n\nBLOCKED: {blocked}", show_alert=True)
+        return
+    await query.answer()
 
 @router.message(SettingInput.waiting)
 async def receive_setting_input(message: Message, state: FSMContext, settings: Settings, database):
