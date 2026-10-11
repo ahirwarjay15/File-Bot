@@ -46,9 +46,18 @@ async def edit_page(query, text, keyboard):
 
 async def render_home(query):
     await edit_page(query, "BOT SETTINGS", kb([
-        [("AUTO DELETE", "settings:auto"), ("INVALID POST", "settings:invalid")],
+        [("START MESSAGE", "settings:start"), ("AUTO DELETE", "settings:auto")],
+        [("INVALID POST", "settings:invalid")],
         [("LINK SHORTENER", "settings:shortener"), ("MODERATORS", "settings:mods")],
         [("STATS", "settings:stats")],
+    ]))
+
+async def render_start(query, db):
+    cfg = await db.settings.find_one({"key": "start_message"}) or {}
+    await edit_page(query, f"START MESSAGE\\nStatus: {'ENABLED' if cfg.get('enabled', True) else 'DISABLED'}", kb([
+        [("ENABLE / DISABLE", "settings:start_toggle")],
+        [("TEXT", "settings:start_text")],
+        [("BACK", "settings:home")],
     ]))
 
 async def render_auto(query, db):
@@ -172,6 +181,14 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     action = query.data.split(":", 1)[1]
     db = database.db
     if action == "home": await render_home(query)
+    elif action == "start": await render_start(query, db)
+    elif action == "start_toggle":
+        cfg = await db.settings.find_one({"key": "start_message"}) or {}
+        await patch(db, "start_message", {"enabled": not cfg.get("enabled", True)}, {"text": "👋 Welcome! Send a valid file link to receive your file."})
+        await render_start(query, db)
+    elif action == "start_text":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="start_text")
+        if query.message: await query.message.answer("Send your new Start Message text.")
     elif action == "auto": await render_auto(query, db)
     elif action == "auto_toggle":
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
@@ -296,7 +313,10 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     if not value:
         await message.answer("Please send a non-empty value.")
         return
-    if field == "auto_notice":
+    if field == "start_text":
+        await patch(db, "start_message", {"text": value}, {"enabled": True})
+        await message.answer("Start Message text updated successfully.")
+    elif field == "auto_notice":
         await patch(db, "auto_delete", {"notice": value}, {"enabled": False, "minutes": 30})
         await message.answer("✨ Auto-delete message updated successfully.")
     elif field == "after_text_message":
