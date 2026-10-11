@@ -60,12 +60,13 @@ async def edit_page(query, text, keyboard):
         await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 async def render_home(query):
-    await edit_page(query, "C̲U̲S̲T̲O̲M̲I̲Z̲E̲\n\nName: {mention}\n\nConfigure Your Bot Settings Using the Buttons Below.", kb([
+    name = query.from_user.mention_html() if query.from_user else "User"
+    await edit_page(query, f"<b><u>C̲U̲S̲T̲O̲M̲I̲Z̲E̲</u></b>\n\nName: {name}\n\n<i>Configure Your Bot Settings Using the Buttons Below.</i>", kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
         [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
-        [("BACK", "settings:home_back")],
+        [("《 BACK", "settings:home_back")],
     ]))
 
 async def render_forcejoin(query, db, settings):
@@ -211,12 +212,13 @@ async def render_mods(query, db):
 async def settings_command(message: Message, settings: Settings, database):
     if not await allowed(message, settings, database):
         return
-    await message.answer("C̲U̲S̲T̲O̲M̲I̲Z̲E̲\n\nName: {mention}\n\nConfigure Your Bot Settings Using the Buttons Below.", reply_markup=kb([
+    name = message.from_user.mention_html() if message.from_user else "User"
+    await message.answer(f"<b><u>C̲U̲S̲T̲O̲M̲I̲Z̲E̲</u></b>\n\nName: {name}\n\n<i>Configure Your Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", reply_markup=kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
         [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
-        [("BACK", "settings:home_back")],
+        [("《 BACK", "settings:home_back")],
     ]))
 
 @router.callback_query(F.data.startswith("settings:"))
