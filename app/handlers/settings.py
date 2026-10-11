@@ -326,7 +326,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "shortener": await render_shortener(query, db)
     elif action == "shortener_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="shortener_url")
-        if query.message: await query.message.answer("Send your shortener website/API URL here (https://...).")
+        if query.message: await query.message.answer("Send your shortener website URL here (for example https://gplinks.com). Compatible provider API endpoints are also accepted.")
     elif action == "shortener_remove":
         await db.settings.update_one({"key": "shortener"}, {"$set": {"enabled": False}, "$unset": {"token": ""}})
         await render_shortener(query, db)
