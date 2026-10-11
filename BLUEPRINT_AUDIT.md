@@ -19,7 +19,7 @@ The supplied blueprint file starts at section 5 (Auto Delete). Sections 1–4 ar
 | Start About and Invalid About have independent toggles and edit their existing messages | Start About control and callback added; Invalid About already implemented | Callback integration test pending |
 | Invalid Post text variables, custom URL button, photo/GIF poster, About button | Implemented | Media and callback integration tests pending |
 | About button edits existing invalid post, including media caption | Implemented | Telegram integration test pending |
-| Shortener add/remove, masked token, API validation, manual shortening + COPY | Implemented for compatible JSON API providers | Provider-specific API test pending |
+| Shortener add/remove, masked token, API validation, manual shortening + COPY | GPlinks adapter plus generic compatible JSON API adapter implemented | Adapter unit tests added; live provider test pending |
 | /file creates one permanent deeplink and does not auto-shorten it | Implemented | Telegram integration test pending |
 | /batch creates one permanent deeplink for up to 100 messages | Implemented | Telegram integration test pending |
 | Batch source order, 200-second timeout, persistent collection session, restart recovery | Implemented with MongoDB session and stable batch ID | Concurrency/restart tests pending |
