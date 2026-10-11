@@ -90,7 +90,10 @@ async def stats(message: Message, settings: Settings, database):
     await message.answer(text, reply_markup=keyboard)
 
 @router.callback_query(F.data == "stats:ok")
-async def stats_ok(query: CallbackQuery, database):
+async def stats_ok(query: CallbackQuery, settings: Settings, database):
+    if not query.from_user or not await is_owner_or_moderator(database.db, query.from_user.id, settings):
+        await query.answer("Not authorized.", show_alert=True)
+        return
     total = await database.db.users.count_documents({})
     blocked = await database.db.users.count_documents({"blocked": True})
     me = await query.bot.get_me()
