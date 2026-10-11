@@ -63,6 +63,17 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
     uid = message.from_user.id
     existing = await _session(database.db, uid)
     if existing and not await _expired(existing):
+        if existing.get("batch_id"):
+            saved_batch = await database.db.batches.find_one({"batch_id": existing["batch_id"], "kind": "batch"})
+            if saved_batch:
+                me = await message.bot.get_me()
+                link = f"https://t.me/{me.username}?start=batch_{saved_batch['batch_id']}"
+                await database.db.batch_sessions.update_one({"_id": existing["_id"]}, {"$set": {"status": "completed", "completed_at": _now()}})
+                await state.clear()
+                await message.answer(link, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="COPY", copy_text=CopyTextButton(text=link))
+                ]]))
+                return
         await database.db.batch_sessions.update_one(
             {"_id": existing["_id"]},
             {"$set": {"status": "collecting", "last_activity_ts": time.time(), "last_activity_at": _now()}},
