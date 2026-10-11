@@ -271,7 +271,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await patch(db, "auto_delete", {"notice": DEFAULT_NOTICE}, {"enabled": False, "minutes": 30})
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
         me = await query.bot.get_me()
-        default_text = DEFAULT_NOTICE.replace("{auto_delete_time}", f"{cfg.get('minutes',30)} minutes")
+        default_text = DEFAULT_NOTICE.replace("{auto_delete_time}", time_words(int(cfg.get("minutes", 30))))
         await query.answer(f"{me.full_name}\n\n{default_text}", show_alert=True)
         await render_auto_message(query, db)
         return
