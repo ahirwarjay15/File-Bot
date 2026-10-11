@@ -1,4 +1,4 @@
-"""Owner/moderator commands and compact configuration controls."""
+"""Owner/moderator administration, ban controls, and stats popup."""
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -9,55 +9,85 @@ router = Router(name="admin")
 
 @router.message(Command("ban"))
 async def ban_user(message: Message, settings: Settings, database):
-    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings): return
+    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
+        return
     parts = (message.text or "").split()
-    if len(parts) != 2 or not parts[1].isdigit():
-        await message.answer("Usage: /ban TELEGRAM_USER_ID"); return
+    if len(parts) != 2 or not parts[1].isdigit() or int(parts[1]) <= 0:
+        await message.answer("Usage: /ban TELEGRAM_USER_ID")
+        return
     uid = int(parts[1])
-    if uid == settings.owner_id or await database.db.moderators.find_one({"user_id":uid}):
-        await message.answer("Owner/moderators cannot be banned."); return
-    await database.db.users.update_one({"user_id":uid}, {"$set":{"banned":True}}, upsert=True)
+    if uid == settings.owner_id or await database.db.moderators.find_one({"user_id": uid}):
+        await message.answer("Owner/moderators cannot be banned.")
+        return
+    await database.db.users.update_one(
+        {"user_id": uid}, {"$set": {"banned": True}, "$setOnInsert": {"created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)}}, upsert=True
+    )
     await message.answer(f"User {uid} banned.")
 
 @router.message(Command("unban"))
 async def unban_user(message: Message, settings: Settings, database):
-    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings): return
+    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
+        return
     parts = (message.text or "").split()
-    if len(parts) != 2 or not parts[1].isdigit():
-        await message.answer("Usage: /unban TELEGRAM_USER_ID"); return
-    await database.db.users.update_one({"user_id":int(parts[1])}, {"$set":{"banned":False}}, upsert=True)
-    await message.answer("User unbanned.")
+    if len(parts) != 2 or not parts[1].isdigit() or int(parts[1]) <= 0:
+        await message.answer("Usage: /unban TELEGRAM_USER_ID")
+        return
+    uid = int(parts[1])
+    result = await database.db.users.update_one({"user_id": uid, "banned": True}, {"$set": {"banned": False}})
+    if not result.modified_count:
+        await message.answer("That user is not currently banned.")
+        return
+    await message.answer(f"User {uid} unbanned.")
 
 @router.message(Command("addmod"))
 async def add_mod(message: Message, settings: Settings, database):
-    if not message.from_user or message.from_user.id != settings.owner_id: return
+    if not message.from_user or message.from_user.id != settings.owner_id:
+        return
     parts = (message.text or "").split()
-    if len(parts)!=2 or not parts[1].isdigit(): await message.answer("Usage: /addmod TELEGRAM_USER_ID"); return
-    uid=int(parts[1])
-    if uid == settings.owner_id: await message.answer("Owner is not stored as a moderator."); return
-    if await database.db.moderators.count_documents({}) >= 3 and not await database.db.moderators.find_one({"user_id":uid}):
-        await message.answer("Maximum 3 moderators allowed."); return
-    await database.db.moderators.update_one({"user_id":uid},{"$setOnInsert":{"user_id":uid}},upsert=True)
-    await message.answer(f"Moderator {uid} added.")
+    if len(parts) != 2 or not parts[1].isdigit() or int(parts[1]) <= 0:
+        await message.answer("Usage: /addmod TELEGRAM_USER_ID")
+        return
+    uid = int(parts[1])
+    if uid == settings.owner_id:
+        await message.answer("Owner is not stored as a moderator.")
+        return
+    existing = await database.db.moderators.find_one({"user_id": uid})
+    if existing:
+        await message.answer("This user is already a moderator.")
+        return
+    if await database.db.moderators.count_documents({}) >= 3:
+        await message.answer("Maximum 3 moderators allowed.")
+        return
+    user = await database.db.users.find_one({"user_id": uid})
+    await database.db.moderators.insert_one({
+        "user_id": uid,
+        "first_name": (user or {}).get("first_name", f"User {uid}"),
+        "username": (user or {}).get("username"),
+    })
+    await message.answer(f"Successfully added {(user or {}).get('first_name', f'User {uid}')} as moderator.")
 
 @router.message(Command("delmod"))
 async def del_mod(message: Message, settings: Settings, database):
-    if not message.from_user or message.from_user.id != settings.owner_id: return
-    parts=(message.text or "").split()
-    if len(parts)!=2 or not parts[1].isdigit(): await message.answer("Usage: /delmod TELEGRAM_USER_ID"); return
-    await database.db.moderators.delete_one({"user_id":int(parts[1])})
-    await message.answer("Moderator removed.")
+    if not message.from_user or message.from_user.id != settings.owner_id:
+        return
+    parts = (message.text or "").split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Usage: /delmod TELEGRAM_USER_ID")
+        return
+    result = await database.db.moderators.delete_one({"user_id": int(parts[1])})
+    await message.answer("Moderator removed." if result.deleted_count else "That user is not a moderator.")
 
 @router.message(Command("stats"))
 async def stats(message: Message, settings: Settings, database):
-    if not message.from_user or not await is_owner_or_moderator(database.db,message.from_user.id,settings): return
-    total=await database.db.users.count_documents({})
-    banned=await database.db.users.count_documents({"banned":True})
-    files=await database.db.files.count_documents({})
-    mods=await database.db.moderators.count_documents({})
-    await message.answer(f"📊 Bot stats\nUsers tracked: {total}\nBanned users: {banned}\nStored file links: {files}\nModerators: {mods}\nBlocked/unreachable count cannot be known exactly until Telegram reports delivery failures.")
+    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
+        return
+    total = await database.db.users.count_documents({})
+    blocked = await database.db.users.count_documents({"blocked": True})
+    me = await message.bot.get_me()
+    text = f"{me.full_name}\n\nUSERS: {total}\n\nBLOCKED: {blocked}"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="OK", callback_data="stats:ok")]])
+    await message.answer(text, reply_markup=keyboard)
 
-@router.message(Command("settings"))
-async def settings_menu(message: Message, settings: Settings, database):
-    if not message.from_user or not await is_owner_or_moderator(database.db,message.from_user.id,settings): return
-    await message.answer("Settings: use /setstart on|off, /setinvalid on|off, /setautodelete on|off, /setautodeletemin MINUTES, /setafterdelete on|off, /setnotice TEXT, /setinvalidtext TEXT, /setshortener URL TOKEN")
+@router.callback_query(F.data == "stats:ok")
+async def stats_ok(query: CallbackQuery):
+    await query.answer("Statistics", show_alert=True)
