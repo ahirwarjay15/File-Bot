@@ -4,7 +4,7 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False)
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False, enable_decoding=False)
     bot_token: SecretStr = Field(validation_alias="BOT_TOKEN")
     owner_id: int = Field(validation_alias="OWNER_ID", gt=0)
     mongodb_uri: SecretStr = Field(validation_alias="MONGODB_URI")
