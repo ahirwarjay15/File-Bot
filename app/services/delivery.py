@@ -131,7 +131,9 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                     try:
                         await bot.send_message(task["user_id"], text, reply_markup=markup)
                     except TelegramAPIError:
-                        log.exception("After-delete replacement message could not be sent")
+                        await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": False}})
+                        log.exception("After-delete replacement message could not be sent; expiry task will retry")
+                        raise
                 await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"status": "done", "finished_at": _now()}})
             except Exception:
                 log.exception("Expiry task failed")
