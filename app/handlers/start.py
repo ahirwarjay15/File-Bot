@@ -13,6 +13,12 @@ from app.services.delivery import deliver_reference,deliver_batch
 from app.services.permissions import is_owner_or_moderator
 router=Router(name="start");log=logging.getLogger(__name__)
 
+async def effective_force_join_channels(database, settings) -> list[str]:
+    cfg = await database.db.settings.find_one({"key": "force_join"})
+    if cfg is not None and isinstance(cfg.get("channels"), list):
+        return [str(channel).strip() for channel in cfg["channels"] if str(channel).strip()]
+    return list(settings.force_join_channels)
+
 def _join_signature(channels: list[str]) -> str:
     return hashlib.sha256(",".join(sorted(c.strip() for c in channels if c.strip())).encode()).hexdigest()
 
@@ -42,10 +48,11 @@ async def join_status(bot,user_id:int,channels:list[str])->list[str]:
 async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->bool:
     user=message.from_user
     if not user or user.id==settings.owner_id or await is_owner_or_moderator(database.db,user.id,settings):return False
-    if await _is_verified(database.db, user.id, settings.force_join_channels): return False
-    missing=await join_status(bot,user.id,settings.force_join_channels)
+    channels = await effective_force_join_channels(database, settings)
+    if await _is_verified(database.db, user.id, channels): return False
+    missing=await join_status(bot,user.id,channels)
     if not missing:
-        await _mark_verified(database.db, user.id, settings.force_join_channels)
+        await _mark_verified(database.db, user.id, channels)
         return False
     rows=[]
     for channel in missing:
@@ -74,12 +81,13 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
             await message.answer("This link is invalid or expired.");return
         if not record or len(payload.split("_",1)[1])>40:
             await message.answer("This link is invalid or expired.");return
-        was_verified = await _is_verified(database.db, user.id, settings.force_join_channels)
+        channels = await effective_force_join_channels(database, settings)
+        was_verified = await _is_verified(database.db, user.id, channels)
         if await gate_or_prompt(message,payload,settings,database,bot):return
         animation_message = None
         animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
         try:
-            if not was_verified and settings.force_join_channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, user.id, settings):
+            if not was_verified and channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, user.id, settings):
                 animation_message = await bot.send_animation(message.chat.id, animation_cfg["file_id"])
             result=await deliver_payload(bot,database,settings,message.chat.id,payload,record)
             if payload.startswith("batch_") and result[0]==0:await message.answer("None of the batch files could be delivered. The source messages may be unavailable.")
@@ -100,11 +108,12 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     await query.answer()
     payload=query.data.split(":",2)[2]
     if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):return
-    missing=[] if await is_owner_or_moderator(database.db, query.from_user.id, settings) else await join_status(bot,query.from_user.id,settings.force_join_channels)
+    channels = await effective_force_join_channels(database, settings)
+    missing=[] if await is_owner_or_moderator(database.db, query.from_user.id, settings) else await join_status(bot,query.from_user.id,channels)
     if missing:
         if query.message:await query.message.answer("You haven't joined all required channels yet.")
         return
-    await _mark_verified(database.db, query.from_user.id, settings.force_join_channels)
+    await _mark_verified(database.db, query.from_user.id, channels)
     if query.message:
         try: await query.message.delete()
         except TelegramAPIError: pass
@@ -118,7 +127,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     animation_message = None
     try:
         animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
-        if settings.force_join_channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, query.from_user.id, settings):
+        if channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, query.from_user.id, settings):
             animation_message = await bot.send_animation(query.from_user.id, animation_cfg["file_id"])
         result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record)
         if payload.startswith("batch_") and result[0]==0 and query.message:await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
