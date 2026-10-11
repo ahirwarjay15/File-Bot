@@ -66,9 +66,10 @@ async def render_forcejoin(query, db, settings):
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
-    await edit_page(query, f"START MESSAGE\nStatus: {'ENABLED' if cfg.get('enabled', True) else 'DISABLED'}", kb([
+    await edit_page(query, f"START MESSAGE\nStatus: {'ENABLED' if cfg.get('enabled', True) else 'DISABLED'}\nAbout button: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
         [("ENABLE / DISABLE", "settings:start_toggle")],
         [("TEXT", "settings:start_text")],
+        [("ABOUT BUTTON", "settings:start_about")],
         [("BACK", "settings:home")],
     ]))
 
@@ -218,6 +219,20 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "start_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_text")
         if query.message: await query.message.answer("Send your new Start Message text.")
+    elif action == "start_about":
+        cfg = await db.settings.find_one({"key": "start_message"}) or {}
+        await edit_page(query, f"START ABOUT BUTTON\nStatus: {'ENABLED' if cfg.get('about_enabled', False) else 'DISABLED'}", kb([
+            [("ENABLE / DISABLE", "settings:start_about_toggle")],
+            [("EDIT ABOUT TEXT", "settings:start_about_text")],
+            [("BACK", "settings:start")],
+        ]))
+    elif action == "start_about_toggle":
+        cfg = await db.settings.find_one({"key": "start_message"}) or {}
+        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", False)}, {"enabled": True, "text": "👋 Welcome! Send a valid file link to receive your file."})
+        await render_start(query, db)
+    elif action == "start_about_text":
+        await state.set_state(SettingInput.waiting); await state.update_data(field="start_about_text")
+        if query.message: await query.message.answer("Send the About text to show when the Start Message About button is tapped.")
     elif action == "auto": await render_auto(query, db)
     elif action == "auto_toggle":
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
