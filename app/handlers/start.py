@@ -185,11 +185,44 @@ async def start_about(query: CallbackQuery, database):
     rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
     rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
     rendered = rendered.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
+    back_markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="《 BACK", callback_data="start:about_back")]])
     try:
         if query.message.photo or query.message.animation:
-            await query.message.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=None)
+            await query.message.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=back_markup)
         else:
-            await query.message.edit_text(rendered, parse_mode="HTML", reply_markup=None)
+            await query.message.edit_text(rendered, parse_mode="HTML", reply_markup=back_markup)
+    except TelegramAPIError:
+        pass
+
+@router.callback_query(F.data == "start:about_back")
+async def start_about_back(query: CallbackQuery, settings: Settings, database):
+    await query.answer()
+    user = query.from_user
+    msg = query.message
+    if not user or not msg or await FileRepository(database.db).is_banned(user.id):
+        return
+    cfg = await database.db.settings.find_one({"key": "start_message"}) or {}
+    if not cfg.get("enabled", True):
+        return
+    me = await query.bot.get_me()
+    rows = []
+    url = cfg.get("button_url", "http://t.me/lexiAnime")
+    parsed = urlparse(url)
+    if cfg.get("button_enabled", True) and parsed.scheme in ("http", "https") and parsed.netloc:
+        rows.append([InlineKeyboardButton(text=cfg.get("button_text") or "📟 UPDATE CHANNEL", url=url)])
+    if cfg.get("about_enabled", True):
+        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ＡＢＯＵＴ"), callback_data="start:about")])
+    markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+    raw = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi"
+    rendered = html.escape(raw).replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or "")).replace("{mention}", user.mention_html())
+    rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__").replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>').replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
+    try:
+        if msg.photo:
+            await msg.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=markup)
+        elif msg.animation:
+            await msg.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=markup)
+        else:
+            await msg.edit_text(rendered, parse_mode="HTML", reply_markup=markup)
     except TelegramAPIError:
         pass
 
@@ -293,9 +326,34 @@ async def invalid_about(query:CallbackQuery,settings:Settings,database):
     rendered = rendered.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
     try:
         if query.message.photo or query.message.animation or query.message.document:
-            await query.message.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=None)
+            await query.message.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="《 BACK", callback_data="invalid:about_back")]]))
         else:
-            await query.message.edit_text(rendered, parse_mode="HTML", reply_markup=None)
+            await query.message.edit_text(rendered, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="《 BACK", callback_data="invalid:about_back")]]))
+    except TelegramAPIError:
+        pass
+
+@router.callback_query(F.data == "invalid:about_back")
+async def invalid_about_back(query: CallbackQuery, settings: Settings, database):
+    await query.answer()
+    user, msg = query.from_user, query.message
+    if not user or not msg or await is_banned_for_callback(database.db, user.id):
+        return
+    cfg = await database.db.settings.find_one({"key": "invalid_post", "enabled": True})
+    if not cfg:
+        return
+    raw = cfg.get("text") or "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
+    rendered = html.escape(raw).replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or "")).replace("{mention}", user.mention_html())
+    rows = []
+    if cfg.get("button_text") and cfg.get("button_url"):
+        rows.append([InlineKeyboardButton(text=cfg["button_text"], url=cfg["button_url"])])
+    if cfg.get("about_enabled"):
+        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ＡＢＯＵＴ"), callback_data="invalid:about")])
+    markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+    try:
+        if msg.photo or msg.animation or msg.document:
+            await msg.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=markup)
+        else:
+            await msg.edit_text(rendered, parse_mode="HTML", reply_markup=markup)
     except TelegramAPIError:
         pass
 
