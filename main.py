@@ -36,8 +36,12 @@ async def main():
         for task in (worker, batch_worker, broadcast_worker, delivery_worker):
             if task:
                 task.cancel()
-                try: await task
-                except asyncio.CancelledError: pass
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    logging.getLogger(__name__).exception("Background worker exited with an error during shutdown")
         await database.close();await bot.session.close()
 
 if __name__=="__main__":
