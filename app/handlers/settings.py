@@ -239,12 +239,18 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Send your new auto-delete message. Use {auto_delete_time} to insert the timer.")
     elif action == "auto_message_see":
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
-        await query.answer((cfg.get("notice") or DEFAULT_NOTICE).replace("{auto_delete_time}", f"{cfg.get('minutes',30)} minutes"), show_alert=True)
+        me = await query.bot.get_me()
+        saved = (cfg.get("notice") or DEFAULT_NOTICE).replace("{auto_delete_time}", f"{cfg.get('minutes',30)} minutes")
+        await query.answer(f"{me.full_name}\\n\\n{saved}", show_alert=True)
         return
     elif action == "auto_message_default":
         await patch(db, "auto_delete", {"notice": DEFAULT_NOTICE}, {"enabled": False, "minutes": 30})
-        if query.message: await query.message.answer("Default auto-delete message restored.")
+        cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
+        me = await query.bot.get_me()
+        default_text = DEFAULT_NOTICE.replace("{auto_delete_time}", f"{cfg.get('minutes',30)} minutes")
+        await query.answer(f"{me.full_name}\\n\\n{default_text}", show_alert=True)
         await render_auto_message(query, db)
+        return
     elif action == "after": await render_after(query, db)
     elif action == "after_toggle":
         auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
