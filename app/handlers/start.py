@@ -162,7 +162,10 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     try:
         animation_cfg = await database.db.settings.find_one({"key": "force_join_animation"})
         if channels and animation_cfg and animation_cfg.get("file_id") and not await is_owner_or_moderator(database.db, query.from_user.id, settings):
-            animation_message = await bot.send_animation(query.from_user.id, animation_cfg["file_id"])
+            try:
+                animation_message = await bot.send_animation(query.from_user.id, animation_cfg["file_id"])
+            except TelegramAPIError:
+                log.warning("Force Join animation could not be sent; continuing with file delivery", exc_info=True)
         result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record,request_key=request_key)
         if payload.startswith("batch_") and result[0]==0:
             await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
