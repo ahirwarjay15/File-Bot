@@ -52,6 +52,10 @@ async def add_mod(message: Message, settings: Settings, database):
     if uid == settings.owner_id:
         await message.answer("Owner is not stored as a moderator.")
         return
+    banned_user = await database.db.users.find_one({"user_id": uid, "banned": True})
+    if banned_user:
+        await message.answer("Unban this user before adding them as a moderator.")
+        return
     existing = await database.db.moderators.find_one({"user_id": uid})
     if existing:
         await message.answer("This user is already a moderator.")
