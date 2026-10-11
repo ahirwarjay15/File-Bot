@@ -1,4 +1,5 @@
 """Owner/moderator administration, ban controls, and stats popup."""
+from datetime import datetime, timezone
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -20,7 +21,7 @@ async def ban_user(message: Message, settings: Settings, database):
         await message.answer("Owner/moderators cannot be banned.")
         return
     await database.db.users.update_one(
-        {"user_id": uid}, {"$set": {"banned": True}, "$setOnInsert": {"created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)}}, upsert=True
+        {"user_id": uid}, {"$set": {"banned": True}, "$setOnInsert": {"created_at": datetime.now(timezone.utc)}}, upsert=True
     )
     await message.answer(f"User {uid} banned.")
 
