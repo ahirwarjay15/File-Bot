@@ -162,11 +162,11 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
         target=channel if channel.startswith("https://") else ("https://t.me/"+channel.lstrip("@") if not channel.lstrip("-").isdigit() else None)
         if target:
-            rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"Join {index+1}",url=target)])
+            rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}",url=target)])
     for item in other_links:
         if item.get("url"):
-            rows.append([InlineKeyboardButton(text=item.get("button_text") or "Join", url=item["url"])])
-    rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "I Joined — Check Again",callback_data=f"forcejoin:check:{payload}")])
+            rows.append([InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"])])
+    rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ",callback_data=f"forcejoin:check:{payload}")])
     raw_text = cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"
     rendered = html.escape(raw_text)
     rendered = rendered.replace("{first_name}", html.escape(user.first_name or ""))
@@ -240,7 +240,7 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         if cfg.get("button_enabled", True) and parsed.scheme in ("http", "https") and parsed.netloc:
             rows.append([InlineKeyboardButton(text=cfg.get("button_text") or "📟 UPDATE CHANNEL", url=button_url)])
         if cfg.get("about_enabled", True):
-            rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ＡＢＯＵＴ"), callback_data="start:about")])
+            rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="start:about")])
         markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
         raw_text = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi"
         text = html.escape(raw_text)
@@ -300,7 +300,7 @@ async def start_about_back(query: CallbackQuery, settings: Settings, database):
     if cfg.get("button_enabled", True) and parsed.scheme in ("http", "https") and parsed.netloc:
         rows.append([InlineKeyboardButton(text=cfg.get("button_text") or "📟 UPDATE CHANNEL", url=url)])
     if cfg.get("about_enabled", True):
-        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ＡＢＯＵＴ"), callback_data="start:about")])
+        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="start:about")])
     markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
     raw = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\\n\\nBy: Lexi Anime\\n\\nDeveloper: Lexi"
     rendered = html.escape(raw).replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or "")).replace("{mention}", user.mention_html())
@@ -343,11 +343,11 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
                 target = channel if channel.startswith("https://") else ("https://t.me/" + channel.lstrip("@") if not channel.lstrip("-").isdigit() else None)
                 if target:
-                    rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"Join {index+1}", url=target)])
+                    rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}", url=target)])
             for item in other_links:
                 if item.get("url"):
-                    rows.append([InlineKeyboardButton(text=item.get("button_text") or "Join", url=item["url"])])
-            rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "I Joined — Check Again", callback_data=f"forcejoin:check:{payload}")])
+                    rows.append([InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"])])
+            rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
             raw_text = cfg.get("message") or "Hey {mention}\\nPlease Join My {remaining_count} Channel's To Use Me!"
             rendered = html.escape(raw_text).replace("{first_name}", html.escape(query.from_user.first_name or "")).replace("{last_name}", html.escape(query.from_user.last_name or ""))
             rendered = rendered.replace("{mention}", query.from_user.mention_html()).replace("{remaining_count}", str(len(missing)))
@@ -441,7 +441,7 @@ async def invalid_about_back(query: CallbackQuery, settings: Settings, database)
     if cfg.get("button_text") and cfg.get("button_url"):
         rows.append([InlineKeyboardButton(text=cfg["button_text"], url=cfg["button_url"])])
     if cfg.get("about_enabled"):
-        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ＡＢＯＵＴ"), callback_data="invalid:about")])
+        rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="invalid:about")])
     markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
     try:
         if msg.photo or msg.animation or msg.document:

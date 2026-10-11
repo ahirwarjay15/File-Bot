@@ -28,7 +28,7 @@ async def shortener_command(message: Message, settings: Settings, database):
     try:
         result = await shorten_url(cfg["url"], cfg["token"], target)
         await message.answer(result, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="COPY", copy_text=CopyTextButton(text=result))
+            InlineKeyboardButton(text="ᴄᴏᴘʏ", copy_text=CopyTextButton(text=result))
         ]]))
     except Exception as exc:
         await message.answer(f"Shortener request failed: {type(exc).__name__}. Check provider API settings.")

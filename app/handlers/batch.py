@@ -93,7 +93,7 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
                 await database.db.batch_sessions.update_one({"_id": existing["_id"]}, {"$set": {"status": "completed", "completed_at": _now()}})
                 await state.clear()
                 await message.answer(link, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="COPY", copy_text=CopyTextButton(text=link))
+                    InlineKeyboardButton(text="ᴄᴏᴘʏ", copy_text=CopyTextButton(text=link))
                 ]]))
                 return
         await database.db.batch_sessions.update_one(
@@ -258,7 +258,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
             await query.message.answer(
                 link,
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="COPY", copy_text=CopyTextButton(text=link))
+                    InlineKeyboardButton(text="ᴄᴏᴘʏ", copy_text=CopyTextButton(text=link))
                 ]]),
             )
     except Exception:

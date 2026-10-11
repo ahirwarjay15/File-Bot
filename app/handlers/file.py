@@ -34,7 +34,7 @@ async def receive_file(message:Message,state:FSMContext,settings:Settings,databa
         name=message.document.file_name if message.document else None
         record=await FileRepository(database.db).save_file(source_chat_id=settings.source_channel_id,source_message_id=copied.message_id,created_by=message.from_user.id,file_name=name)
         me=await message.bot.get_me();link=f"https://t.me/{me.username}?start=file_{record['file_key']}"
-        keyboard=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="COPY",copy_text=CopyTextButton(text=link))]])
+        keyboard=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="ᴄᴏᴘʏ",copy_text=CopyTextButton(text=link))]])
         await message.answer(link,reply_markup=keyboard)
     except TelegramAPIError:
         log.exception("Could not create file link");await message.answer("Couldn't store this message. Ensure the bot is an administrator in the private source channel.")
