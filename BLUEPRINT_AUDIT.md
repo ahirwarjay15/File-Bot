@@ -16,6 +16,7 @@ The supplied blueprint file starts at section 5 (Auto Delete). Sections 1–4 ar
 | After Delete only runs while Auto Delete is enabled; replacement points to original deeplink | Implemented | Telegram integration test pending |
 | Expiry jobs persist and are recovered after restart | Implemented with MongoDB task records | Crash/restart integration test pending |
 | Invalid Post defaults off; normal messages only; moderator and banned users excluded | Implemented | Telegram integration test pending |
+| Start About and Invalid About have independent toggles and edit their existing messages | Start About control and callback added; Invalid About already implemented | Callback integration test pending |
 | Invalid Post text variables, custom URL button, photo/GIF poster, About button | Implemented | Media and callback integration tests pending |
 | About button edits existing invalid post, including media caption | Implemented | Telegram integration test pending |
 | Shortener add/remove, masked token, API validation, manual shortening + COPY | Implemented for compatible JSON API providers | Provider-specific API test pending |
@@ -32,7 +33,7 @@ The supplied blueprint file starts at section 5 (Auto Delete). Sections 1–4 ar
 ## Known remaining gaps before production
 
 - Request-level deduplication is now persisted for repeated /start updates and Force Join callbacks. Exactly-once delivery still cannot be guaranteed across the Telegram-send/database-write crash window; broadcast marks an interrupted in-flight recipient as unknown to avoid blindly duplicating it.
-- The blueprint mentions a separate last-two-message retention rule. That retention/cleanup behavior is not implemented. Telegram also does not generally allow the bot to delete user-authored messages in private chats.
+- The blueprint mentions a separate last-two-message retention rule. That retention/cleanup behavior is not implemented because the supplied section does not define its trigger/cleanup sequence. Telegram also does not generally allow the bot to delete user-authored messages in private chats.
 - The supplied file lacks blueprint sections 1–4, so the complete A-to-Z comparison requires the missing source sections.
 - No automated test run or end-to-end Telegram/Atlas/Oracle test has been confirmed yet. The repository workflow now runs syntax compilation and pytest on pushes/PRs, but this audit does not claim a passing run.
 
