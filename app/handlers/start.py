@@ -161,15 +161,16 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
         return False
     cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
     other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
-    rows=[]
+    join_buttons = []
     for index, channel in enumerate(missing):
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
         target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
         if target:
-            rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}",url=target)])
+            join_buttons.append(InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}", url=target))
     for item in other_links:
         if item.get("url"):
-            rows.append([InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"])])
+            join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
+    rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
     rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ",callback_data=f"forcejoin:check:{payload}")])
     raw_text = cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"
     rendered = html.escape(raw_text)
@@ -342,15 +343,16 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         if query.message:
             cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
             other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
-            rows = []
+            join_buttons = []
             for index, channel in enumerate(missing):
                 channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
                 target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
                 if target:
-                    rows.append([InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}", url=target)])
+                    join_buttons.append(InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}", url=target))
             for item in other_links:
                 if item.get("url"):
-                    rows.append([InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"])])
+                    join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
+            rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
             rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
             raw_text = cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"
             rendered = html.escape(raw_text).replace("{first_name}", html.escape(query.from_user.first_name or "")).replace("{last_name}", html.escape(query.from_user.last_name or ""))
