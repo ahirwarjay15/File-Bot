@@ -10,4 +10,4 @@ def test_invalid_auto_delete_timer_falls_back_to_default():
 
 def test_auto_delete_notice_interpolates_timer():
     assert _notice({"notice": "Deleted in {auto_delete_time}", "minutes": 30}, 30) == "Deleted in 30 minutes"
-    assert _notice({"notice": DEFAULT_NOTICE}, 60) == "Your files will be automatically deleted after 1 hours."
+    assert _notice({"notice": DEFAULT_NOTICE}, 60) == "Your files will be automatically deleted after 1 hour."
