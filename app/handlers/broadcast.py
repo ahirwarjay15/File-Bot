@@ -43,9 +43,9 @@ async def broadcast(message: Message, settings: Settings, database):
         return
     draft_key = draft["draft_key"]
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="CONFIRM", callback_data=f"broadcast:yes:{draft_key}"),
-        InlineKeyboardButton(text="CANCEL", callback_data=f"broadcast:no:{draft_key}"),
-    ], [InlineKeyboardButton(text="BACK", callback_data=f"broadcast:back:{draft_key}")]])
+        InlineKeyboardButton(text="ᴄᴏɴꜰɪʀᴍ", callback_data=f"broadcast:yes:{draft_key}"),
+        InlineKeyboardButton(text="ᴄᴀɴᴄᴇʟ", callback_data=f"broadcast:no:{draft_key}"),
+    ], [InlineKeyboardButton(text="《 BACK", callback_data=f"broadcast:back:{draft_key}")]])
     await message.answer(f"BROADCAST CONFIRMATION\nReview the message before sending it to users.\nRecipients: {recipients}", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("broadcast:"))
