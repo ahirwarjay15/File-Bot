@@ -912,7 +912,7 @@ async def setstart(m: Message, settings: Settings, database):
     if not await allowed(m, settings, database): return
     p=(m.text or "").split(maxsplit=1)
     if len(p)!=2 or p[1].lower() not in ("on","off"): await m.answer("Usage: /setstart on|off"); return
-    await patch(database.db, "start_message", {"enabled": p[1].lower()=="on"}, {"text":"👋 Welcome! Send a valid file link to receive your file."})
+    await patch(database.db, "start_message", {"enabled": p[1].lower()=="on"}, {"text": DEFAULT_START_TEXT, "button_enabled": True, "button_text": "📟 UPDATE CHANNEL", "button_url": "http://t.me/lexiAnime", "about_enabled": True})
     await m.answer("Start message setting updated.")
 
 @router.message(Command("setstarttext"))
@@ -928,7 +928,7 @@ async def setinvalid(m: Message, settings: Settings, database):
     if not await allowed(m, settings, database): return
     p=(m.text or "").split(maxsplit=1)
     if len(p)!=2 or p[1].lower() not in ("on","off"): await m.answer("Usage: /setinvalid on|off"); return
-    await patch(database.db, "invalid_post", {"enabled":p[1].lower()=="on"}, {"text":DEFAULT_INVALID})
+    await patch(database.db, "invalid_post", {"enabled":p[1].lower()=="on"}, {"text":DEFAULT_INVALID, "about_enabled": False})
     await m.answer("Invalid-post setting updated.")
 
 @router.message(Command("setinvalidtext"))
@@ -944,7 +944,14 @@ async def setautodelete(m: Message, settings: Settings, database):
     if not await allowed(m, settings, database): return
     p=(m.text or "").split(maxsplit=1)
     if len(p)!=2 or p[1].lower() not in ("on","off"): await m.answer("Usage: /setautodelete on|off"); return
-    await patch(database.db, "auto_delete", {"enabled":p[1].lower()=="on"}, {"minutes":30,"notice":DEFAULT_NOTICE})
+    turning_on = p[1].lower() == "on"
+    await patch(database.db, "auto_delete", {"enabled": turning_on}, {"minutes": 30, "notice": DEFAULT_NOTICE})
+    if not turning_on:
+        await patch(database.db, "after_delete", {"enabled": False}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
+        await database.db.tasks.update_many(
+            {"kind": "delete_delivery", "status": {"$in": ["pending", "processing"]}},
+            {"$set": {"status": "cancelled", "cancelled_at": datetime.now(timezone.utc)}},
+        )
     await m.answer("Auto Delete setting updated.")
 
 @router.message(Command("setautodeletemin"))
@@ -969,7 +976,13 @@ async def setafterdelete(m: Message, settings: Settings, database):
     if not await allowed(m, settings, database): return
     p=(m.text or "").split(maxsplit=1)
     if len(p)!=2 or p[1].lower() not in ("on","off"): await m.answer("Usage: /setafterdelete on|off"); return
-    await patch(database.db, "after_delete", {"enabled":p[1].lower()=="on"}, {"text":DEFAULT_AFTER_TEXT,"button_text":DEFAULT_AFTER_BUTTON})
+    turning_on = p[1].lower() == "on"
+    auto = await database.db.settings.find_one({"key": "auto_delete", "enabled": True})
+    if turning_on and not auto:
+        await patch(database.db, "after_delete", {"enabled": False}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
+        await m.answer("Enable Auto Delete before enabling After Delete.")
+        return
+    await patch(database.db, "after_delete", {"enabled": turning_on}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
     await m.answer("After Delete setting updated.")
 
 @router.message(Command("setafterdeletetext"))
