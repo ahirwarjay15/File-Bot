@@ -404,7 +404,7 @@ async def render_custom_buttons(query, db):
         rows.append([InlineKeyboardButton(text="➕", callback_data="settings:custom_button_add")])
     rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])
     markup = InlineKeyboardMarkup(inline_keyboard=rows)
-    await edit_page(query, "Custom Button:\\n\\nYou can add a custom buttons to your files.", markup)
+    await edit_page(query, "Custom Button:\n\nYou can add a custom buttons to your files.", markup)
 
 
 async def render_mods(query, db):
