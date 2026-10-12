@@ -25,6 +25,20 @@ class Database:
             await self.db.delivery_requests.create_index([("status",ASCENDING),("updated_at",ASCENDING)])
             await self.db.batches.create_index([("batch_id",ASCENDING)],unique=True,sparse=True)
             await self.db.deeplink_codes.create_index([("code",ASCENDING)],unique=True)
+            # Backfill every currently known code so deleted/old records cannot
+            # accidentally make an already-issued code reusable after upgrades.
+            async for old_file in self.db.files.find({"file_key": {"$type": "string"}}, {"file_key": 1}):
+                await self.db.deeplink_codes.update_one(
+                    {"code": old_file["file_key"]},
+                    {"$setOnInsert": {"code": old_file["file_key"], "kind": "legacy-file"}},
+                    upsert=True,
+                )
+            async for old_batch in self.db.batches.find({"batch_id": {"$type": "string"}}, {"batch_id": 1}):
+                await self.db.deeplink_codes.update_one(
+                    {"code": old_batch["batch_id"]},
+                    {"$setOnInsert": {"code": old_batch["batch_id"], "kind": "legacy-batch"}},
+                    upsert=True,
+                )
             await self.db.broadcast_drafts.create_index([("admin_id",ASCENDING)],unique=True)
             await self.db.broadcast_jobs.create_index([("draft_id",ASCENDING)],unique=True)
             await self.db.broadcast_jobs.create_index([("status",ASCENDING),("created_at",ASCENDING)])
