@@ -179,7 +179,7 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
                 message.reply_markup.model_dump(mode="json", exclude_none=True)
                 if message.reply_markup else None
             ),
-            "original_has_buttons": bool(message.reply_markup and message.reply_markup.inline_keyboard),
+            **({"original_has_buttons": True} if message.reply_markup and message.reply_markup.inline_keyboard else {}),
         }
         # Conditional update prevents adding to a session cancelled or expired concurrently.
         result = await database.db.batch_sessions.update_one(
