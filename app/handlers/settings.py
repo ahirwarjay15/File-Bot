@@ -395,13 +395,18 @@ async def render_custom_buttons(query, db):
     cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
     buttons = cfg.get("buttons", [])[:2]
     rows = []
+    # Put both configured buttons on the same row, with each button's own remove control.
+    button_row = []
     for i, item in enumerate(buttons):
-        rows.append([
-            InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")),
-            InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"),
-        ])
+        button_row.append(InlineKeyboardButton(
+            text=str(item.get("text", f"Button {i+1}"))[:64],
+            url=item.get("url"),
+        ))
+        button_row.append(InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"))
+    if button_row:
+        rows.append(button_row)
     if len(buttons) < 2:
-        rows.append([InlineKeyboardButton(text="➕", callback_data="settings:custom_button_add")])
+        rows.append([InlineKeyboardButton(text="✚", callback_data="settings:custom_button_add")])
     rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])
     markup = InlineKeyboardMarkup(inline_keyboard=rows)
     await edit_page(query, "Custom Button:\n\nYou can add a custom buttons to your files.", markup)
@@ -583,9 +588,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             await query.answer("Maximum 2 custom buttons allowed.", show_alert=True)
             await render_custom_buttons(query, db)
             return
-        await state.set_state(SettingInput.waiting)
-        await state.update_data(field="custom_button_text")
-        if query.message: await query.message.answer("Send the custom button text.")
+        await show_input_prompt(
+            query, state, "custom_button_text",
+            "Send the custom button text.", "custom_button",
+        )
     elif action.startswith("custom_button_remove:"):
         index = int(action.rsplit(":", 1)[1])
         cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
@@ -942,12 +948,18 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if not value or len(value) > 64:
             await message.answer("Button text must be between 1 and 64 characters.")
             return
+        data = await state.get_data()
         await state.update_data(custom_button_pending_text=value, field="custom_button_url")
         try:
             await message.delete()
         except TelegramAPIError:
             pass
-        await message.answer("Now send the button URL (https://... or t.me/...).")
+        await remove_input_prompt(message.bot, data)
+        prompt = await message.answer("Now send the button URL (https://... or t.me/...).")
+        await state.update_data(
+            input_prompt_chat_id=prompt.chat.id,
+            input_prompt_message_id=prompt.message_id,
+        )
         return
     if field == "custom_button_url":
         normalized = normalize_http_url(value)
@@ -963,12 +975,13 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             return
         buttons.append({"text": prev.get("custom_button_pending_text", ""), "url": normalized})
         await patch(db, "custom_buttons", {"buttons": buttons})
+        await remove_input_prompt(message.bot, prev)
         try:
             await message.delete()
         except TelegramAPIError:
             pass
         await state.clear()
-        await message.answer("Custom button saved. Open /settings → CUSTOM BUTTON to manage it.")
+        # Keep the chat clean; the settings panel is refreshed when reopened.
         return
     if field == "animation_prefix":
         await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
