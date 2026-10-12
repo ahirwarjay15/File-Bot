@@ -733,8 +733,11 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
                 [("DISABLE/ENABLE", "settings:invalid_toggle")], [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
                 [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")], [("《 BACK", "settings:home")],
             ])
-        await message.answer(parent_text, parse_mode="HTML", reply_markup=ReplyKeyboardRemove(), link_preview_options={"is_disabled": True})
-        await message.answer(parent_text, parse_mode="HTML", reply_markup=parent_kb, link_preview_options={"is_disabled": True})
+        parent = await message.answer(parent_text, parse_mode="HTML", reply_markup=ReplyKeyboardRemove(), link_preview_options={"is_disabled": True})
+        try:
+            await parent.edit_reply_markup(reply_markup=parent_kb)
+        except TelegramAPIError:
+            pass
         return
     if kind not in ("start", "invalid"):
         return
