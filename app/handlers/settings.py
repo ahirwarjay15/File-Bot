@@ -597,13 +597,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_about_text")
         if query.message: await query.message.answer("Send the About text to show when the About button is tapped.")
     elif action == "forcejoin_animation":
-        cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await edit_page(query, f"A̲N̲I̲M̲A̲T̲I̲O̲N̲\n\nAdd a custom animation for the verification process.\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\nSupported speed: 0.10 to 1.00 seconds per frame.\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
-            [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
-            [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
-            [("MODE", "settings:animation_mode")],
-            [("《 BACK", "settings:home")],
-        ]))
+        await render_animation(query, db)
     elif action == "animation_prefix":
         await state.set_state(SettingInput.waiting); await state.update_data(field="animation_prefix")
         if query.message: await query.message.answer("Send new prefix text for the loop animation.")
