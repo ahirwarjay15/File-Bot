@@ -696,7 +696,6 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         current = int(cfg.get("minutes", 30))
         next_value = AUTO_DELETE_MINUTES[(AUTO_DELETE_MINUTES.index(current) + 1) % len(AUTO_DELETE_MINUTES)] if current in AUTO_DELETE_MINUTES else 2
         await patch(db, "auto_delete", {"minutes": next_value}, {"enabled": False, "notice": DEFAULT_NOTICE})
-        if query.message: await query.message.answer(f"✨ Auto-delete time changed to {time_label(next_value)}.")
         await render_auto_time(query, db)
     elif action == "auto_message": await render_auto_message(query, db)
     elif action == "auto_message_edit":
