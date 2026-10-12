@@ -99,3 +99,26 @@ def test_settings_pages_get_shared_heading_and_body_style():
     rendered = format_settings_page(raw)
     assert rendered.startswith("<b><u>AUTO DELETE</u></b>" + "\n\n" + "<i>")
     assert rendered.endswith("</i>")
+
+def test_common_variables_render_bot_and_channel_links_in_start_and_invalid_text():
+    from types import SimpleNamespace
+    from app.handlers.start import render_common_variables
+    from app.handlers.misc import _render_user_text
+
+    user = SimpleNamespace(
+        id=42,
+        first_name="Alice",
+        last_name="Example",
+        mention_html=lambda: '<a href="tg://user?id=42">Alice</a>',
+    )
+    bot = SimpleNamespace(username="sample_bot", full_name="Sample Bot")
+    template = "{bot} | {bot_mention} | {first_name} | {last_name} | {user} | {owner} | {anime} | {hindi_anime}"
+    for rendered in (render_common_variables(template, user, bot), _render_user_text(template, user, bot)):
+        assert '<a href="https://t.me/sample_bot">Sample Bot</a>' in rendered
+        assert "Alice" in rendered
+        assert "Example" in rendered
+        assert '<a href="tg://user?id=42">Alice</a>' in rendered
+        assert '<a href="https://t.me/lexxiowner">Lexi</a>' in rendered
+        assert '<a href="https://t.me/lexianime">Lexi Anime</a>' in rendered
+        assert '<a href="https://t.me/lexianimehindi">Lexi Anime</a>' in rendered
+
