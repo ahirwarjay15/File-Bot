@@ -2,10 +2,10 @@
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from aiogram import Router, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
@@ -146,12 +146,16 @@ async def render_start_button(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True)) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    await edit_page(query, f"START BUTTON\nCustomize the button shown with your start message.\n\nButton 1: {status1}\nButton 2: {status2}", kb([
-        [(f"1 {status1}", "settings:start_button_toggle:1"), (f"2 {status2}", "settings:start_button_toggle:2")],
-        [("1 BUTTON", "settings:start_button_1"), ("2 BUTTON", "settings:start_button_2")],
-        [("《 BACK", "settings:start")],
-    ]))
-
+    text = format_settings_page(f"START BUTTON\\n\\nCustomize the button shown with your start message.\\n\\nButton 1: {status1}\\nButton 2: {status2}")
+    if query.message:
+        try:
+            await query.message.edit_reply_markup(reply_markup=None)
+        except TelegramAPIError:
+            pass
+        await query.message.answer(text, parse_mode="HTML", reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
+                      [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
+                      [KeyboardButton(text="《 BACK")]], resize_keyboard=True))
 
 
 async def refresh_button_panel(bot, chat_id, message_id, db, kind):
@@ -172,7 +176,7 @@ async def refresh_button_panel(bot, chat_id, message_id, db, kind):
         [("《 BACK", back)],
     ])
     try:
-        await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=page_text, reply_markup=keyboard, parse_mode="HTML")
+        await bot.send_message(chat_id=chat_id, text=page_text, reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True), parse_mode="HTML")
     except TelegramAPIError:
         pass
 
@@ -270,11 +274,17 @@ async def render_invalid_button(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    await edit_page(query, f"INVALID BUTTON\nCustomize buttons shown with invalid posts.\n\nButton 1: {status1}\nButton 2: {status2}", kb([
-        [(f"1 {status1}", "settings:invalid_button_toggle:1"), (f"2 {status2}", "settings:invalid_button_toggle:2")],
-        [("1 BUTTON", "settings:invalid_button_1"), ("2 BUTTON", "settings:invalid_button_2")],
-        [("《 BACK", "settings:invalid")],
-    ]))
+    text = format_settings_page(f"INVALID BUTTON\\n\\nCustomize buttons shown with invalid posts.\\n\\nButton 1: {status1}\\nButton 2: {status2}")
+    if query.message:
+        try:
+            await query.message.edit_reply_markup(reply_markup=None)
+        except TelegramAPIError:
+            pass
+        await query.message.answer(text, parse_mode="HTML", reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
+                      [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
+                      [KeyboardButton(text="《 BACK")]], resize_keyboard=True))
+
 
 async def render_poster(query):
     await edit_page(query, "INVALID POSTER\nAdd an image or GIF to your invalid post.", kb([
@@ -486,7 +496,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await query.answer("✅ Default successfully set!\n\nHey 𝑳𝑬𝑿𝑰! ✨\n\nWelcome to the fastest and most secure file store bot!!.\n\n✦ Made by: Lexi\n✦ Made for: Lexi Anime", show_alert=True)
         await render_start_text(query)
         return
-    elif action == "start_button": await render_start_button(query, db)
+    elif action == "start_button":\n        await state.update_data(button_panel_kind="start")\n        await render_start_button(query, db)
     elif action.startswith("start_button_toggle:"):
         index = action.rsplit(":", 1)[1]
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
@@ -583,7 +593,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "invalid_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_text")
         if query.message: await query.message.answer("Now send your new invalid message text. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code>.", parse_mode="HTML")
-    elif action == "invalid_button": await render_invalid_button(query, db)
+    elif action == "invalid_button":\n        await state.update_data(button_panel_kind="invalid")\n        await render_invalid_button(query, db)
     elif action.startswith("invalid_button_toggle:"):
         index = action.rsplit(":", 1)[1]
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
@@ -600,10 +610,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action in ("invalid_button_1", "invalid_button_2"):
         index = action.rsplit("_", 1)[1]
         await state.set_state(SettingInput.waiting); await state.update_data(field=f"invalid_button_{index}_text", button_index=index, panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="invalid")
-        if query.message: await query.message.answer(f"Send text for Invalid Button {index}. Then send its URL.")
+        if query.message: await query.message.answer(f"Send text for Invalid Button {index}.")
     elif action in ("invalid_button_text", "invalid_button_link"):
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_button_1_text" if action == "invalid_button_text" else "invalid_button_1_link", button_index="1", panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="invalid")
-        if query.message: await query.message.answer("Send text for Invalid Button 1. Then send its URL." if action == "invalid_button_text" else "Send the URL for Invalid Button 1.")
+        if query.message: await query.message.answer("Send text for Invalid Button 1." if action == "invalid_button_text" else "Now send the URL for Invalid Button 1.")
     elif action == "invalid_poster": await render_poster(query)
     elif action == "poster_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="poster")
@@ -689,6 +699,63 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await query.answer(f"{me.full_name}\n\nUSERS: {total}\n\nBLOCKED: {blocked}", show_alert=True)
         return
     await query.answer()
+
+
+@router.message(StateFilter(None), F.text)
+async def handle_button_settings_reply_keyboard(message: Message, state: FSMContext, settings: Settings, database):
+    if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
+        return
+    value = (message.text or "").strip()
+    data = await state.get_data()
+    kind = data.get("button_panel_kind")
+    if value == "《 BACK" and kind in ("start", "invalid"):
+        await state.clear()
+        await message.answer("Reply keyboard closed.", reply_markup=ReplyKeyboardRemove())
+        if kind == "start":
+            await message.answer(format_settings_page("START MESSAGE\\n\\nCustomize your bot's start message using the following options."), parse_mode="HTML", reply_markup=kb([
+                [("DISABLE/ENABLE", "settings:start_toggle")], [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
+                [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")], [("《 BACK", "settings:home")],
+            ]))
+        else:
+            await message.answer(format_settings_page("INVALID POST\\n\\nSet a response for users who send normal messages to the bot."), parse_mode="HTML", reply_markup=kb([
+                [("DISABLE/ENABLE", "settings:invalid_toggle")], [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
+                [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")], [("《 BACK", "settings:home")],
+            ]))
+        return
+    if kind not in ("start", "invalid"):
+        return
+    db = database.db
+    is_start = kind == "start"
+    cfg_key = "start_message" if is_start else "invalid_post"
+    if value in ("1 ON ✅", "1 OFF ❌", "2 ON ✅", "2 OFF ❌"):
+        index = value[0]
+        cfg = await db.settings.find_one({"key": cfg_key}) or {}
+        key = f"button{index}_enabled"
+        enabled = cfg.get(key, cfg.get("button_enabled", True) if index == "1" and is_start else bool(cfg.get("button_text") and cfg.get("button_url")) if index == "1" else False)
+        text_value = cfg.get(f"button{index}_text", cfg.get("button_text", "") if index == "1" else "")
+        url_value = cfg.get(f"button{index}_url", cfg.get("button_url", "") if index == "1" else "")
+        if not enabled and not (text_value and url_value):
+            await message.answer("Set this button's text and link before enabling it.")
+        else:
+            await patch(db, cfg_key, {key: not enabled}, {"enabled": True, "text": DEFAULT_START_TEXT} if is_start else {"enabled": False})
+        await send_button_settings_reply_panel(message, db, kind)
+        return
+    if value in ("1 BUTTON", "2 BUTTON"):
+        index = value[0]
+        await state.set_state(SettingInput.waiting)
+        await state.update_data(field=f"{kind}_button_{index}_text", button_index=index, panel_chat_id=message.chat.id, panel_message_id=message.message_id, panel_kind=kind)
+        await message.answer(f"Send text for {'Start' if is_start else 'Invalid'} Button {index}.")
+        return
+
+async def send_button_settings_reply_panel(message: Message, db, kind: str):
+    is_start = kind == "start"
+    cfg = await db.settings.find_one({"key": "start_message" if is_start else "invalid_post"}) or {}
+    status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True) if is_start else bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
+    status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
+    title = "START BUTTON" if is_start else "INVALID BUTTON"
+    body = "Customize the button shown with your start message." if is_start else "Customize buttons shown with invalid posts."
+    markup = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
+    await message.answer(format_settings_page(f"{title}\\n\\n{body}\\n\\nButton 1: {status1}\\nButton 2: {status2}"), parse_mode="HTML", reply_markup=markup)
 
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
