@@ -87,6 +87,7 @@ async def deliver_reference(bot: Bot, db, settings, *, user_id: int, file_doc: d
         "source_chat_id": file_doc["source_chat_id"],
         "source_message_id": file_doc["source_message_id"],
         "file_name": file_doc.get("file_name"),
+        "reply_markup": file_doc.get("reply_markup"),
     }
     return await deliver_batch(
         bot, db, user_id=user_id, batch={"batch_id": None, "items": [item]},
@@ -129,6 +130,19 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
                     chat_id=doc["user_id"], from_chat_id=item["source_chat_id"],
                     message_id=item["source_message_id"],
                 )
+                # Telegram copyMessage does not copy reply_markup. Restore saved
+                # inline buttons on the copied message when the source exposed them.
+                markup_data = item.get("reply_markup")
+                if markup_data:
+                    try:
+                        markup = InlineKeyboardMarkup.model_validate(markup_data)
+                        await bot.edit_message_reply_markup(
+                            chat_id=doc["user_id"], message_id=sent.message_id,
+                            reply_markup=markup,
+                        )
+                    except (TelegramAPIError, ValueError, TypeError):
+                        log.warning("Could not restore inline buttons for source message %s",
+                                    item["source_message_id"], exc_info=True)
                 deadline = doc.get("deadline")
                 if doc.get("auto_delete") and deadline is None:
                     deadline = _now() + timedelta(minutes=int(doc["minutes"]))
