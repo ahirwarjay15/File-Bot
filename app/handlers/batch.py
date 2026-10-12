@@ -107,7 +107,6 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
                 {"_id": existing["_id"]},
                 {"$set": {"batch_id": batch_id}},
             )
-            existing["batch_id"] = batch_id
         await state.set_state(BatchState.collecting)
         await state.set_data({"admin_id": uid})
         await _render_status(message, len(existing.get("items", [])), existing, database)
@@ -157,37 +156,27 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
         return True
     if message.text and message.text.startswith("/"):
         return False
-    origin = message.forward_origin
-    origin_chat = getattr(origin, "chat", None)
-    origin_message_id = getattr(origin, "message_id", None)
-    if not origin_chat or not origin_message_id or origin_chat.id != settings.source_channel_id:
-        await message.answer(
-            "For /batch, forward each message from the Database/Storage channel here. "
-            "Messages from other chats are not added."
-        )
-        return True
     items = session.get("items", [])
-    if any(item.get("source_message_id") == origin_message_id and
-           item.get("source_chat_id") == origin_chat.id for item in items):
+    if any(item.get("original_message_id") == message.message_id for item in items):
         await message.answer("This message is already included in the batch.")
         return True
     if len(items) >= 100:
-        await message.answer("Maximum 100 messages reached. The batch link is already available.")
+        await message.answer("Maximum 100 messages reached. Generate the batch link.")
         return True
     try:
-        markup_data = (
-            message.reply_markup.model_dump(mode="json", exclude_none=True)
-            if message.reply_markup else None
+        copied = await message.bot.copy_message(
+            chat_id=settings.source_channel_id,
+            from_chat_id=message.chat.id,
+            message_id=message.message_id,
         )
         item = {
-            "source_chat_id": origin_chat.id,
-            "source_message_id": origin_message_id,
+            "source_chat_id": settings.source_channel_id,
+            "source_message_id": copied.message_id,
             "file_name": message.document.file_name if message.document else None,
             "source_message_date": message.date.isoformat() if message.date else None,
             "original_message_id": message.message_id,
-            "reply_markup": markup_data,
         }
-        # Append in the order messages arrive; never sort by message ID.
+        # Conditional update prevents adding to a session cancelled or expired concurrently.
         result = await database.db.batch_sessions.update_one(
             {"_id": session["_id"], "status": "collecting",
              "$expr": {"$lt": [{"$size": "$items"}, 100]}},
@@ -199,22 +188,10 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
             await message.answer("Batch session changed. Use /batch to resume or start again.")
             return True
         latest = await _session(database.db, uid)
-        current_items = latest.get("items", []) if latest else items + [item]
-        batch = await FileRepository(database.db).save_batch(
-            current_items, uid, batch_id=session["batch_id"]
-        )
-        me = await message.bot.get_me()
-        link = f"https://t.me/{me.username}?start=batch_{batch['batch_id']}"
-        await message.answer(link, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="ᴄᴏᴘʏ", copy_text=CopyTextButton(text=link))
-        ]]))
-        await _render_status(message, len(current_items), latest, database)
+        await _render_status(message, len(latest.get("items", [])) if latest else len(items) + 1, latest, database)
     except TelegramAPIError:
-        log.exception("Batch source validation or link update failed")
-        await message.answer("Couldn't add this message. Confirm it is forwarded from the Database/Storage channel.")
-    except Exception:
-        log.exception("Batch link update failed")
-        await message.answer("Couldn't update the batch link. The collected messages are retained; try sending the channel post again.")
+        log.exception("Batch source copy failed")
+        await message.answer("Couldn't save this message. Check source-channel permissions.")
     return True
 
 @router.message(BatchState.collecting)
@@ -257,7 +234,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
                 pass
             await query.message.answer("Time's up. Try again.\n/batch")
         return
-    items = list(session.get("items", []))
+    items = sorted(session.get("items", []), key=lambda item: item.get("original_message_id", item.get("source_message_id", 0)))
     if not items:
         if query.message:
             await query.message.answer("Add at least one message first.")
