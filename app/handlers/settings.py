@@ -215,7 +215,7 @@ async def render_start_button(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True)) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = f"START MESSAGE BUTTONS\\nCustomize buttons shown with your start message.\\n\\nButton 1: {status1}\\nButton 2: {status2}"
+    text = f"START MESSAGE BUTTONS\nCustomize buttons shown with your start message.\n\nButton 1: {status1}\nButton 2: {status2}"
     await edit_page(query, text, kb([
         [(f"1 {status1}", "settings:start_button_toggle:1"), (f"2 {status2}", "settings:start_button_toggle:2")],
         [("1 BUTTON", "settings:start_button_1"), ("2 BUTTON", "settings:start_button_2")],
@@ -336,7 +336,7 @@ async def render_invalid_button(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = f"INVALID POST BUTTONS\\nCustomize buttons shown with invalid posts.\\n\\nButton 1: {status1}\\nButton 2: {status2}"
+    text = f"INVALID POST BUTTONS\nCustomize buttons shown with invalid posts.\n\nButton 1: {status1}\nButton 2: {status2}"
     await edit_page(query, text, kb([
         [(f"1 {status1}", "settings:invalid_button_toggle:1"), (f"2 {status2}", "settings:invalid_button_toggle:2")],
         [("1 BUTTON", "settings:invalid_button_1"), ("2 BUTTON", "settings:invalid_button_2")],
@@ -511,7 +511,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_message":
         await show_input_prompt(query, state, "forcejoin_message",
-            "Send the Force Join message.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — owner link\\n<code>{hindi_anime}</code> — Lexi Anime Hindi link\\n<code>{remaining_count}</code> — remaining channels count",
+            "Send the Force Join message.\n\n<code>{bot_mention}</code> — mention your bot\n<code>{mention}</code> — mention the user\n<code>{owner}</code> — owner link\n<code>{hindi_anime}</code> — Lexi Anime Hindi link\n<code>{remaining_count}</code> — remaining channels count",
             "forcejoin")
     elif action == "forcejoin_media":
         await edit_page(query, "FORCE JOIN MEDIA\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
@@ -548,7 +548,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "start_text": await render_start_text(query)
     elif action == "start_text_edit":
         await show_input_prompt(query, state, "start_text",
-            "Send the new Start Message text.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — link to the owner\\n<code>{hindi_anime}</code> — link to Lexi Anime Hindi",
+            "Send the new Start Message text.\n\n<code>{bot_mention}</code> — mention your bot\n<code>{mention}</code> — mention the user\n<code>{owner}</code> — link to the owner\n<code>{hindi_anime}</code> — link to Lexi Anime Hindi",
             "start_text")
     elif action == "start_text_see":
         import re
@@ -565,7 +565,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         }
         for token, replacement in values.items():
             preview = preview.replace(token, replacement)
-        preview = unescape(re.sub(r"</?[^>]+>", "", preview)).replace("\\n", "\n")
+        preview = unescape(re.sub(r"</?[^>]+>", "", preview)).replace("\n", "\n")
         await query.answer(preview[:190], show_alert=True)
         return
     elif action == "start_text_default":
@@ -613,8 +613,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", True)}, {"enabled": True, "text": DEFAULT_START_TEXT})
         await render_start(query, db)
     elif action == "start_about_text":
-        await state.set_state(SettingInput.waiting); await state.update_data(field="start_about_text")
-        if query.message: await query.message.answer("Send the About text to show when the Start Message About button is tapped.")
+        await render_start(query, db)
     elif action == "auto": await render_auto(query, db)
     elif action == "auto_toggle":
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
@@ -673,7 +672,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_invalid(query, db)
     elif action == "invalid_text":
         await show_input_prompt(query, state, "invalid_text",
-            "Send the new Invalid Message text.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — link to the owner\\n<code>{hindi_anime}</code> — link to Lexi Anime Hindi",
+            "Send the new Invalid Message text.\n\n<code>{bot_mention}</code> — mention your bot\n<code>{mention}</code> — mention the user\n<code>{owner}</code> — link to the owner\n<code>{hindi_anime}</code> — link to Lexi Anime Hindi",
             "invalid")
     elif action == "invalid_button":
         await state.update_data(button_panel_kind="invalid")
