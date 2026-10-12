@@ -141,9 +141,13 @@ async def render_start_text(query):
         [("《 BACK", "settings:start")],
     ]))
 
-async def render_start_button(query):
-    await edit_page(query, "S̲T̲A̲R̲T̲ ̲B̲U̲T̲T̲O̲N̲\n\nCustomize the button shown with your start message.", kb([
-        [("BUTTON TEXT", "settings:start_button_text"), ("BUTTON LINK", "settings:start_button_link")],
+async def render_start_button(query, db):
+    cfg = await db.settings.find_one({"key": "start_message"}) or {}
+    status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True)) else "OFF ❌"
+    status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
+    await edit_page(query, "START BUTTON\nCustomize the button shown with your start message.\n\nKeyboard Buttons", kb([
+        [(f"1 BUTTON TOGGLE: {status1}", "settings:start_button_toggle:1"), (f"2 BUTTON TOGGLE: {status2}", "settings:start_button_toggle:2")],
+        [("1 BUTTON", "settings:start_button_1"), ("2 BUTTON", "settings:start_button_2")],
         [("《 BACK", "settings:start")],
     ]))
 
@@ -237,10 +241,13 @@ async def render_invalid(query, db):
         [("《 BACK", "settings:home")],
     ]))
 
-async def render_invalid_button(query):
-    await edit_page(query, "INVALID BUTTON\nSelect an option below.", kb([
-        [("BUTTON TEXT", "settings:invalid_button_text")],
-        [("BUTTON LINK", "settings:invalid_button_link")],
+async def render_invalid_button(query, db):
+    cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
+    status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
+    status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
+    await edit_page(query, "INVALID BUTTON\nCustomize buttons shown with invalid posts.\n\nKeyboard Buttons", kb([
+        [(f"1 BUTTON TOGGLE: {status1}", "settings:invalid_button_toggle:1"), (f"2 BUTTON TOGGLE: {status2}", "settings:invalid_button_toggle:2")],
+        [("1 BUTTON", "settings:invalid_button_1"), ("2 BUTTON", "settings:invalid_button_2")],
         [("《 BACK", "settings:invalid")],
     ]))
 
@@ -453,11 +460,27 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await query.answer(f"✅ Default successfully set!\n\n{DEFAULT_START_TEXT}", show_alert=True)
         await render_start_text(query)
         return
-    elif action == "start_button": await render_start_button(query)
+    elif action == "start_button": await render_start_button(query, db)
+    elif action.startswith("start_button_toggle:"):
+        index = action.rsplit(":", 1)[1]
+        cfg = await db.settings.find_one({"key": "start_message"}) or {}
+        key = f"button{index}_enabled"
+        enabled = cfg.get(key, cfg.get("button_enabled", True) if index == "1" else False)
+        text_value = cfg.get(f"button{index}_text", cfg.get("button_text", "") if index == "1" else "")
+        url_value = cfg.get(f"button{index}_url", cfg.get("button_url", "") if index == "1" else "")
+        if not enabled and not (text_value and url_value):
+            await query.answer("Set this button's text and link before enabling it.", show_alert=True)
+            await render_start_button(query, db)
+        else:
+            await patch(db, "start_message", {key: not enabled}, {"enabled": True, "text": DEFAULT_START_TEXT})
+            await render_start_button(query, db)
+    elif action in ("start_button_1", "start_button_2"):
+        index = action.rsplit("_", 1)[1]
+        await state.set_state(SettingInput.waiting); await state.update_data(field=f"start_button_{index}_text", button_index=index)
+        if query.message: await query.message.answer(f"Send text for Start Button {index}. Then send its URL.")
     elif action in ("start_button_text", "start_button_link"):
-        await state.set_state(SettingInput.waiting); await state.update_data(field=action)
-        if query.message:
-            await query.message.answer("Send new button text for the start message." if action == "start_button_text" else "Send the new button link for the start message.")
+        await state.set_state(SettingInput.waiting); await state.update_data(field=action, button_index="1")
+        if query.message: await query.message.answer("Send text for Start Button 1. Then send its URL." if action == "start_button_text" else "Send the URL for Start Button 1.")
     elif action == "start_poster": await render_start_poster(query)
     elif action == "start_poster_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_poster")
@@ -536,10 +559,27 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "invalid_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_text")
         if query.message: await query.message.answer("Now send your new invalid message text. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code>.")
-    elif action == "invalid_button": await render_invalid_button(query)
+    elif action == "invalid_button": await render_invalid_button(query, db)
+    elif action.startswith("invalid_button_toggle:"):
+        index = action.rsplit(":", 1)[1]
+        cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
+        key = f"button{index}_enabled"
+        enabled = cfg.get(key, bool(cfg.get("button_text") and cfg.get("button_url")) if index == "1" else False)
+        text_value = cfg.get(f"button{index}_text", cfg.get("button_text", "") if index == "1" else "")
+        url_value = cfg.get(f"button{index}_url", cfg.get("button_url", "") if index == "1" else "")
+        if not enabled and not (text_value and url_value):
+            await query.answer("Set this button's text and link before enabling it.", show_alert=True)
+            await render_invalid_button(query, db)
+        else:
+            await patch(db, "invalid_post", {key: not enabled}, {"enabled": False})
+            await render_invalid_button(query, db)
+    elif action in ("invalid_button_1", "invalid_button_2"):
+        index = action.rsplit("_", 1)[1]
+        await state.set_state(SettingInput.waiting); await state.update_data(field=f"invalid_button_{index}_text", button_index=index)
+        if query.message: await query.message.answer(f"Send text for Invalid Button {index}. Then send its URL.")
     elif action in ("invalid_button_text", "invalid_button_link"):
-        await state.set_state(SettingInput.waiting); await state.update_data(field=action)
-        if query.message: await query.message.answer("Send new button text for the invalid post." if action == "invalid_button_text" else "Send new button link for the invalid post.")
+        await state.set_state(SettingInput.waiting); await state.update_data(field=action, button_index="1")
+        if query.message: await query.message.answer("Send text for Invalid Button 1. Then send its URL." if action == "invalid_button_text" else "Send the URL for Invalid Button 1.")
     elif action == "invalid_poster": await render_poster(query)
     elif action == "poster_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="poster")
