@@ -277,7 +277,7 @@ async def render_invalid_button(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = format_settings_page(f"INVALID POST BUTTONS\\nCustomize buttons shown with invalid posts.\\n\\nButton 1: {status1}\\nButton 2: {status2}")
+    text = format_settings_page(f"INVALID POST BUTTONS\nCustomize buttons shown with invalid posts.\n\nButton 1: {status1}\nButton 2: {status2}")
     markup = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
                   [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
@@ -768,7 +768,7 @@ async def send_button_settings_reply_panel(message: Message, db, kind: str, pane
     title = "START MESSAGE BUTTONS" if is_start else "INVALID POST BUTTONS"
     body = "Customize buttons shown with your start message." if is_start else "Customize buttons shown with invalid posts."
     markup = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
-    page_text = format_settings_page(f"{title}\\n{body}\\n\\nButton 1: {status1}\\nButton 2: {status2}")
+    page_text = format_settings_page(f"{title}\n{body}\n\nButton 1: {status1}\nButton 2: {status2}")
     edited = False
     if panel_chat_id and panel_message_id:
         try:
