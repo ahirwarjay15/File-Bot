@@ -980,6 +980,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "start_message", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT})
         await refresh_button_panel(message.bot, prev.get("panel_chat_id"), prev.get("panel_message_id"), db, "start")
         await state.clear()
+        await state.update_data(button_panel_kind=prev.get("panel_kind"))
         return
     if field.startswith("invalid_button_") and field.endswith("_text"):
         index = field.split("_")[2]
@@ -996,6 +997,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "invalid_post", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": False})
         await refresh_button_panel(message.bot, prev.get("panel_chat_id"), prev.get("panel_message_id"), db, "invalid")
         await state.clear()
+        await state.update_data(button_panel_kind=prev.get("panel_kind"))
         return
     if field == "start_text":
         await patch(db, "start_message", {"text": value}, {"enabled": True})
