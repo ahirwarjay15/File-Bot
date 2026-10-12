@@ -961,8 +961,8 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         return
     if field == "forcejoin_message":
         await patch(db, "force_join", {"message": value})
+        await finish_input_panel(message, state, "FORCE JOIN MESSAGE", "forcejoin")
         await state.clear()
-        await message.answer("✨ Successfully updated force-join message.")
         return
     if field == "forcejoin_verify_text":
         await patch(db, "force_join", {"verify_text": value})
@@ -1096,7 +1096,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         return
     if field == "start_text":
         await patch(db, "start_message", {"text": value}, {"enabled": True})
-        await message.answer("✨ Successfully updated your start message text.")
+        await finish_input_panel(message, state, "START MESSAGE TEXT", "start_text")
+        await state.clear()
+        return
     elif field == "start_button_text":
         await patch(db, "start_message", {"button_text": value, "button_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT, "button_url": "http://t.me/lexiAnime", "about_enabled": True})
         await message.answer("✨ Successfully updated start message button text.")
@@ -1118,7 +1120,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await message.answer("✨ After-delete button text updated successfully.")
     elif field == "invalid_text":
         await patch(db, "invalid_post", {"text": value}, {"enabled": False, "about_enabled": False})
-        await message.answer("✨ Successfully updated your bot's invalid message text.")
+        await finish_input_panel(message, state, "INVALID MESSAGE TEXT", "invalid")
+        await state.clear()
+        return
     elif field == "invalid_button_text":
         await state.update_data(button_text=value, field="invalid_button_link")
         await message.answer("Send new button link for the invalid post.")
