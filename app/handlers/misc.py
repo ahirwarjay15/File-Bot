@@ -138,4 +138,5 @@ async def invalid_about_back(query: CallbackQuery, settings: Settings, database)
     cfg = await database.db.settings.find_one({"key": "invalid_post", "enabled": True})
     if not cfg:
         return
-    await _edit_same_post(message, _render_user_text(cfg.get("text") or DEFAULT_INVALID, user), _invalid_markup(cfg))
+    me = await query.bot.get_me()
+    await _edit_same_post(message, _render_user_text(cfg.get("text") or DEFAULT_INVALID, user, me), _invalid_markup(cfg))
