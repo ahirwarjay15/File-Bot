@@ -27,7 +27,7 @@ def unicode_buttons(value: str) -> str:
     return "".join(ch.translate(table) if ch.isascii() and ch.isalpha() else ch for ch in str(value))
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."
-DEFAULT_START_TEXT = "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\n\nBy: Lexi Anime\n\nDeveloper: Lexi"
+DEFAULT_START_TEXT = "<b>Hey {user_mention}! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by:</b> {owner} <b>✦ Made for:</b> {anime}"
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
 DEFAULT_AFTER_BUTTON = "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ"
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
@@ -407,7 +407,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_message":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_message")
-        if query.message: await query.message.answer("Send your bot's new force-join message. Variables: {first_name}, {last_name}, {mention}, {remaining_count}.")
+        if query.message: await query.message.answer("Send your bot's new force-join message. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code> <code>{remaining_count}</code>.")
     elif action == "forcejoin_media":
         await edit_page(query, "F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲ ̲M̲E̲D̲I̲A̲\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
             [("✚ ADD", "settings:forcejoin_media_add"), ("REMOVE", "settings:forcejoin_media_remove")],
@@ -443,7 +443,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "start_text": await render_start_text(query)
     elif action == "start_text_edit":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_text")
-        if query.message: await query.message.answer("Variables:\n{first_name} — User first name\n{last_name} — User last name\n{mention} — Clickable mention of the user\n\nNow send your new start message text.")
+        if query.message: await query.message.answer("Variables (tap individually to copy):\n<code>{bot}</code>\n<code>{bot_mention}</code>\n<code>{first_name}</code>\n<code>{last_name}</code>\n<code>{user}</code>\n<code>{owner}</code>\n<code>{anime}</code>\n<code>{hindi_anime}</code>\n\nNow send your new start message text.")
     elif action == "start_text_see":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
         await query.answer(str(cfg.get("text") or DEFAULT_START_TEXT), show_alert=True)
@@ -535,7 +535,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_invalid(query, db)
     elif action == "invalid_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_text")
-        if query.message: await query.message.answer("Now send your new invalid message text. Variables: {first_name}, {last_name}, {mention}.")
+        if query.message: await query.message.answer("Now send your new invalid message text. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code>.")
     elif action == "invalid_button": await render_invalid_button(query)
     elif action in ("invalid_button_text", "invalid_button_link"):
         await state.set_state(SettingInput.waiting); await state.update_data(field=action)
