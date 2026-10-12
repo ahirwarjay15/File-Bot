@@ -1001,7 +1001,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                 await message.bot.edit_message_text(
                     chat_id=panel_chat,
                     message_id=panel_message,
-                    text=format_settings_page("Custom Button:\\n\\nYou can add a custom buttons to your files."),
+                    text=format_settings_page("Custom Button:\n\nYou can add a custom buttons to your files."),
                     parse_mode="HTML",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
                     link_preview_options={"is_disabled": True},
