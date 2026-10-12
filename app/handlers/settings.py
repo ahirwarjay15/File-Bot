@@ -27,7 +27,7 @@ def unicode_buttons(value: str) -> str:
     return "".join(ch.translate(table) if ch.isascii() and ch.isalpha() else ch for ch in str(value))
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."
-DEFAULT_START_TEXT = "<b>Hey {user_mention}! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by:</b> {owner} <b>✦ Made for:</b> {anime}"
+DEFAULT_START_TEXT = "<b>Hey 𝑳𝑬𝑿𝑰! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by: Lexi</b>\n<b>✦ Made for: Lexi Anime</b>"
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
 DEFAULT_AFTER_BUTTON = "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ"
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
@@ -503,10 +503,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action in ("start_button_1", "start_button_2"):
         index = action.rsplit("_", 1)[1]
         await state.set_state(SettingInput.waiting); await state.update_data(field=f"start_button_{index}_text", button_index=index, panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="start")
-        if query.message: await query.message.answer(f"Send text for Start Button {index}. Then send its URL.")
+        if query.message: await query.message.answer(f"Send text for Start Button {index}.")
     elif action in ("start_button_text", "start_button_link"):
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_button_1_text" if action == "start_button_text" else "start_button_1_link", button_index="1", panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="start")
-        if query.message: await query.message.answer("Send text for Start Button 1. Then send its URL." if action == "start_button_text" else "Send the URL for Start Button 1.")
+        if query.message: await query.message.answer("Send text for Start Button 1." if action == "start_button_text" else "Now send the URL for Start Button 1.")
     elif action == "start_poster": await render_start_poster(query)
     elif action == "start_poster_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_poster")
