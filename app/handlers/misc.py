@@ -23,11 +23,26 @@ def _mention(user):
     return f'<a href="tg://user?id={user.id}">{escape(user.first_name or "there")}</a>'
 
 
-def _render_user_text(raw, user):
+def _render_user_text(raw, user, bot):
     text = str(raw or DEFAULT_INVALID)
-    text = text.replace("{first_name}", escape(user.first_name or ""))
-    text = text.replace("{last_name}", escape(user.last_name or ""))
-    return text.replace("{mention}", _mention(user))
+    username = getattr(bot, "username", None)
+    bot_name = escape(getattr(bot, "full_name", None) or getattr(bot, "first_name", None) or "Bot")
+    bot_mention = f'<a href="https://t.me/{escape(username)}">{bot_name}</a>' if username else bot_name
+    values = {
+        "{bot_mention}": bot_mention,
+        "{bot}": bot_mention,
+        "{user_mention}": _mention(user),
+        "{user}": _mention(user),
+        "{first_name}": escape(user.first_name or ""),
+        "{last_name}": escape(user.last_name or ""),
+        "{owner}": '<a href="https://t.me/lexxiowner">Lexi</a>',
+        "{anime}": '<a href="https://t.me/lexianime">Lexi Anime</a>',
+        "{hindi_anime}": '<a href="https://t.me/lexianimehindi">Lexi Anime</a>',
+        "{mention}": _mention(user),
+    }
+    for token, replacement in values.items():
+        text = text.replace(token, replacement)
+    return text
 
 
 def _about_markup():
@@ -70,7 +85,7 @@ async def invalid_post(message: Message, settings: Settings, database):
     cfg = await database.db.settings.find_one({"key": "invalid_post", "enabled": True})
     if not cfg:
         return
-    text = _render_user_text(cfg.get("text") or DEFAULT_INVALID, user)
+    me = await message.bot.get_me()\n    text = _render_user_text(cfg.get("text") or DEFAULT_INVALID, user, me)
     markup = _invalid_markup(cfg)
     try:
         if cfg.get("poster_file_id"):
