@@ -175,6 +175,11 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
             "file_name": message.document.file_name if message.document else None,
             "source_message_date": message.date.isoformat() if message.date else None,
             "original_message_id": message.message_id,
+            "reply_markup": (
+                message.reply_markup.model_dump(mode="json", exclude_none=True)
+                if message.reply_markup else None
+            ),
+            "original_has_buttons": bool(message.reply_markup and message.reply_markup.inline_keyboard),
         }
         # Conditional update prevents adding to a session cancelled or expired concurrently.
         result = await database.db.batch_sessions.update_one(
