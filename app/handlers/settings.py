@@ -277,16 +277,17 @@ async def render_invalid_button(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = format_settings_page(f"INVALID BUTTON\n\nCustomize buttons shown with invalid posts.\n\nButton 1: {status1}\nButton 2: {status2}")
+    text = format_settings_page(f"INVALID POST BUTTONS\\nCustomize buttons shown with invalid posts.\\n\\nButton 1: {status1}\\nButton 2: {status2}")
+    markup = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
+                  [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
+                  [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
     if query.message:
         try:
-            await query.message.edit_reply_markup(reply_markup=None)
+            await query.message.edit_text(text, parse_mode="HTML")
         except TelegramAPIError:
             pass
-        await query.message.answer(text, parse_mode="HTML", reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
-                      [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
-                      [KeyboardButton(text="《 BACK")]], resize_keyboard=True))
+        return await query.message.answer(text, parse_mode="HTML", reply_markup=markup)
 
 
 async def render_poster(query):
@@ -602,7 +603,9 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Now send your new invalid message text. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code>.", parse_mode="HTML")
     elif action == "invalid_button":
         await state.update_data(button_panel_kind="invalid")
-        await render_invalid_button(query, db)
+        panel = await render_invalid_button(query, db)
+        if panel:
+            await state.update_data(button_panel_chat_id=panel.chat.id, button_panel_message_id=panel.message_id)
     elif action.startswith("invalid_button_toggle:"):
         index = action.rsplit(":", 1)[1]
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
