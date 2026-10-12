@@ -97,8 +97,9 @@ def test_settings_pages_get_shared_heading_and_body_style():
 
     raw = "AUTO DELETE" + "\n" + "Automatically delete delivered files." + "\n" + "Status: DISABLED"
     rendered = format_settings_page(raw)
-    assert rendered.startswith("<b>AUTO DELETE</b>" + "\n" + "___________" + "\n\n" + "<i>")
-    assert "_" * 11 in rendered
+    assert rendered.startswith("<b><u>AUTO DELETE</u></b>" + "\n\n" + "<i>")
+    assert "___________" not in rendered
+    assert "<u>AUTO DELETE</u>" in rendered
     assert rendered.endswith("</i>")
 
 def test_common_variables_render_bot_and_channel_links_in_start_and_invalid_text():
