@@ -91,6 +91,7 @@ async def edit_page(query, text, keyboard):
 
 async def render_home(query):
     me = await query.bot.get_me()
+    # Keep the bot name as plain escaped text: no clickable URL means no preview.
     name = __import__("html").escape(me.full_name)
     await edit_page(query, f"CUSTOMIZE\nName: {name}\n\nConfigure Bot Settings Using the Buttons Below.", kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
