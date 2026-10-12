@@ -173,7 +173,7 @@ async def render_home(query):
     # The bot name remains a clickable mention, while previews are disabled in edit_page.
     import html
     name = f'<a href="https://t.me/{me.username}">{html.escape(me.full_name)}</a>' if me.username else html.escape(me.full_name)
-    await edit_page(query, f"CUSTOMIZE\nName: {name}\n\nConfigure Bot Settings Using the Buttons Below.", kb([
+    await edit_page(query, f"CUSTOMIZE\n✰ Name: {name}\n\nConfigure Bot Settings Using the Buttons Below.", kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
