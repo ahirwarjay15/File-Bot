@@ -96,7 +96,7 @@ async def show_input_prompt(query, state, field, prompt, back_action, **extra):
         input_back_action=back_action,
         **extra,
     )
-    await edit_page(query, f"ENTER VALUE\\n\\n{prompt}", kb([[("《 BACK", f"settings:{back_action}")]]))
+    await edit_page(query, f"ENTER VALUE\n\n{prompt}", kb([[("《 BACK", f"settings:{back_action}")]]))
 
 
 async def finish_input_panel(message, state, title, back_action):
@@ -109,7 +109,7 @@ async def finish_input_panel(message, state, title, back_action):
             await message.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"<b><u>{title}</u></b>\\n\\nSaved successfully.",
+                text=f"<b><u>{title}</u></b>\n\nSaved successfully.",
                 parse_mode="HTML",
                 reply_markup=kb([[("《 BACK", f"settings:{back_action}")]]),
                 link_preview_options={"is_disabled": True},
