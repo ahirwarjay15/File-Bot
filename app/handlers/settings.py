@@ -85,8 +85,9 @@ async def edit_page(query, text, keyboard):
         await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 async def render_home(query):
-    name = query.from_user.mention_html() if query.from_user else "User"
-    await edit_page(query, f"<b><u>C̲U̲S̲T̲O̲M̲I̲Z̲E̲</u></b>\n\nName: {name}\n\n<i>Configure Your Bot Settings Using the Buttons Below.</i>", kb([
+    me = await query.bot.get_me()
+    name = f'<a href="https://t.me/{me.username}">{__import__("html").escape(me.full_name)}</a>' if me.username else __import__("html").escape(me.full_name)
+    await edit_page(query, f"<b><u>C̲U̲S̲T̲O̲M̲I̲Z̲E̲</u></b>\n\nName: {name}\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
@@ -145,8 +146,8 @@ async def render_start_button(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True)) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    await edit_page(query, "START BUTTON\nCustomize the button shown with your start message.\n\nKeyboard Buttons", kb([
-        [(f"1 BUTTON TOGGLE: {status1}", "settings:start_button_toggle:1"), (f"2 BUTTON TOGGLE: {status2}", "settings:start_button_toggle:2")],
+    await edit_page(query, f"START BUTTON\\nCustomize the button shown with your start message.\\n\\nButton 1: {status1}\\nButton 2: {status2}\\n\\nKeyboard Buttons", kb([
+        [(f"1 {status1}", "settings:start_button_toggle:1"), (f"2 {status2}", "settings:start_button_toggle:2")],
         [("1 BUTTON", "settings:start_button_1"), ("2 BUTTON", "settings:start_button_2")],
         [("《 BACK", "settings:start")],
     ]))
@@ -164,9 +165,9 @@ async def refresh_button_panel(bot, chat_id, message_id, db, kind):
     title = "START BUTTON" if is_start else "INVALID BUTTON"
     back = "settings:start" if is_start else "settings:invalid"
     prefix = "start" if is_start else "invalid"
-    page_text = format_settings_page(f"{title}\nCustomize buttons shown with {'your start message' if is_start else 'invalid posts'}.\n\nKeyboard Buttons")
+    page_text = format_settings_page(f"{title}\\nCustomize buttons shown with {'your start message' if is_start else 'invalid posts'}.\\n\\nButton 1: {status1}\\nButton 2: {status2}\\n\\nKeyboard Buttons")
     keyboard = kb([
-        [(f"1 BUTTON TOGGLE: {status1}", f"settings:{prefix}_button_toggle:1"), (f"2 BUTTON TOGGLE: {status2}", f"settings:{prefix}_button_toggle:2")],
+        [(f"1 {status1}", f"settings:{prefix}_button_toggle:1"), (f"2 {status2}", f"settings:{prefix}_button_toggle:2")],
         [("1 BUTTON", f"settings:{prefix}_button_1"), ("2 BUTTON", f"settings:{prefix}_button_2")],
         [("《 BACK", back)],
     ])
@@ -205,7 +206,7 @@ async def render_animation(query, db):
     await edit_page(query, f"ANIMATION\n\nAdd a custom animation for the verification process.\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {frames_text}\nSpeed: {speed:.2f}s per frame\nMode: {mode_label}\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
         [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
         [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
-        [(f"MODE: {mode_label}", "settings:animation_mode_toggle")],
+        [("MODE", "settings:animation_mode_toggle")],
         [("《 BACK", "settings:home")],
     ]))
 
@@ -269,8 +270,8 @@ async def render_invalid_button(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    await edit_page(query, "INVALID BUTTON\nCustomize buttons shown with invalid posts.\n\nKeyboard Buttons", kb([
-        [(f"1 BUTTON TOGGLE: {status1}", "settings:invalid_button_toggle:1"), (f"2 BUTTON TOGGLE: {status2}", "settings:invalid_button_toggle:2")],
+    await edit_page(query, f"INVALID BUTTON\\nCustomize buttons shown with invalid posts.\\n\\nButton 1: {status1}\\nButton 2: {status2}\\n\\nKeyboard Buttons", kb([
+        [(f"1 {status1}", "settings:invalid_button_toggle:1"), (f"2 {status2}", "settings:invalid_button_toggle:2")],
         [("1 BUTTON", "settings:invalid_button_1"), ("2 BUTTON", "settings:invalid_button_2")],
         [("《 BACK", "settings:invalid")],
     ]))
@@ -317,8 +318,9 @@ async def render_mods(query, db):
 async def settings_command(message: Message, settings: Settings, database):
     if not await allowed(message, settings, database):
         return
-    name = message.from_user.mention_html() if message.from_user else "User"
-    await message.answer(f"<b><u>C̲U̲S̲T̲O̲M̲I̲Z̲E̲</u></b>\n\nName: {name}\n\n<i>Configure Your Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", reply_markup=kb([
+    me = await message.bot.get_me()
+    name = f'<a href="https://t.me/{me.username}">{__import__("html").escape(me.full_name)}</a>' if me.username else __import__("html").escape(me.full_name)
+    await message.answer(f"<b><u>C̲U̲S̲T̲O̲M̲I̲Z̲E̲</u></b>\n\nName: {name}\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", reply_markup=kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
