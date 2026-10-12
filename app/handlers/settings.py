@@ -146,7 +146,7 @@ async def render_start_button(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True)) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    await edit_page(query, f"START BUTTON\\nCustomize the button shown with your start message.\\n\\nButton 1: {status1}\\nButton 2: {status2}\\n\\nKeyboard Buttons", kb([
+    await edit_page(query, f"START BUTTON\nCustomize the button shown with your start message.\n\nButton 1: {status1}\nButton 2: {status2}\n\nKeyboard Buttons", kb([
         [(f"1 {status1}", "settings:start_button_toggle:1"), (f"2 {status2}", "settings:start_button_toggle:2")],
         [("1 BUTTON", "settings:start_button_1"), ("2 BUTTON", "settings:start_button_2")],
         [("《 BACK", "settings:start")],
@@ -165,7 +165,7 @@ async def refresh_button_panel(bot, chat_id, message_id, db, kind):
     title = "START BUTTON" if is_start else "INVALID BUTTON"
     back = "settings:start" if is_start else "settings:invalid"
     prefix = "start" if is_start else "invalid"
-    page_text = format_settings_page(f"{title}\\nCustomize buttons shown with {'your start message' if is_start else 'invalid posts'}.\\n\\nButton 1: {status1}\\nButton 2: {status2}\\n\\nKeyboard Buttons")
+    page_text = format_settings_page(f"{title}\nCustomize buttons shown with {'your start message' if is_start else 'invalid posts'}.\n\nButton 1: {status1}\nButton 2: {status2}\n\nKeyboard Buttons")
     keyboard = kb([
         [(f"1 {status1}", f"settings:{prefix}_button_toggle:1"), (f"2 {status2}", f"settings:{prefix}_button_toggle:2")],
         [("1 BUTTON", f"settings:{prefix}_button_1"), ("2 BUTTON", f"settings:{prefix}_button_2")],
@@ -270,7 +270,7 @@ async def render_invalid_button(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    await edit_page(query, f"INVALID BUTTON\\nCustomize buttons shown with invalid posts.\\n\\nButton 1: {status1}\\nButton 2: {status2}\\n\\nKeyboard Buttons", kb([
+    await edit_page(query, f"INVALID BUTTON\nCustomize buttons shown with invalid posts.\n\nButton 1: {status1}\nButton 2: {status2}\n\nKeyboard Buttons", kb([
         [(f"1 {status1}", "settings:invalid_button_toggle:1"), (f"2 {status2}", "settings:invalid_button_toggle:2")],
         [("1 BUTTON", "settings:invalid_button_1"), ("2 BUTTON", "settings:invalid_button_2")],
         [("《 BACK", "settings:invalid")],
