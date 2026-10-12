@@ -63,9 +63,10 @@ def format_settings_page(text: str) -> str:
     """Render consistent headings with a real underscore divider."""
     heading, separator, body = str(text).partition("\n")
     heading = heading.strip().replace("\u0332", "")
-    # Strip old HTML/Unicode underline markup before applying one shared style.
+    # Strip old HTML/Unicode underline and inter-letter separator artifacts.
     heading = heading.replace("<u>", "").replace("</u>", "").replace("<b>", "").replace("</b>", "")
     heading = heading.replace("_", "").strip()
+    heading = " ".join(heading.split())
     body = body.lstrip("\n")
     divider = "_" * max(7, min(len(heading), 36))
     heading = f"<b>{heading}</b>\n{divider}"
@@ -156,9 +157,13 @@ async def render_start_button(query, db):
                   [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
                   [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
     if query.message:
-        # Reply keyboards are chat-level and cannot be attached by editing a message.
-        # Send the panel once; subsequent status changes edit this stored message.
+        # Telegram reply keyboards can only be attached to a sent message.
+        # Replace the parent settings panel so only one panel remains visible.
         panel = await query.message.answer(text, parse_mode="HTML", reply_markup=markup, link_preview_options={"is_disabled": True})
+        try:
+            await query.message.delete()
+        except TelegramAPIError:
+            pass
         return panel
 
 
@@ -285,7 +290,12 @@ async def render_invalid_button(query, db):
                   [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
                   [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
     if query.message:
-        return await query.message.answer(text, parse_mode="HTML", reply_markup=markup, link_preview_options={"is_disabled": True})
+        panel = await query.message.answer(text, parse_mode="HTML", reply_markup=markup, link_preview_options={"is_disabled": True})
+        try:
+            await query.message.delete()
+        except TelegramAPIError:
+            pass
+        return panel
 
 
 async def render_poster(query):
