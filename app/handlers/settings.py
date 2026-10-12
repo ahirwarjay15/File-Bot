@@ -173,7 +173,7 @@ async def render_home(query):
     # The bot name remains a clickable mention, while previews are disabled in edit_page.
     import html
     name = f'<a href="https://t.me/{me.username}">{html.escape(me.full_name)}</a>' if me.username else html.escape(me.full_name)
-    await edit_page(query, f"CUSTOMIZE\n✰ Name: {name}\n\nConfigure Bot Settings Using the Buttons Below.", kb([
+    await edit_page(query, f"CUSTOMIZE\n<i>✰ Name: {name}</i>\n\nConfigure Bot Settings Using the Buttons Below.", kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
@@ -429,7 +429,7 @@ async def settings_command(message: Message, settings: Settings, database):
         return
     me = await message.bot.get_me()
     name = f'<a href="https://t.me/{me.username}">{__import__("html").escape(me.full_name)}</a>' if me.username else __import__("html").escape(me.full_name)
-    await message.answer(f"<b><u>CUSTOMIZE</u></b>\n\n✰ Name: {name}\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", link_preview_options={"is_disabled": True}, reply_markup=kb([
+    await message.answer(f"<b><u>CUSTOMIZE</u></b>\n\n<i>✰ Name: {name}</i>\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", link_preview_options={"is_disabled": True}, reply_markup=kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
@@ -1042,8 +1042,17 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.answer("Maximum 10 force-join channels allowed.")
             await state.clear()
             return
+        # External links are stored inside force_join.other_links, not as
+        # separate force_join_channel documents. Compare normalized URLs there
+        # as well as against any legacy standalone channel records.
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        configured_urls = {
+            normalize_http_url(str(item.get("url", "")))
+            for item in cfg.get("other_links", [])
+            if isinstance(item, dict) and item.get("url")
+        }
         existing_other = await db.settings.find_one({"key": "force_join_channel", "url": value})
-        if existing_other:
+        if value in configured_urls or existing_other:
             await message.answer("That link is already configured.")
             return
         await state.update_data(field="forcejoin_other_label", pending_url=value)
