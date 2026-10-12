@@ -79,11 +79,16 @@ async def receive_file(message:Message,state:FSMContext,settings:Settings,databa
             source_message_id = copied.message_id
 
         name = message.document.file_name if message.document else None
+        markup_data = (
+            message.reply_markup.model_dump(mode="json", exclude_none=True)
+            if message.reply_markup else None
+        )
         record = await FileRepository(database.db).save_file(
             source_chat_id=source_chat_id,
             source_message_id=source_message_id,
             created_by=message.from_user.id,
             file_name=name,
+            reply_markup=markup_data,
         )
         me = await message.bot.get_me()
         link = f"https://t.me/{me.username}?start=file_{record['file_key']}"
