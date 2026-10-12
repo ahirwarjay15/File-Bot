@@ -146,16 +146,18 @@ async def render_start_button(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True)) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = format_settings_page(f"START BUTTON\\n\\nCustomize the button shown with your start message.\\n\\nButton 1: {status1}\\nButton 2: {status2}")
+    text = format_settings_page(f"START BUTTON\n\nCustomize the button shown with your start message.\n\nButton 1: {status1}\nButton 2: {status2}")
+    markup = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
+                  [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
+                  [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
     if query.message:
         try:
-            await query.message.edit_reply_markup(reply_markup=None)
+            await query.message.edit_text(text, parse_mode="HTML")
         except TelegramAPIError:
             pass
-        await query.message.answer(text, parse_mode="HTML", reply_markup=ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
-                      [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
-                      [KeyboardButton(text="《 BACK")]], resize_keyboard=True))
+        panel = await query.message.answer(text, parse_mode="HTML", reply_markup=markup)
+        await query.bot_data.get("unused", None) if False else None
 
 
 async def refresh_button_panel(bot, chat_id, message_id, db, kind):
@@ -166,7 +168,7 @@ async def refresh_button_panel(bot, chat_id, message_id, db, kind):
     cfg = await db.settings.find_one({"key": "start_message" if is_start else "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True) if is_start else bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    title = "START BUTTON" if is_start else "INVALID BUTTON"
+    title = "START MESSAGE BUTTONS" if is_start else "INVALID POST BUTTONS"
     back = "settings:start" if is_start else "settings:invalid"
     prefix = "start" if is_start else "invalid"
     page_text = format_settings_page(f"{title}\nCustomize buttons shown with {'your start message' if is_start else 'invalid posts'}.\n\nButton 1: {status1}\nButton 2: {status2}")
@@ -175,8 +177,9 @@ async def refresh_button_panel(bot, chat_id, message_id, db, kind):
         [("1 BUTTON", f"settings:{prefix}_button_1"), ("2 BUTTON", f"settings:{prefix}_button_2")],
         [("《 BACK", back)],
     ])
+    markup = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
     try:
-        await bot.send_message(chat_id=chat_id, text=page_text, reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True), parse_mode="HTML")
+        await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=page_text, parse_mode="HTML")
     except TelegramAPIError:
         pass
 
@@ -274,7 +277,7 @@ async def render_invalid_button(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = format_settings_page(f"INVALID BUTTON\\n\\nCustomize buttons shown with invalid posts.\\n\\nButton 1: {status1}\\nButton 2: {status2}")
+    text = format_settings_page(f"INVALID BUTTON\n\nCustomize buttons shown with invalid posts.\n\nButton 1: {status1}\nButton 2: {status2}")
     if query.message:
         try:
             await query.message.edit_reply_markup(reply_markup=None)
@@ -716,12 +719,12 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
         await state.clear()
         await message.answer("Reply keyboard closed.", reply_markup=ReplyKeyboardRemove())
         if kind == "start":
-            await message.answer(format_settings_page("START MESSAGE\\n\\nCustomize your bot's start message using the following options."), parse_mode="HTML", reply_markup=kb([
+            await message.answer(format_settings_page("START MESSAGE\n\nCustomize your bot's start message using the following options."), parse_mode="HTML", reply_markup=kb([
                 [("DISABLE/ENABLE", "settings:start_toggle")], [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
                 [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")], [("《 BACK", "settings:home")],
             ]))
         else:
-            await message.answer(format_settings_page("INVALID POST\\n\\nSet a response for users who send normal messages to the bot."), parse_mode="HTML", reply_markup=kb([
+            await message.answer(format_settings_page("INVALID POST\n\nSet a response for users who send normal messages to the bot."), parse_mode="HTML", reply_markup=kb([
                 [("DISABLE/ENABLE", "settings:invalid_toggle")], [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
                 [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")], [("《 BACK", "settings:home")],
             ]))
@@ -759,7 +762,7 @@ async def send_button_settings_reply_panel(message: Message, db, kind: str):
     title = "START BUTTON" if is_start else "INVALID BUTTON"
     body = "Customize the button shown with your start message." if is_start else "Customize buttons shown with invalid posts."
     markup = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
-    await message.answer(format_settings_page(f"{title}\\n\\n{body}\\n\\nButton 1: {status1}\\nButton 2: {status2}"), parse_mode="HTML", reply_markup=markup)
+    panel = await message.answer(format_settings_page(f"{title}\n\n{body}\n\nButton 1: {status1}\nButton 2: {status2}"), parse_mode="HTML", reply_markup=markup)
 
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
