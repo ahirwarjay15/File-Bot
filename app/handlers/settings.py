@@ -178,6 +178,7 @@ async def render_home(query):
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
         [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
+        [("CUSTOM BUTTON", "settings:custom_button")],
         [("《 BACK", "settings:home_back")],
     ]))
 
@@ -390,6 +391,21 @@ async def render_shortener(query, db):
         [("REMOVE", "settings:shortener_remove")], [("《 BACK", "settings:home")],
     ]))
 
+async def render_custom_buttons(query, db):
+    cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
+    buttons = cfg.get("buttons", [])[:2]
+    rows = []
+    for i, item in enumerate(buttons):
+        rows.append([
+            (item.get("text", f"Button {i+1}"), f"settings:custom_button_unused"),
+            ("✖", f"settings:custom_button_remove:{i}"),
+        ])
+    if len(buttons) < 2:
+        rows.append([("✚", "settings:custom_button_add")])
+    rows.append([("《 BACK", "settings:home")])
+    await edit_page(query, "Custom Button:\\n\\nYou can add a custom buttons to your files.", kb(rows))
+
+
 async def render_mods(query, db):
     mods = await db.moderators.find({}).sort("user_id", 1).to_list(length=3)
     lines = [f"• {m.get('first_name') or ('User ' + str(m['user_id']))} — {m['user_id']}" for m in mods]
@@ -429,7 +445,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                   "auto", "auto_time", "auto_message", "after", "after_text", "invalid", "invalid_text",
                   "invalid_button", "invalid_poster", "invalid_about", "forcejoin", "forcejoin_add",
                   "forcejoin_message", "forcejoin_media", "forcejoin_animation", "animation_mode",
-                  "mods", "shortener"}:
+                  "mods", "shortener", "custom_button"}:
         pending = await state.get_data()
         await remove_input_prompt(query.bot, pending)
         await state.clear()
@@ -558,6 +574,26 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             channels.pop(index)
             await patch(db, "force_join", {"channels": channels})
         await render_forcejoin(query, db, settings)
+    elif action == "custom_button": await render_custom_buttons(query, db)
+    elif action == "custom_button_add":
+        cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
+        if len(cfg.get("buttons", [])) >= 2:
+            await query.answer("Maximum 2 custom buttons allowed.", show_alert=True)
+            await render_custom_buttons(query, db)
+            return
+        await state.set_state(SettingInput.waiting)
+        await state.update_data(field="custom_button_text")
+        if query.message: await query.message.answer("Send the custom button text.")
+    elif action.startswith("custom_button_remove:"):
+        index = int(action.rsplit(":", 1)[1])
+        cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
+        buttons = list(cfg.get("buttons", []))
+        if 0 <= index < len(buttons):
+            buttons.pop(index)
+            await patch(db, "custom_buttons", {"buttons": buttons})
+        await render_custom_buttons(query, db)
+    elif action == "custom_button_unused":
+        await query.answer("This button is a preview of the saved label.", show_alert=False)
     elif action == "start": await render_start(query, db)
     elif action == "start_toggle":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
@@ -900,6 +936,34 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     field = data.get("field")
     db = database.db
     value = (message.text or "").strip()
+    if field == "custom_button_text":
+        if not value or len(value) > 64:
+            await message.answer("Button text must be between 1 and 64 characters.")
+            return
+        await state.update_data(custom_button_pending_text=value, field="custom_button_url")
+        await message.answer("Now send the button URL (https://... or t.me/...).")
+        return
+    if field == "custom_button_url":
+        normalized = normalize_http_url(value)
+        if not normalized:
+            await message.answer("Please send a valid http/https URL.")
+            return
+        prev = await state.get_data()
+        cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
+        buttons = list(cfg.get("buttons", []))
+        if len(buttons) >= 2:
+            await message.answer("Maximum 2 custom buttons allowed.")
+            await state.clear()
+            return
+        buttons.append({"text": prev.get("custom_button_pending_text", ""), "url": normalized})
+        await patch(db, "custom_buttons", {"buttons": buttons})
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
+        await state.clear()
+        await message.answer("Custom button saved. Open /settings → CUSTOM BUTTON to manage it.")
+        return
     if field == "animation_prefix":
         await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
         await state.clear()
