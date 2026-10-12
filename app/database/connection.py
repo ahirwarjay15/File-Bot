@@ -24,6 +24,7 @@ class Database:
             await self.db.delivery_requests.create_index([("request_key",ASCENDING)],unique=True)
             await self.db.delivery_requests.create_index([("status",ASCENDING),("updated_at",ASCENDING)])
             await self.db.batches.create_index([("batch_id",ASCENDING)],unique=True,sparse=True)
+            await self.db.deeplink_codes.create_index([("code",ASCENDING)],unique=True)
             await self.db.broadcast_drafts.create_index([("admin_id",ASCENDING)],unique=True)
             await self.db.broadcast_jobs.create_index([("draft_id",ASCENDING)],unique=True)
             await self.db.broadcast_jobs.create_index([("status",ASCENDING),("created_at",ASCENDING)])
