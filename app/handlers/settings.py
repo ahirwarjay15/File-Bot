@@ -62,7 +62,7 @@ def kb(rows):
 def format_settings_page(text: str) -> str:
     """Apply the shared blueprint heading/body style to plain settings pages."""
     heading, separator, body = str(text).partition("\n")
-    heading = heading.strip()
+    heading = heading.strip().replace("\u0332", "")
     body = body.lstrip("\n")
     if not heading.startswith("<b>") and not heading.startswith("<u>"):
         heading = f"<b><u>{heading}</u></b>"
