@@ -34,5 +34,6 @@ async def test_single_file_uses_durable_delivery_queue(monkeypatch):
     assert result == (1, 0)
     assert captured["request_key"] == "start:42:10"
     assert captured["batch"]["items"] == [{
-        "source_chat_id": -100123, "source_message_id": 77, "file_name": "x.mp4"
+        "source_chat_id": -100123, "source_message_id": 77,
+        "file_name": "x.mp4", "reply_markup": None,
     }]
