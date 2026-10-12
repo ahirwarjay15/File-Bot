@@ -60,23 +60,29 @@ def kb(rows):
     ])
 
 def format_settings_page(text: str) -> str:
-    """Render every settings page with an underlined main heading and no divider."""
-    heading, separator, body = str(text).partition("\n")
-    heading = heading.replace("\u0332", "")
-    for tag in ("<u>", "</u>", "<b>", "</b>", "<i>", "</i>"):
-        heading = heading.replace(tag, "")
+    """Normalize a settings page: one underlined title, never a divider."""
+    import re
+
+    raw = str(text).replace("\u0332", "")
+    lines = raw.splitlines()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not lines:
+        return ""
+
+    heading = lines.pop(0).strip()
+    # Strip old markup/decorations from title before applying one canonical style.
+    heading = re.sub(r"</?(?:b|u|i)>", "", heading, flags=re.IGNORECASE)
     heading = heading.replace("_", "").strip()
     heading = " ".join(heading.split())
-    body = body.lstrip("\n")
-    # Remove divider-only lines left by older page formats; never insert a divider.
-    body_lines = body.splitlines()
-    while body_lines and (not body_lines[0].strip() or set(body_lines[0].strip()) <= {"_", "—", "-"}):
-        body_lines.pop(0)
-    body = "\n".join(body_lines).rstrip()
-    heading = f"<b><u>{heading}</u></b>"
+    # Drop any blank or divider-only lines directly beneath the title.
+    while lines and (not lines[0].strip() or re.fullmatch(r"[_—\-\s]+", lines[0])):
+        lines.pop(0)
+    body = "\n".join(lines).rstrip()
+    title = f"<b><u>{heading}</u></b>"
     if body and "<i>" not in body and "</i>" not in body:
         body = f"<i>{body}</i>"
-    return heading + (f"\n\n{body}" if separator and body else "")
+    return title + (f"\n\n{body}" if body else "")
 
 async def edit_page(query, text, keyboard):
     if not query.message:
@@ -128,7 +134,7 @@ async def render_forcejoin(query, db, settings):
         [("VERIFY", "settings:forcejoin_verify_text")],
         [("《 BACK", "settings:home")],
     ])
-    text = ("F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲\n\n"
+    text = ("FORCE JOIN\n\n"
             f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\n\n"
             "Users must verify the required Join Request channels before receiving files.\n\n"
             "Join Request channels accept membership or a pending join request.\n\n"
@@ -138,7 +144,7 @@ async def render_forcejoin(query, db, settings):
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
-    await edit_page(query, f"S̲T̲A̲R̲T̲ ̲M̲E̲S̲S̲A̲G̲E̲\n\nCustomize your bot's start message using the following options.\n\nStatus: {'ENABLED ✅' if cfg.get('enabled', True) else 'DISABLED ❌'}", kb([
+    await edit_page(query, f"START MESSAGE\n\nCustomize your bot's start message using the following options.\n\nStatus: {'ENABLED ✅' if cfg.get('enabled', True) else 'DISABLED ❌'}", kb([
         [("DISABLE" if cfg.get("enabled", True) else "ENABLE", "settings:start_toggle")],
         [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
         [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")],
@@ -146,7 +152,7 @@ async def render_start(query, db):
     ]))
 
 async def render_start_text(query):
-    await edit_page(query, "S̲T̲A̲R̲T̲ ̲T̲E̲X̲T̲\n\nCustomize your bot's start message.", kb([
+    await edit_page(query, "START TEXT\n\nCustomize your bot's start message.", kb([
         [("EDIT", "settings:start_text_edit"), ("SEE", "settings:start_text_see")],
         [("DEFAULT", "settings:start_text_default")],
         [("《 BACK", "settings:start")],
@@ -196,7 +202,7 @@ async def refresh_button_panel(bot, chat_id, message_id, db, kind):
         pass
 
 async def render_start_poster(query):
-    await edit_page(query, "S̲T̲A̲R̲T̲ ̲M̲E̲D̲I̲A̲\n\nInclude an image or GIF with your start message.", kb([
+    await edit_page(query, "START MEDIA\n\nInclude an image or GIF with your start message.", kb([
         [("✚ ADD", "settings:start_poster_add"), ("REMOVE", "settings:start_poster_remove")],
         [("《 BACK", "settings:start")],
     ]))
@@ -311,7 +317,7 @@ async def render_poster(query):
 
 async def render_about(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
-    await edit_page(query, f"A̲B̲O̲U̲T̲ ̲B̲U̲T̲T̲O̲N̲\n\nChoose whether to show the About button with invalid posts.\n\nStatus: {'ENABLED ✅' if cfg.get('about_enabled', False) else 'DISABLED ❌'}", kb([
+    await edit_page(query, f"ABOUT BUTTON\n\nChoose whether to show the About button with invalid posts.\n\nStatus: {'ENABLED ✅' if cfg.get('about_enabled', False) else 'DISABLED ❌'}", kb([
         [("DISABLE" if cfg.get("about_enabled", False) else "ENABLE", "settings:invalid_about_toggle")],
         [("《 BACK", "settings:invalid")],
     ]))
@@ -378,7 +384,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await patch(db, "force_join", {"enabled": not cfg.get("enabled", False)}, {"channels": [], "other_links": [], "message": "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"})
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_add":
-        await edit_page(query, "A̲D̲D̲ ̲C̲H̲A̲N̲N̲E̲L̲\n\nSelect a verification mode.\n\nJoin Request: Verify membership or a pending join request.\n\nOther: Add an external platform link.", kb([
+        await edit_page(query, "ADD CHANNEL\n\nSelect a verification mode.\n\nJoin Request: Verify membership or a pending join request.\n\nOther: Add an external platform link.", kb([
             [("OTHER", "settings:forcejoin_other"), ("JOIN REQUEST", "settings:forcejoin_join_request")],
             [("《 BACK", "settings:forcejoin")],
         ]))
@@ -391,7 +397,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         index = int(action.split(":", 1)[1])
         if 0 <= index < len(links):
             item = links[index]
-            await edit_page(query, f"C̲H̲A̲N̲N̲E̲L̲ ̲S̲E̲T̲T̲I̲N̲G̲S̲\n\n{item.get('url', '')}\n\nSelect an option below.", kb([
+            await edit_page(query, f"CHANNEL SETTINGS\n\n{item.get('url', '')}\n\nSelect an option below.", kb([
                 [("BUTTON TEXT", f"settings:forcejoin_other_label:{index}"), ("REMOVE", f"settings:forcejoin_other_remove:{index}")],
                 [("《 BACK", "settings:forcejoin")],
             ]))
@@ -447,7 +453,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if index < len(channels):
             channel = channels[index]
             cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-            await edit_page(query, f"C̲H̲A̲N̲N̲E̲L̲ ̲S̲E̲T̲T̲I̲N̲G̲S̲\n\n{channel}\n\nSelect an option below.", kb([
+            await edit_page(query, f"CHANNEL SETTINGS\n\n{channel}\n\nSelect an option below.", kb([
                 [("BUTTON TEXT", f"settings:forcejoin_label:{index}"), ("REMOVE", f"settings:forcejoin_remove_one:{index}")],
                 [("《 BACK", "settings:forcejoin")],
             ]))
@@ -469,7 +475,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_message")
         if query.message: await query.message.answer("Send your bot's new force-join message. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code> <code>{remaining_count}</code>.", parse_mode="HTML")
     elif action == "forcejoin_media":
-        await edit_page(query, "F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲ ̲M̲E̲D̲I̲A̲\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
+        await edit_page(query, "FORCE JOIN MEDIA\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
             [("✚ ADD", "settings:forcejoin_media_add"), ("REMOVE", "settings:forcejoin_media_remove")],
             [("《 BACK", "settings:forcejoin")],
         ]))
@@ -680,7 +686,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_animation(query, db)
     elif action == "animation_mode":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await edit_page(query, f"M̲O̲D̲E̲\n\nNew Message: Run the animation in a separate message.\n\nForce Join Poster: Run the animation on the force-join poster.\n\nCurrent mode: {cfg.get('mode', 'force_join_poster')}", kb([
+        await edit_page(query, f"MODE\n\nNew Message: Run the animation in a separate message.\n\nForce Join Poster: Run the animation on the force-join poster.\n\nCurrent mode: {cfg.get('mode', 'force_join_poster')}", kb([
             [("NEW MESSAGE", "settings:animation_mode_new"), ("FORCE JOIN POSTER", "settings:animation_mode_poster")],
             [("《 BACK", "settings:forcejoin_animation")],
         ]))
