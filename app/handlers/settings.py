@@ -496,7 +496,9 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await query.answer("✅ Default successfully set!\n\nHey 𝑳𝑬𝑿𝑰! ✨\n\nWelcome to the fastest and most secure file store bot!!.\n\n✦ Made by: Lexi\n✦ Made for: Lexi Anime", show_alert=True)
         await render_start_text(query)
         return
-    elif action == "start_button":\n        await state.update_data(button_panel_kind="start")\n        await render_start_button(query, db)
+    elif action == "start_button":
+        await state.update_data(button_panel_kind="start")
+        await render_start_button(query, db)
     elif action.startswith("start_button_toggle:"):
         index = action.rsplit(":", 1)[1]
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
@@ -593,7 +595,9 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "invalid_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_text")
         if query.message: await query.message.answer("Now send your new invalid message text. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code>.", parse_mode="HTML")
-    elif action == "invalid_button":\n        await state.update_data(button_panel_kind="invalid")\n        await render_invalid_button(query, db)
+    elif action == "invalid_button":
+        await state.update_data(button_panel_kind="invalid")
+        await render_invalid_button(query, db)
     elif action.startswith("invalid_button_toggle:"):
         index = action.rsplit(":", 1)[1]
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
