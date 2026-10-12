@@ -146,7 +146,7 @@ async def render_start_button(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True)) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = format_settings_page(f"START BUTTON\n\nCustomize the button shown with your start message.\n\nButton 1: {status1}\nButton 2: {status2}")
+    text = format_settings_page(f"START MESSAGE BUTTONS\nCustomize buttons shown with your start message.\n\nButton 1: {status1}\nButton 2: {status2}")
     markup = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
                   [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
@@ -753,7 +753,7 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
     if value in ("1 BUTTON", "2 BUTTON"):
         index = value[0]
         await state.set_state(SettingInput.waiting)
-        await state.update_data(field=f"{kind}_button_{index}_text", button_index=index, panel_chat_id=message.chat.id, panel_message_id=message.message_id, panel_kind=kind)
+        await state.update_data(field=f"{kind}_button_{index}_text", button_index=index, panel_kind=kind)
         await message.answer(f"Send text for {'Start' if is_start else 'Invalid'} Button {index}.")
         return
 
@@ -762,17 +762,22 @@ async def send_button_settings_reply_panel(message: Message, db, kind: str, pane
     cfg = await db.settings.find_one({"key": "start_message" if is_start else "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True) if is_start else bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    title = "START BUTTON" if is_start else "INVALID BUTTON"
-    body = "Customize the button shown with your start message." if is_start else "Customize buttons shown with invalid posts."
+    title = "START MESSAGE BUTTONS" if is_start else "INVALID POST BUTTONS"
+    body = "Customize buttons shown with your start message." if is_start else "Customize buttons shown with invalid posts."
     markup = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
-    page_text = format_settings_page(f"{title}\n\n{body}\n\nButton 1: {status1}\nButton 2: {status2}")
-    try:
-        if panel_chat_id and panel_message_id:
+    page_text = format_settings_page(f"{title}\\n{body}\\n\\nButton 1: {status1}\\nButton 2: {status2}")
+    edited = False
+    if panel_chat_id and panel_message_id:
+        try:
             await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id, text=page_text, parse_mode="HTML")
-        else:
-            panel = await message.answer(page_text, parse_mode="HTML", reply_markup=markup)
-    except TelegramAPIError:
-        pass
+            edited = True
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                edited = True
+        except TelegramAPIError:
+            pass
+    if not edited:
+        await message.answer(page_text, parse_mode="HTML", reply_markup=markup)
 
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
@@ -993,7 +998,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "start_message", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT})
         await refresh_button_panel(message.bot, prev.get("panel_chat_id"), prev.get("panel_message_id"), db, "start")
         await state.clear()
-        await state.update_data(button_panel_kind=prev.get("panel_kind"))
+        await state.update_data(button_panel_kind=prev.get("panel_kind"), button_panel_chat_id=prev.get("button_panel_chat_id"), button_panel_message_id=prev.get("button_panel_message_id"))
         return
     if field.startswith("invalid_button_") and field.endswith("_text"):
         index = field.split("_")[2]
