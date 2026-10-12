@@ -389,10 +389,9 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                     join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
             rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
             rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
-            rendered = str(cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!")
-            rendered = rendered.replace("{first_name}", html.escape(query.from_user.first_name or ""))
-            rendered = rendered.replace("{last_name}", html.escape(query.from_user.last_name or ""))
-            rendered = rendered.replace("{mention}", query.from_user.mention_html())
+            me = await bot.get_me()
+            raw_text = str(cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!")
+            rendered = render_common_variables(raw_text, query.from_user, me)
             rendered = rendered.replace("{remaining_count}", str(len(missing)))
             markup = InlineKeyboardMarkup(inline_keyboard=rows)
             animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
