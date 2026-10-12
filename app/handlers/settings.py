@@ -60,12 +60,15 @@ def kb(rows):
     ])
 
 def format_settings_page(text: str) -> str:
-    """Apply the shared blueprint heading/body style to plain settings pages."""
+    """Render consistent headings with a real underscore divider."""
     heading, separator, body = str(text).partition("\n")
     heading = heading.strip().replace("\u0332", "")
+    # Strip old HTML/Unicode underline markup before applying one shared style.
+    heading = heading.replace("<u>", "").replace("</u>", "").replace("<b>", "").replace("</b>", "")
+    heading = heading.replace("_", "").strip()
     body = body.lstrip("\n")
-    if not heading.startswith("<b>") and not heading.startswith("<u>"):
-        heading = f"<b><u>{heading}</u></b>"
+    divider = "_" * max(7, min(len(heading), 36))
+    heading = f"<b>{heading}</b>\n{divider}"
     if body and "<i>" not in body and "</i>" not in body:
         body = f"<i>{body}</i>"
     return heading + (f"\n\n{body}" if separator and body else "")
@@ -76,18 +79,19 @@ async def edit_page(query, text, keyboard):
         return
     text = format_settings_page(text)
     try:
-        await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
     except TelegramBadRequest as exc:
+        # A non-editable or unchanged panel must not create a duplicate prompt.
         if "message is not modified" in str(exc).lower():
             return
-        await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+        return
     except TelegramAPIError:
-        await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+        return
 
 async def render_home(query):
     me = await query.bot.get_me()
-    name = f'<a href="https://t.me/{me.username}">{__import__("html").escape(me.full_name)}</a>' if me.username else __import__("html").escape(me.full_name)
-    await edit_page(query, f"<b><u>C̲U̲S̲T̲O̲M̲I̲Z̲E̲</u></b>\n\nName: {name}\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", kb([
+    name = __import__("html").escape(me.full_name)
+    await edit_page(query, f"CUSTOMIZE\nName: {name}\n\nConfigure Bot Settings Using the Buttons Below.", kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
@@ -152,11 +156,9 @@ async def render_start_button(query, db):
                   [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
                   [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
     if query.message:
-        try:
-            await query.message.edit_text(text, parse_mode="HTML")
-        except TelegramAPIError:
-            pass
-        panel = await query.message.answer(text, parse_mode="HTML", reply_markup=markup)
+        # Reply keyboards are chat-level and cannot be attached by editing a message.
+        # Send the panel once; subsequent status changes edit this stored message.
+        panel = await query.message.answer(text, parse_mode="HTML", reply_markup=markup, link_preview_options={"is_disabled": True})
         return panel
 
 
@@ -283,11 +285,7 @@ async def render_invalid_button(query, db):
                   [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
                   [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
     if query.message:
-        try:
-            await query.message.edit_text(text, parse_mode="HTML")
-        except TelegramAPIError:
-            pass
-        return await query.message.answer(text, parse_mode="HTML", reply_markup=markup)
+        return await query.message.answer(text, parse_mode="HTML", reply_markup=markup, link_preview_options={"is_disabled": True})
 
 
 async def render_poster(query):
@@ -722,17 +720,12 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
     kind = data.get("button_panel_kind")
     if value == "《 BACK" and kind in ("start", "invalid"):
         await state.clear()
-        await message.answer("Reply keyboard closed.", reply_markup=ReplyKeyboardRemove())
-        if kind == "start":
-            await message.answer(format_settings_page("START MESSAGE\n\nCustomize your bot's start message using the following options."), parse_mode="HTML", reply_markup=kb([
-                [("DISABLE/ENABLE", "settings:start_toggle")], [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
-                [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")], [("《 BACK", "settings:home")],
-            ]))
-        else:
-            await message.answer(format_settings_page("INVALID POST\n\nSet a response for users who send normal messages to the bot."), parse_mode="HTML", reply_markup=kb([
-                [("DISABLE/ENABLE", "settings:invalid_toggle")], [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
-                [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")], [("《 BACK", "settings:home")],
-            ]))
+        # Remove the reply keyboard silently; no extra "keyboard closed" message.
+        await message.answer(".", reply_markup=ReplyKeyboardRemove())
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
         return
     if kind not in ("start", "invalid"):
         return
