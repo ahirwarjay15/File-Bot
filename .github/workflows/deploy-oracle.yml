@@ -67,4 +67,4 @@ jobs:
           set -eu
           test -n "$ORACLE_HOST"
           test -n "$ORACLE_USER"
-          ssh -i ~/.ssh/oracle_deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes "$ORACLE_USER@$ORACLE_HOST" 'set -eu; cd /home/ubuntu/File-Bot; git fetch origin blueprint-implementation-pass-2026-10-11; git reset --hard origin/blueprint-implementation-pass-2026-10-11; .venv/bin/pip install -r requirements.txt; .venv/bin/python -m compileall -q app main.py; sudo -n systemctl restart file-bot; sudo -n systemctl is-active --quiet file-bot'
+          ssh -i ~/.ssh/oracle_deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes "$ORACLE_USER@$ORACLE_HOST" 'set -eu; cd /home/ubuntu/File-Bot; git fetch origin blueprint-implementation-pass-2026-10-11; git reset --hard origin/blueprint-implementation-pass-2026-10-11; if grep -q "^SOURCE_CHANNEL_ID=" .env; then sed -i "s/^SOURCE_CHANNEL_ID=.*/SOURCE_CHANNEL_ID=-1004430375220/" .env; else printf "\\nSOURCE_CHANNEL_ID=-1004430375220\\n" >> .env; fi; .venv/bin/pip install -r requirements.txt; .venv/bin/python -m compileall -q app main.py; sudo -n systemctl restart file-bot; sudo -n systemctl is-active --quiet file-bot'
