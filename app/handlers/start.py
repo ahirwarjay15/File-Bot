@@ -31,7 +31,7 @@ def render_common_variables(raw_text, user, bot):
         "{last_name}": html.escape(user.last_name or ""),
         "{owner}": '<a href="https://t.me/lexxiowner">Lexi</a>',
         "{anime}": '<a href="https://t.me/lexianime">Lexi Anime</a>',
-        "{hindi_anime}": '<a href="https://t.me/lexianimehindi">Lexi Anime</a>',
+        "{hindi_anime}": '<a href="https://t.me/lexianimehindi">Lexi Anime Hindi</a>',
         "{mention}": user.mention_html(),
     }
     for token, replacement in values.items():
