@@ -557,7 +557,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "start_text_see":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
         preview = str(cfg.get("text") or DEFAULT_START_TEXT)
-        await edit_page(query, "START TEXT PREVIEW\\n\\n" + preview, kb([[("《 BACK", "settings:start_text")]]))
+        await query.answer(preview, show_alert=True)
         return
     elif action == "start_text_default":
         await patch(db, "start_message", {"text": DEFAULT_START_TEXT}, {"enabled": True})
