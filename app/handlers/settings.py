@@ -591,6 +591,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await show_input_prompt(
             query, state, "custom_button_text",
             "Send the custom button text.", "custom_button",
+            custom_panel_chat_id=query.message.chat.id if query.message else None,
+            custom_panel_message_id=query.message.message_id if query.message else None,
         )
     elif action.startswith("custom_button_remove:"):
         index = int(action.rsplit(":", 1)[1])
@@ -980,8 +982,33 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.delete()
         except TelegramAPIError:
             pass
+        # Refresh the original Custom Button panel in place after saving.
+        panel_chat = prev.get("custom_panel_chat_id")
+        panel_message = prev.get("custom_panel_message_id")
+        if panel_chat and panel_message:
+            current = buttons[:2]
+            rows = []
+            button_row = []
+            for i, item in enumerate(current):
+                button_row.append(InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")))
+                button_row.append(InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"))
+            if button_row:
+                rows.append(button_row)
+            if len(current) < 2:
+                rows.append([InlineKeyboardButton(text="✚", callback_data="settings:custom_button_add")])
+            rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])
+            try:
+                await message.bot.edit_message_text(
+                    chat_id=panel_chat,
+                    message_id=panel_message,
+                    text=format_settings_page("Custom Button:\\n\\nYou can add a custom buttons to your files."),
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+                    link_preview_options={"is_disabled": True},
+                )
+            except TelegramAPIError:
+                pass
         await state.clear()
-        # Keep the chat clean; the settings panel is refreshed when reopened.
         return
     if field == "animation_prefix":
         await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
