@@ -709,7 +709,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     if field == "animation_prefix":
         await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
         await state.clear()
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Animation prefix updated successfully.")
         return
     if field in ("animation_frame_1", "animation_frame_2", "animation_frame_3"):
         if not message.text or not value:
@@ -725,7 +725,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             return
         await patch(db, "animation", {"frames": frames}, {"enabled": False, "prefix": "Checking..", "speed": 0.10, "mode": "force_join_poster"})
         await state.clear()
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Animation frames updated successfully.")
         return
     if field == "forcejoin_other_url":
         parsed = urlparse(value)
@@ -765,7 +765,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         other_links.append({"key": channel_key, "url": url, "button_text": value})
         await patch(db, "force_join", {"other_links": other_links})
         await state.clear()
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer(f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
         return
     if field == "forcejoin_existing_other_label":
         prev = await state.get_data()
@@ -775,7 +775,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if 0 <= index < len(links):
             links[index]["button_text"] = value
             await patch(db, "force_join", {"other_links": links})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+            await message.answer("✨ Successfully updated force-join button text.")
         else:
             await message.answer("Channel setting expired. Please reopen it.")
         await state.clear()
@@ -789,17 +789,17 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             return
         await patch(db, "force_join_channel", {"channel": channel, "button_text": value})
         await state.clear()
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer(f"✨ Successfully updated button text for {channel} force-join button.")
         return
     if field == "forcejoin_message":
         await patch(db, "force_join", {"message": value})
         await state.clear()
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Successfully updated force-join message.")
         return
     if field == "forcejoin_verify_text":
         await patch(db, "force_join", {"verify_text": value})
         await state.clear()
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Successfully updated verification button text.")
         return
     if field == "forcejoin_media":
         if message.animation:
@@ -810,7 +810,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.answer("Only GIFs and images are supported. Send a photo or GIF.")
             return
         await state.clear()
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Force-join poster updated successfully.")
         return
     if field == "forcejoin_channel":
         channel = value.strip()
@@ -869,7 +869,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             upsert=True,
         )
         await state.clear()
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer(f"Force Join channel {channel} added.")
         return
     if field == "start_poster":
         if message.animation:
@@ -879,7 +879,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         else:
             await message.answer("Only GIFs and images are supported. Send a photo or GIF.")
             return
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await state.clear(); await message.answer("✨ Start poster updated successfully."); return
     if field == "poster":
         if message.animation:
             await patch(db, "invalid_post", {"poster_file_id": message.animation.file_id, "poster_photo_id": None}, {"enabled": False})
@@ -888,7 +888,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         else:
             await message.answer("Only GIFs and images are supported. Send a photo or GIF.")
             return
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await state.clear(); await message.answer("✨ Invalid-post poster updated successfully."); return
     if not value:
         await message.answer("Please send a non-empty value.")
         return
@@ -926,29 +926,29 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         return
     if field == "start_text":
         await patch(db, "start_message", {"text": value}, {"enabled": True})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Successfully updated your start message text.")
     elif field == "start_button_text":
         await patch(db, "start_message", {"button_text": value, "button_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT, "button_url": "http://t.me/lexiAnime", "about_enabled": True})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Successfully updated start message button text.")
     elif field == "start_button_link":
         parsed = urlparse(value)
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
             await message.answer("Button link must be a valid http/https URL.")
             return
         await patch(db, "start_message", {"button_url": value, "button_enabled": True}, {"enabled": True, "button_text": "📟 UPDATE CHANNEL", "button_url": "http://t.me/lexiAnime"})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Successfully updated start message button link.")
     elif field == "auto_notice":
         await patch(db, "auto_delete", {"notice": value}, {"enabled": False, "minutes": 30})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Auto-delete message updated successfully.")
     elif field == "after_text_message":
         await patch(db, "after_delete", {"text": value}, {"enabled": False, "button_text": DEFAULT_AFTER_BUTTON})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ After-delete message text updated successfully.")
     elif field == "after_text_button":
         await patch(db, "after_delete", {"button_text": value}, {"enabled": False, "text": DEFAULT_AFTER_TEXT})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ After-delete button text updated successfully.")
     elif field == "invalid_text":
         await patch(db, "invalid_post", {"text": value}, {"enabled": False, "about_enabled": False})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Successfully updated your bot's invalid message text.")
     elif field == "invalid_button_text":
         await state.update_data(button_text=value, field="invalid_button_link")
         await message.answer("Send new button link for the invalid post.")
@@ -962,10 +962,10 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         values = {"button_url": value}
         if prev.get("button_text"): values["button_text"] = prev["button_text"]
         await patch(db, "invalid_post", values, {"enabled": False})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("✨ Successfully updated invalid post button link.")
     elif field == "invalid_about_text":
         await patch(db, "invalid_post", {"about_text": value}, {"enabled": False, "about_enabled": True})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer("Invalid About text updated.")
     elif field == "shortener_url":
         normalized_url = value if "://" in value else "https://" + value
         parsed = urlparse(normalized_url)
@@ -983,7 +983,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.answer("Provider validation failed. Check the API URL/token and try again.")
             return
         await patch(db, "shortener", {"enabled": True, "url": prev["shortener_url"], "token": value})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer(f"✨ Successfully added {urlparse(prev['shortener_url']).netloc} as your link shortener provider.")
     elif field == "mod_id":
         if not value.isdigit() or int(value) <= 0:
             await message.answer("Please send a valid numeric Telegram user ID.")
@@ -1004,7 +1004,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         user = await db.users.find_one({"user_id": uid}) or {}
         name = user.get("first_name") or f"User {uid}"
         await db.moderators.insert_one({"user_id": uid, "first_name": name, "username": user.get("username")})
-        pass  # Keep the existing settings panel instead of sending a separate success prompt.
+        await message.answer(f"✨ Successfully added {name} as moderator.")
     else:
         await message.answer("Unknown setting. Open /settings to try again.")
     await state.clear()
