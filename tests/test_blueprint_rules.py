@@ -122,5 +122,5 @@ def test_common_variables_render_bot_and_channel_links_in_start_and_invalid_text
         assert '<a href="tg://user?id=42">Alice</a>' in rendered
         assert '<a href="https://t.me/lexxiowner">Lexi</a>' in rendered
         assert '<a href="https://t.me/lexianime">Lexi Anime</a>' in rendered
-        assert '<a href="https://t.me/lexianimehindi">Lexi Anime</a>' in rendered
+        assert '<a href="https://t.me/lexianimehindi">Lexi Anime Hindi</a>' in rendered
 
