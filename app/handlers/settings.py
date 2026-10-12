@@ -27,7 +27,7 @@ def unicode_buttons(value: str) -> str:
     return "".join(ch.translate(table) if ch.isascii() and ch.isalpha() else ch for ch in str(value))
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."
-DEFAULT_START_TEXT = "<b>Hey {user_mention}! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by: Lexi</b>\n<b>✦ Made for: Lexi Anime</b>"
+DEFAULT_START_TEXT = "<b>Hey {mention}! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by:</b> {owner}\n<b>✦ Made for:</b> {hindi_anime}"
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
 DEFAULT_AFTER_BUTTON = "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ"
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
@@ -83,6 +83,44 @@ def format_settings_page(text: str) -> str:
     if body and "<i>" not in body and "</i>" not in body:
         body = f"<i>{body}</i>"
     return title + (f"\n\n{body}" if body else "")
+
+async def show_input_prompt(query, state, field, prompt, back_action, **extra):
+    """Turn the current settings panel into an input prompt; never send a second prompt message."""
+    if not query.message:
+        return
+    await state.set_state(SettingInput.waiting)
+    await state.update_data(
+        field=field,
+        input_panel_chat_id=query.message.chat.id,
+        input_panel_message_id=query.message.message_id,
+        input_back_action=back_action,
+        **extra,
+    )
+    await edit_page(query, f"ENTER VALUE\\n\\n{prompt}", kb([[("《 BACK", f"settings:{back_action}")]]))
+
+
+async def finish_input_panel(message, state, title, back_action):
+    """Show input completion in the same panel that hosted the prompt."""
+    data = await state.get_data()
+    chat_id = data.get("input_panel_chat_id")
+    message_id = data.get("input_panel_message_id")
+    if chat_id and message_id:
+        try:
+            await message.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"<b><u>{title}</u></b>\\n\\nSaved successfully.",
+                parse_mode="HTML",
+                reply_markup=kb([[("《 BACK", f"settings:{back_action}")]]),
+                link_preview_options={"is_disabled": True},
+            )
+        except TelegramAPIError:
+            pass
+    try:
+        await message.delete()
+    except TelegramAPIError:
+        pass
+
 
 async def edit_page(query, text, keyboard):
     if not query.message:
@@ -162,20 +200,13 @@ async def render_start_button(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True)) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = format_settings_page(f"START MESSAGE BUTTONS\nCustomize buttons shown with your start message.\n\nButton 1: {status1}\nButton 2: {status2}")
-    markup = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
-                  [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
-                  [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
-    if query.message:
-        # Telegram reply keyboards can only be attached to a sent message.
-        # Replace the parent settings panel so only one panel remains visible.
-        panel = await query.message.answer(text, parse_mode="HTML", reply_markup=markup, link_preview_options={"is_disabled": True})
-        try:
-            await query.message.delete()
-        except TelegramAPIError:
-            pass
-        return panel
+    text = f"START MESSAGE BUTTONS\\nCustomize buttons shown with your start message.\\n\\nButton 1: {status1}\\nButton 2: {status2}"
+    await edit_page(query, text, kb([
+        [(f"1 {status1}", "settings:start_button_toggle:1"), (f"2 {status2}", "settings:start_button_toggle:2")],
+        [("1 BUTTON", "settings:start_button_1"), ("2 BUTTON", "settings:start_button_2")],
+        [("《 BACK", "settings:start")],
+    ]))
+    return query.message
 
 
 async def refresh_button_panel(bot, chat_id, message_id, db, kind):
@@ -295,18 +326,13 @@ async def render_invalid_button(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
     status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
-    text = format_settings_page(f"INVALID POST BUTTONS\nCustomize buttons shown with invalid posts.\n\nButton 1: {status1}\nButton 2: {status2}")
-    markup = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")],
-                  [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")],
-                  [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
-    if query.message:
-        panel = await query.message.answer(text, parse_mode="HTML", reply_markup=markup, link_preview_options={"is_disabled": True})
-        try:
-            await query.message.delete()
-        except TelegramAPIError:
-            pass
-        return panel
+    text = f"INVALID POST BUTTONS\\nCustomize buttons shown with invalid posts.\\n\\nButton 1: {status1}\\nButton 2: {status2}"
+    await edit_page(query, text, kb([
+        [(f"1 {status1}", "settings:invalid_button_toggle:1"), (f"2 {status2}", "settings:invalid_button_toggle:2")],
+        [("1 BUTTON", "settings:invalid_button_1"), ("2 BUTTON", "settings:invalid_button_2")],
+        [("《 BACK", "settings:invalid")],
+    ]))
+    return query.message
 
 
 async def render_poster(query):
@@ -472,8 +498,9 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             await db.settings.delete_one({"key": "force_join_channel", "channel": channel})
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_message":
-        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_message")
-        if query.message: await query.message.answer("Send your bot's new force-join message. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code> <code>{remaining_count}</code>.", parse_mode="HTML")
+        await show_input_prompt(query, state, "forcejoin_message",
+            "Send the Force Join message.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — owner link\\n<code>{hindi_anime}</code> — Lexi Anime Hindi link\\n<code>{remaining_count}</code> — remaining channels count",
+            "forcejoin")
     elif action == "forcejoin_media":
         await edit_page(query, "FORCE JOIN MEDIA\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
             [("✚ ADD", "settings:forcejoin_media_add"), ("REMOVE", "settings:forcejoin_media_remove")],
@@ -508,11 +535,13 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_start(query, db)
     elif action == "start_text": await render_start_text(query)
     elif action == "start_text_edit":
-        await state.set_state(SettingInput.waiting); await state.update_data(field="start_text")
-        if query.message: await query.message.answer("Variables (tap individually to copy):\n<code>{bot}</code>\n<code>{bot_mention}</code>\n<code>{first_name}</code>\n<code>{last_name}</code>\n<code>{user}</code>\n<code>{owner}</code>\n<code>{anime}</code>\n<code>{hindi_anime}</code>\n\nNow send your new start message text.", parse_mode="HTML")
+        await show_input_prompt(query, state, "start_text",
+            "Send the new Start Message text.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — link to the owner\\n<code>{hindi_anime}</code> — link to Lexi Anime Hindi",
+            "start_text")
     elif action == "start_text_see":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        await query.answer(str(cfg.get("text") or DEFAULT_START_TEXT), show_alert=True)
+        preview = str(cfg.get("text") or DEFAULT_START_TEXT)
+        await edit_page(query, "START TEXT PREVIEW\\n\\n" + preview, kb([[("《 BACK", "settings:start_text")]]))
         return
     elif action == "start_text_default":
         await patch(db, "start_message", {"text": DEFAULT_START_TEXT}, {"enabled": True})
@@ -618,8 +647,9 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await patch(db, "invalid_post", {"enabled": not cfg.get("enabled", False)}, {"text": DEFAULT_INVALID, "about_enabled": False})
         await render_invalid(query, db)
     elif action == "invalid_text":
-        await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_text")
-        if query.message: await query.message.answer("Now send your new invalid message text. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code>.", parse_mode="HTML")
+        await show_input_prompt(query, state, "invalid_text",
+            "Send the new Invalid Message text.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — link to the owner\\n<code>{hindi_anime}</code> — link to Lexi Anime Hindi",
+            "invalid")
     elif action == "invalid_button":
         await state.update_data(button_panel_kind="invalid")
         panel = await render_invalid_button(query, db)
