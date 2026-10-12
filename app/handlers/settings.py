@@ -85,25 +85,39 @@ def format_settings_page(text: str) -> str:
     return title + (f"\n\n{body}" if body else "")
 
 async def show_input_prompt(query, state, field, prompt, back_action, **extra):
-    """Turn the current settings panel into an input prompt; never send a second prompt message."""
+    """Send a separate prompt; remember its ID so Back/Cancel can remove it."""
     if not query.message:
         return
+    prompt_message = await query.message.answer(
+        prompt,
+        parse_mode="HTML",
+        link_preview_options={"is_disabled": True},
+    )
     await state.set_state(SettingInput.waiting)
     await state.update_data(
         field=field,
-        input_panel_chat_id=query.message.chat.id,
-        input_panel_message_id=query.message.message_id,
+        input_prompt_chat_id=prompt_message.chat.id,
+        input_prompt_message_id=prompt_message.message_id,
         input_back_action=back_action,
         **extra,
     )
-    await edit_page(query, f"ENTER VALUE\n\n{prompt}", kb([[("《 BACK", f"settings:{back_action}")]]))
+
+
+async def remove_input_prompt(bot, data):
+    chat_id = data.get("input_prompt_chat_id")
+    message_id = data.get("input_prompt_message_id")
+    if chat_id and message_id:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except TelegramAPIError:
+            pass
 
 
 async def finish_input_panel(message, state, title, back_action):
-    """Show input completion in the same panel that hosted the prompt."""
+    """Convert the original prompt message into the success confirmation."""
     data = await state.get_data()
-    chat_id = data.get("input_panel_chat_id")
-    message_id = data.get("input_panel_message_id")
+    chat_id = data.get("input_prompt_chat_id")
+    message_id = data.get("input_prompt_message_id")
     if chat_id and message_id:
         try:
             await message.bot.edit_message_text(
@@ -402,6 +416,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                   "invalid_button", "invalid_poster", "invalid_about", "forcejoin", "forcejoin_add",
                   "forcejoin_message", "forcejoin_media", "forcejoin_animation", "animation_mode",
                   "mods", "shortener"}:
+        pending = await state.get_data()
+        await remove_input_prompt(query.bot, pending)
         await state.clear()
     if action in {"home", "home_back"}: await render_home(query)
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
@@ -840,6 +856,8 @@ async def send_button_settings_reply_panel(message: Message, db, kind: str, pane
 
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
+    pending = await state.get_data()
+    await remove_input_prompt(message.bot, pending)
     await state.clear()
     try:
         await message.delete()
