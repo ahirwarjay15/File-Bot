@@ -45,8 +45,13 @@ async def effective_force_join_channels(database, settings) -> list[str]:
     channels = []
     for raw in raw_channels:
         channel = str(raw).strip()
-        if channel.startswith("https://t.me/"):
-            channel = "@" + channel.removeprefix("https://t.me/").strip("/").split("/", 1)[0].lstrip("@")
+        if channel.lower().startswith(("https://t.me/", "http://t.me/", "https://telegram.me/", "http://telegram.me/", "t.me/", "telegram.me/")):
+            parsed_channel = urlparse(channel if "://" in channel else "https://" + channel)
+            channel = "@" + parsed_channel.path.strip("/").split("/", 1)[0].lstrip("@")
+        elif channel.startswith("@"):
+            channel = channel.split("/", 1)[0]
+        elif channel.startswith("tg://resolve?domain="):
+            channel = "@" + channel.split("domain=", 1)[1].split("&", 1)[0]
         if channel:
             channels.append(channel)
     return channels
