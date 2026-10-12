@@ -91,7 +91,8 @@ async def invalid_post(message: Message, settings: Settings, database):
     cfg = await database.db.settings.find_one({"key": "invalid_post", "enabled": True})
     if not cfg:
         return
-    me = await message.bot.get_me()\n    text = _render_user_text(cfg.get("text") or DEFAULT_INVALID, user, me)
+    me = await message.bot.get_me()
+    text = _render_user_text(cfg.get("text") or DEFAULT_INVALID, user, me)
     markup = _invalid_markup(cfg)
     try:
         if cfg.get("poster_file_id"):
