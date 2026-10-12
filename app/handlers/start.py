@@ -270,10 +270,16 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
     cfg=await database.db.settings.find_one({"key":"start_message"}) or {}
     if cfg.get("enabled", True):
         rows = []
-        button_url = cfg.get("button_url", "http://t.me/lexiAnime")
-        parsed = urlparse(button_url)
-        if cfg.get("button_enabled", True) and parsed.scheme in ("http", "https") and parsed.netloc:
-            rows.append([InlineKeyboardButton(text=cfg.get("button_text") or "📟 UPDATE CHANNEL", url=button_url)])
+        button1_url = cfg.get("button1_url", cfg.get("button_url", "http://t.me/lexiAnime"))
+        button1_text = cfg.get("button1_text", cfg.get("button_text", "📟 UPDATE CHANNEL"))
+        parsed1 = urlparse(button1_url)
+        if cfg.get("button1_enabled", cfg.get("button_enabled", True)) and button1_text and parsed1.scheme in ("http", "https") and parsed1.netloc:
+            rows.append([InlineKeyboardButton(text=button1_text, url=button1_url)])
+        button2_url = cfg.get("button2_url", "")
+        button2_text = cfg.get("button2_text", "")
+        parsed2 = urlparse(button2_url)
+        if cfg.get("button2_enabled", False) and button2_text and parsed2.scheme in ("http", "https") and parsed2.netloc:
+            rows.append([InlineKeyboardButton(text=button2_text, url=button2_url)])
         if cfg.get("about_enabled", True):
             rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="start:about")])
         markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
@@ -324,16 +330,21 @@ async def start_about_back(query: CallbackQuery, settings: Settings, database):
         return
     me = await query.bot.get_me()
     rows = []
-    url = cfg.get("button_url", "http://t.me/lexiAnime")
+    url = cfg.get("button1_url", cfg.get("button_url", "http://t.me/lexiAnime"))
+    label = cfg.get("button1_text", cfg.get("button_text", "📟 UPDATE CHANNEL"))
     parsed = urlparse(url)
-    if cfg.get("button_enabled", True) and parsed.scheme in ("http", "https") and parsed.netloc:
-        rows.append([InlineKeyboardButton(text=cfg.get("button_text") or "📟 UPDATE CHANNEL", url=url)])
+    if cfg.get("button1_enabled", cfg.get("button_enabled", True)) and label and parsed.scheme in ("http", "https") and parsed.netloc:
+        rows.append([InlineKeyboardButton(text=label, url=url)])
+    url2 = cfg.get("button2_url", "")
+    label2 = cfg.get("button2_text", "")
+    parsed2 = urlparse(url2)
+    if cfg.get("button2_enabled", False) and label2 and parsed2.scheme in ("http", "https") and parsed2.netloc:
+        rows.append([InlineKeyboardButton(text=label2, url=url2)])
     if cfg.get("about_enabled", True):
         rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="start:about")])
     markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-    raw = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\n\nBy: Lexi Anime\n\nDeveloper: Lexi"
-    rendered = raw.replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or "")).replace("{mention}", user.mention_html())
-    rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__").replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>').replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
+    raw = cfg.get("text") or '<b>Hey {user_mention}! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by:</b> {owner} <b>✦ Made for:</b> {anime}'
+    rendered = render_common_variables(raw, user, me)
     try:
         if msg.photo:
             await msg.edit_caption(caption=rendered, parse_mode="HTML", reply_markup=markup)
