@@ -720,12 +720,21 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
     kind = data.get("button_panel_kind")
     if value == "《 BACK" and kind in ("start", "invalid"):
         await state.clear()
-        # Remove the reply keyboard silently; no extra "keyboard closed" message.
-        await message.answer(".", reply_markup=ReplyKeyboardRemove())
-        try:
-            await message.delete()
-        except TelegramAPIError:
-            pass
+        # Return directly to the parent settings page while removing the reply keyboard.
+        if kind == "start":
+            parent_text = format_settings_page("START MESSAGE\nCustomize your bot's start message using the following options.")
+            parent_kb = kb([
+                [("DISABLE/ENABLE", "settings:start_toggle")], [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
+                [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")], [("《 BACK", "settings:home")],
+            ])
+        else:
+            parent_text = format_settings_page("INVALID POST\nSet a response for users who send normal messages to the bot.")
+            parent_kb = kb([
+                [("DISABLE/ENABLE", "settings:invalid_toggle")], [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
+                [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")], [("《 BACK", "settings:home")],
+            ])
+        await message.answer(parent_text, parse_mode="HTML", reply_markup=ReplyKeyboardRemove(), link_preview_options={"is_disabled": True})
+        await message.answer(parent_text, parse_mode="HTML", reply_markup=parent_kb, link_preview_options={"is_disabled": True})
         return
     if kind not in ("start", "invalid"):
         return
