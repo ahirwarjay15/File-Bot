@@ -89,6 +89,7 @@ async def receive_file(message:Message,state:FSMContext,settings:Settings,databa
             created_by=message.from_user.id,
             file_name=name,
             reply_markup=markup_data,
+            original_has_buttons=bool(message.reply_markup and message.reply_markup.inline_keyboard),
         )
         me = await message.bot.get_me()
         link = f"https://t.me/{me.username}?start=file_{record['file_key']}"
