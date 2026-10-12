@@ -169,10 +169,15 @@ def _animation_mode_for_action(action: str) -> str:
 
 async def render_animation(query, db):
     cfg = await db.settings.find_one({"key": "animation"}) or {}
-    await edit_page(query, f"<b><u>A̲N̲I̲M̲A̲T̲I̲O̲N̲</u></b>\n\n<i>Add a custom animation for the verification process.</i>\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {'3 configured' if len(cfg.get('frames', ['.', '..', '...'])) == 3 else 'Not configured'}\nSupported speed: 0.10 to 1.00 seconds per frame.\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
+    frames = cfg.get("frames", [".", "..", "..."])
+    frames_text = " | ".join(str(frame) for frame in frames)
+    mode = cfg.get("mode", "force_join_poster")
+    mode_label = "NEW MESSAGE" if mode == "new_message" else "FORCE JOIN POSTER"
+    speed = float(cfg.get("speed", 0.10))
+    await edit_page(query, f"ANIMATION\n\nAdd a custom animation for the verification process.\n\nPrefix: {cfg.get('prefix', 'Checking..')}\nFrames: {frames_text}\nSpeed: {speed:.2f}s per frame\nMode: {mode_label}\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
         [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
         [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
-        [("MODE", "settings:animation_mode")],
+        [(f"MODE: {mode_label}", "settings:animation_mode_toggle")],
         [("《 BACK", "settings:home")],
     ]))
 
@@ -441,13 +446,11 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Variables:\n{first_name} — User first name\n{last_name} — User last name\n{mention} — Clickable mention of the user\n\nNow send your new start message text.")
     elif action == "start_text_see":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        me = await query.bot.get_me()
-        await query.answer(f"{me.full_name}\n\n{cfg.get('text') or DEFAULT_START_TEXT}", show_alert=True)
+        await query.answer(str(cfg.get("text") or DEFAULT_START_TEXT), show_alert=True)
         return
     elif action == "start_text_default":
         await patch(db, "start_message", {"text": DEFAULT_START_TEXT}, {"enabled": True})
-        me = await query.bot.get_me()
-        await query.answer(f"{me.full_name}\n\n{DEFAULT_START_TEXT}", show_alert=True)
+        await query.answer(f"✅ Default successfully set!\n\n{DEFAULT_START_TEXT}", show_alert=True)
         await render_start_text(query)
         return
     elif action == "start_button": await render_start_button(query)
@@ -576,6 +579,11 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         speed = float(cfg.get("speed", 0.10))
         next_speed = round(0.10 + ((round((speed - 0.10) / 0.05) + 1) % 19) * 0.05, 2)
         await patch(db, "animation", {"speed": next_speed}, {"enabled": False, "prefix": "Checking..", "frames": [".", "..", "..."], "mode": "force_join_poster"})
+        await render_animation(query, db)
+    elif action == "animation_mode_toggle":
+        cfg = await db.settings.find_one({"key": "animation"}) or {}
+        current = cfg.get("mode", "force_join_poster")
+        await patch(db, "animation", {"mode": "new_message" if current != "new_message" else "force_join_poster"}, {"enabled": False, "prefix": "Checking..", "frames": [".", "..", "..."], "speed": 0.10})
         await render_animation(query, db)
     elif action == "animation_mode":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
