@@ -414,7 +414,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_message":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_message")
-        if query.message: await query.message.answer("Send your bot's new force-join message. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code> <code>{remaining_count}</code>.")
+        if query.message: await query.message.answer("Send your bot's new force-join message. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code> <code>{remaining_count}</code>.", parse_mode="HTML")
     elif action == "forcejoin_media":
         await edit_page(query, "F̲O̲R̲C̲E̲ ̲J̲O̲I̲N̲ ̲M̲E̲D̲I̲A̲\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
             [("✚ ADD", "settings:forcejoin_media_add"), ("REMOVE", "settings:forcejoin_media_remove")],
@@ -450,7 +450,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "start_text": await render_start_text(query)
     elif action == "start_text_edit":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_text")
-        if query.message: await query.message.answer("Variables (tap individually to copy):\n<code>{bot}</code>\n<code>{bot_mention}</code>\n<code>{first_name}</code>\n<code>{last_name}</code>\n<code>{user}</code>\n<code>{owner}</code>\n<code>{anime}</code>\n<code>{hindi_anime}</code>\n\nNow send your new start message text.")
+        if query.message: await query.message.answer("Variables (tap individually to copy):\n<code>{bot}</code>\n<code>{bot_mention}</code>\n<code>{first_name}</code>\n<code>{last_name}</code>\n<code>{user}</code>\n<code>{owner}</code>\n<code>{anime}</code>\n<code>{hindi_anime}</code>\n\nNow send your new start message text.", parse_mode="HTML")
     elif action == "start_text_see":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
         await query.answer(str(cfg.get("text") or DEFAULT_START_TEXT), show_alert=True)
@@ -558,7 +558,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_invalid(query, db)
     elif action == "invalid_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_text")
-        if query.message: await query.message.answer("Now send your new invalid message text. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code>.")
+        if query.message: await query.message.answer("Now send your new invalid message text. Variables (tap individually to copy): <code>{bot}</code> <code>{bot_mention}</code> <code>{first_name}</code> <code>{last_name}</code> <code>{user}</code> <code>{owner}</code> <code>{anime}</code> <code>{hindi_anime}</code>.", parse_mode="HTML")
     elif action == "invalid_button": await render_invalid_button(query, db)
     elif action.startswith("invalid_button_toggle:"):
         index = action.rsplit(":", 1)[1]
