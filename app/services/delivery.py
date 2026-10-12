@@ -133,6 +133,20 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
                 # Telegram copyMessage does not copy reply_markup. Restore saved
                 # inline buttons on the copied message when the source exposed them.
                 markup_data = item.get("reply_markup")
+                # Original per-file buttons always win. Custom buttons are a
+                # fallback only for files whose saved source has no buttons.
+                if not markup_data:
+                    custom_cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
+                    custom_buttons = custom_cfg.get("buttons", [])
+                    valid_buttons = [
+                        InlineKeyboardButton(text=str(button.get("text", "")), url=str(button.get("url", "")))
+                        for button in custom_buttons[:2]
+                        if button.get("text") and button.get("url")
+                    ]
+                    if valid_buttons:
+                        markup_data = InlineKeyboardMarkup(inline_keyboard=[valid_buttons]).model_dump(
+                            mode="json", exclude_none=True
+                        )
                 if markup_data:
                     try:
                         markup = InlineKeyboardMarkup.model_validate(markup_data)
@@ -141,7 +155,7 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
                             reply_markup=markup,
                         )
                     except (TelegramAPIError, ValueError, TypeError):
-                        log.warning("Could not restore inline buttons for source message %s",
+                        log.warning("Could not restore/customize inline buttons for source message %s",
                                     item["source_message_id"], exc_info=True)
                 deadline = doc.get("deadline")
                 if doc.get("auto_delete") and deadline is None:
