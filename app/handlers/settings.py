@@ -14,6 +14,24 @@ from app.services.links import shorten_url
 from app.handlers.start import effective_force_join_channels
 
 router = Router(name="settings")
+
+def normalize_http_url(raw: str) -> str | None:
+    """Accept common URL forms while storing a canonical clickable URL."""
+    value = str(raw or "").strip().strip("<>").strip()
+    if not value:
+        return None
+    if value.startswith("@"):
+        value = "https://t.me/" + value[1:]
+    elif value.startswith(("t.me/", "telegram.me/", "www.")):
+        value = "https://" + value
+    elif "://" not in value:
+        value = "https://" + value
+    parsed = urlparse(value)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc or "." not in parsed.netloc:
+        return None
+    return value
+
+
 def unicode_buttons(value: str) -> str:
     if str(value) == "《 BACK" or str(value) == "📟 UPDATE CHANNEL":
         return str(value)
@@ -904,10 +922,11 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await message.answer("✨ Animation frames updated successfully.")
         return
     if field == "forcejoin_other_url":
-        parsed = urlparse(value)
-        if parsed.scheme not in ("https", "http") or not parsed.netloc:
-            await message.answer("Please send a valid http/https platform link.")
+        normalized_url = normalize_http_url(value)
+        if not normalized_url:
+            await message.answer("Please send a valid link, e.g. example.com, https://example.com, t.me/channel, or @channel.")
             return
+        value = normalized_url
         channels = await effective_force_join_channels(database, settings)
         if len(channels) >= 10:
             await message.answer("Maximum 10 force-join channels allowed.")
@@ -989,16 +1008,19 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await message.answer("✨ Force-join poster updated successfully.")
         return
     if field == "forcejoin_channel":
-        channel = value.strip()
+        channel = value.strip().strip("<>")
         forwarded_origin = getattr(message, "forward_origin", None)
         forwarded_chat = getattr(forwarded_origin, "chat", None)
         if forwarded_chat is not None:
             # A forwarded post is a reliable way to identify a private channel too.
             channel = forwarded_chat.username or str(forwarded_chat.id)
-        elif channel.startswith("https://t.me/"):
-            channel = "@" + channel.removeprefix("https://t.me/").strip("/").split("/", 1)[0].lstrip("@")
-        elif channel.startswith("t.me/"):
-            channel = "@" + channel.removeprefix("t.me/").strip("/").split("/", 1)[0].lstrip("@")
+        elif channel.lower().startswith(("https://t.me/", "http://t.me/", "https://telegram.me/", "http://telegram.me/", "t.me/", "telegram.me/")):
+            parsed_channel = urlparse(channel if "://" in channel else "https://" + channel)
+            channel = "@" + parsed_channel.path.strip("/").split("/", 1)[0].lstrip("@")
+        elif channel.startswith("@"):
+            channel = channel.split("/", 1)[0]
+        elif channel.startswith("tg://resolve?domain="):
+            channel = "@" + channel.split("domain=", 1)[1].split("&", 1)[0]
         if channel.startswith("@") and (len(channel) < 6 or not channel[1:].replace("_", "").isalnum()):
             await message.answer("Send a valid public channel username or forward a post from the channel.")
             return
@@ -1074,10 +1096,11 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await message.answer(f"Now send the URL for Start Button {index}.")
         return
     if field.startswith("start_button_") and field.endswith("_link"):
-        parsed = urlparse(value)
-        if parsed.scheme not in ("https", "http") or not parsed.netloc:
-            await message.answer("Button link must be a valid http/https URL.")
+        normalized_url = normalize_http_url(value)
+        if not normalized_url:
+            await message.answer("Button link must be a valid URL, e.g. example.com, t.me/channel, @channel, or https://example.com.")
             return
+        value = normalized_url
         index = field.split("_")[2]
         prev = await state.get_data()
         await patch(db, "start_message", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT})
@@ -1149,10 +1172,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "invalid_post", {"about_text": value}, {"enabled": False, "about_enabled": True})
         await message.answer("Invalid About text updated.")
     elif field == "shortener_url":
-        normalized_url = value if "://" in value else "https://" + value
-        parsed = urlparse(normalized_url)
-        if parsed.scheme not in ("https", "http") or not parsed.netloc:
-            await message.answer("Please send a valid http/https shortener URL.")
+        normalized_url = normalize_http_url(value)
+        if not normalized_url:
+            await message.answer("Please send a valid shortener URL, e.g. example.com or https://example.com/api.")
             return
         await state.update_data(shortener_url=normalized_url, field="shortener_token")
         await message.answer("Send your API token. It will be masked in settings and never logged.")
