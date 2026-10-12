@@ -60,20 +60,23 @@ def kb(rows):
     ])
 
 def format_settings_page(text: str) -> str:
-    """Render consistent headings with a real underscore divider."""
+    """Render every settings page with an underlined main heading and no divider."""
     heading, separator, body = str(text).partition("\n")
-    heading = heading.strip().replace("\u0332", "")
-    # Strip old HTML/Unicode underline and inter-letter separator artifacts.
-    heading = heading.replace("<u>", "").replace("</u>", "").replace("<b>", "").replace("</b>", "")
+    heading = heading.replace("\u0332", "")
+    for tag in ("<u>", "</u>", "<b>", "</b>", "<i>", "</i>"):
+        heading = heading.replace(tag, "")
     heading = heading.replace("_", "").strip()
     heading = " ".join(heading.split())
     body = body.lstrip("\n")
-    divider = "_" * max(7, min(len(heading), 36))
-    heading = f"<b>{heading}</b>\n{divider}"
+    # Remove divider-only lines left by older page formats; never insert a divider.
+    body_lines = body.splitlines()
+    while body_lines and (not body_lines[0].strip() or set(body_lines[0].strip()) <= {"_", "—", "-"}):
+        body_lines.pop(0)
+    body = "\n".join(body_lines).rstrip()
+    heading = f"<b><u>{heading}</u></b>"
     if body and "<i>" not in body and "</i>" not in body:
         body = f"<i>{body}</i>"
     return heading + (f"\n\n{body}" if separator and body else "")
-
 
 async def edit_page(query, text, keyboard):
     if not query.message:
@@ -344,7 +347,7 @@ async def settings_command(message: Message, settings: Settings, database):
         return
     me = await message.bot.get_me()
     name = f'<a href="https://t.me/{me.username}">{__import__("html").escape(me.full_name)}</a>' if me.username else __import__("html").escape(me.full_name)
-    await message.answer(f"<b>CUSTOMIZE</b>\n{'_' * 9}\n\nName: {name}\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", link_preview_options={"is_disabled": True}, reply_markup=kb([
+    await message.answer(f"<b><u>CUSTOMIZE</u></b>\n\nName: {name}\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", link_preview_options={"is_disabled": True}, reply_markup=kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
