@@ -37,7 +37,7 @@ def _render_user_text(raw, user, bot=None):
         "{last_name}": escape(user.last_name or ""),
         "{owner}": '<a href="https://t.me/lexxiowner">Lexi</a>',
         "{anime}": '<a href="https://t.me/lexianime">Lexi Anime</a>',
-        "{hindi_anime}": '<a href="https://t.me/lexianimehindi">Lexi Anime</a>',
+        "{hindi_anime}": '<a href="https://t.me/lexianimehindi">Lexi Anime Hindi</a>',
         "{mention}": _mention(user),
     }
     for token, replacement in values.items():
