@@ -88,6 +88,7 @@ async def deliver_reference(bot: Bot, db, settings, *, user_id: int, file_doc: d
         "source_message_id": file_doc["source_message_id"],
         "file_name": file_doc.get("file_name"),
         "reply_markup": file_doc.get("reply_markup"),
+        "original_has_buttons": file_doc.get("original_has_buttons", bool(file_doc.get("reply_markup"))),
     }
     return await deliver_batch(
         bot, db, user_id=user_id, batch={"batch_id": None, "items": [item]},
@@ -135,7 +136,10 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
                 markup_data = item.get("reply_markup")
                 # Original per-file buttons always win. Custom buttons are a
                 # fallback only for files whose saved source has no buttons.
-                if not markup_data:
+                has_original_buttons = item.get(
+                    "original_has_buttons", bool(markup_data)
+                )
+                if not has_original_buttons and not markup_data:
                     custom_cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
                     custom_buttons = custom_cfg.get("buttons", [])
                     valid_buttons = [
