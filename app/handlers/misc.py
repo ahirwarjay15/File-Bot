@@ -23,7 +23,7 @@ def _mention(user):
     return f'<a href="tg://user?id={user.id}">{escape(user.first_name or "there")}</a>'
 
 
-def _render_user_text(raw, user, bot):
+def _render_user_text(raw, user, bot=None):
     text = str(raw or DEFAULT_INVALID)
     username = getattr(bot, "username", None)
     bot_name = escape(getattr(bot, "full_name", None) or getattr(bot, "first_name", None) or "Bot")
