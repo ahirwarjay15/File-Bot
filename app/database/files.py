@@ -39,6 +39,7 @@ class FileRepository:
     async def save_file(
         self, *, source_chat_id: int, source_message_id: int, created_by: int,
         file_name: str | None = None, reply_markup: dict | None = None,
+        original_has_buttons: bool = False,
     ) -> dict:
         for _ in range(8):
             key = await self.reserve_code(10, "file")
@@ -46,6 +47,7 @@ class FileRepository:
                 "file_key": key, "source_chat_id": source_chat_id,
                 "source_message_id": source_message_id, "created_by": created_by,
                 "file_name": file_name, "reply_markup": reply_markup,
+                "original_has_buttons": original_has_buttons,
                 "created_at": _now(), "kind": "file",
             }
             try:
