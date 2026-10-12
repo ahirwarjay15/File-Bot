@@ -397,13 +397,14 @@ async def render_custom_buttons(query, db):
     rows = []
     for i, item in enumerate(buttons):
         rows.append([
-            (item.get("text", f"Button {i+1}"), f"settings:custom_button_unused"),
-            ("✖", f"settings:custom_button_remove:{i}"),
+            InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")),
+            InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"),
         ])
     if len(buttons) < 2:
-        rows.append([("✚", "settings:custom_button_add")])
-    rows.append([("《 BACK", "settings:home")])
-    await edit_page(query, "Custom Button:\\n\\nYou can add a custom buttons to your files.", kb(rows))
+        rows.append([InlineKeyboardButton(text="➕", callback_data="settings:custom_button_add")])
+    rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    await edit_page(query, "Custom Button:\\n\\nYou can add a custom buttons to your files.", markup)
 
 
 async def render_mods(query, db):
@@ -941,6 +942,10 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.answer("Button text must be between 1 and 64 characters.")
             return
         await state.update_data(custom_button_pending_text=value, field="custom_button_url")
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
         await message.answer("Now send the button URL (https://... or t.me/...).")
         return
     if field == "custom_button_url":
