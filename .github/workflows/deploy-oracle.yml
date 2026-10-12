@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - blueprint-implementation-pass-2026-10-11
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: oracle-deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -39,7 +41,7 @@ jobs:
   deploy:
     name: Deploy to Oracle Cloud
     needs: test
-    if: ${{ vars.ORACLE_DEPLOY_ENABLED == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'blueprint-implementation-pass-2026-10-11' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ vars.ORACLE_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
