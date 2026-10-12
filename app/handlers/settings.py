@@ -27,7 +27,7 @@ def unicode_buttons(value: str) -> str:
     return "".join(ch.translate(table) if ch.isascii() and ch.isalpha() else ch for ch in str(value))
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."
-DEFAULT_START_TEXT = "<b>Hey 𝑳𝑬𝑿𝑰! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by: Lexi</b>\n<b>✦ Made for: Lexi Anime</b>"
+DEFAULT_START_TEXT = "<b>Hey {user_mention}! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by: Lexi</b>\n<b>✦ Made for: Lexi Anime</b>"
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
 DEFAULT_AFTER_BUTTON = "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ"
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
