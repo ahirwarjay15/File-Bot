@@ -16,6 +16,29 @@ from app.services.delivery import deliver_reference,deliver_batch,claim_delivery
 from app.services.permissions import is_owner_or_moderator
 router=Router(name="start");log=logging.getLogger(__name__)
 
+def render_common_variables(raw_text, user, bot):
+    """Render shared message variables as Telegram HTML without nesting links."""
+    text = str(raw_text or "")
+    username = getattr(bot, "username", None)
+    bot_name = html.escape(getattr(bot, "full_name", None) or getattr(bot, "first_name", None) or "Bot")
+    bot_mention = f'<a href="https://t.me/{html.escape(username)}">{bot_name}</a>' if username else bot_name
+    values = {
+        "{bot_mention}": bot_mention,
+        "{bot}": bot_mention,
+        "{user_mention}": user.mention_html(),
+        "{user}": user.mention_html(),
+        "{first_name}": html.escape(user.first_name or ""),
+        "{last_name}": html.escape(user.last_name or ""),
+        "{owner}": '<a href="https://t.me/lexxiowner">Lexi</a>',
+        "{anime}": '<a href="https://t.me/lexianime">Lexi Anime</a>',
+        "{hindi_anime}": '<a href="https://t.me/lexianimehindi">Lexi Anime</a>',
+        "{mention}": user.mention_html(),
+    }
+    for token, replacement in values.items():
+        text = text.replace(token, replacement)
+    return text
+
+
 async def effective_force_join_channels(database, settings) -> list[str]:
     cfg = await database.db.settings.find_one({"key": "force_join"})
     raw_channels = cfg.get("channels", []) if cfg is not None and isinstance(cfg.get("channels"), list) else settings.force_join_channels
@@ -181,11 +204,9 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
     rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
     rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ",callback_data=f"forcejoin:check:{payload}")])
-    raw_text = cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"
-    rendered = str(raw_text)
-    rendered = rendered.replace("{first_name}", html.escape(user.first_name or ""))
-    rendered = rendered.replace("{last_name}", html.escape(user.last_name or ""))
-    rendered = rendered.replace("{mention}", user.mention_html())
+    raw_text = cfg.get("message") or "Hey {user_mention}! Please join my {remaining_count} remaining channel(s) to use me."
+    me = await bot.get_me()
+    rendered = render_common_variables(raw_text, user, me)
     rendered = rendered.replace("{remaining_count}", str(len(missing)))
     markup = InlineKeyboardMarkup(inline_keyboard=rows)
     try:
@@ -256,15 +277,9 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         if cfg.get("about_enabled", True):
             rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="start:about")])
         markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-        raw_text = cfg.get("text") or "Hey {mention} ✨Welcome to the fastest and most secure file store bot!\n\nBy: Lexi Anime\n\nDeveloper: Lexi"
-        text = str(raw_text)
-        text = text.replace("{first_name}", html.escape(user.first_name or "")).replace("{last_name}", html.escape(user.last_name or ""))
-        text = text.replace("{mention}", user.mention_html())
-        # Avoid nested anchors: replace the longer brand phrase first, then link
-        # standalone "Lexi" mentions in the rendered start text.
-        text = text.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
-        text = text.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
-        text = text.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
+        raw_text = cfg.get("text") or '<b>Hey {user_mention}! ✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!!.</i>\n\n<b>✦ Made by:</b> {owner} <b>✦ Made for:</b> {anime}'
+        me = await message.bot.get_me()
+        text = render_common_variables(raw_text, user, me)
         if cfg.get("poster_file_id"):
             await message.answer_animation(cfg["poster_file_id"], caption=text, reply_markup=markup, parse_mode="HTML")
         elif cfg.get("poster_photo_id"):
@@ -278,7 +293,7 @@ async def start_about(query: CallbackQuery, database):
     if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):
         return
     cfg = await database.db.settings.find_one({"key": "start_message"}) or {}
-    if not cfg.get("enabled", True) or not cfg.get("about_enabled", False) or not query.message:
+    if not cfg.get("enabled", True) or not cfg.get("about_enabled", True) or not query.message:
         return
     me = await query.bot.get_me()
     about_text = cfg.get("about_text") or "✨ ᴀʙᴏᴜᴛ ᴍᴇ\n\n✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\n\n✰ creator: Lexi\n\n✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\n\n✰ made for: Lexi Anime\n\n✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
