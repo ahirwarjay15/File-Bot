@@ -97,6 +97,11 @@ async def receive_file(message:Message,state:FSMContext,settings:Settings,databa
             InlineKeyboardButton(text="ᴄᴏᴘʏ", copy_text=CopyTextButton(text=link))
         ]])
         await message.answer(link, reply_markup=keyboard)
+        # Delete the submitted message after its storage copy and link are saved.
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            log.warning("Could not delete submitted message after saving", exc_info=True)
     except TelegramAPIError as exc:
         log.exception("Could not create file link")
         reason = type(exc).__name__
