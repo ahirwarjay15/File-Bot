@@ -196,10 +196,11 @@ async def render_forcejoin(query, db, settings):
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
-    await edit_page(query, f"START MESSAGE\n\nCustomize your bot's start message using the following options.\n\nStatus: {'ENABLED ✅' if cfg.get('enabled', True) else 'DISABLED ❌'}", kb([
+    about_enabled = bool(cfg.get("about_enabled", True))
+    await edit_page(query, f"START MESSAGE\n\nCustomize your bot's start message using the following options.\n\nStatus: {'ENABLED ✅' if cfg.get('enabled', True) else 'DISABLED ❌'}\nAbout Button: {'ON ✅' if about_enabled else 'OFF ❌'}", kb([
         [("DISABLE" if cfg.get("enabled", True) else "ENABLE", "settings:start_toggle")],
         [("BUTTON", "settings:start_button"), ("START TEXT", "settings:start_text")],
-        [("START POSTER", "settings:start_poster"), ("ABOUT BUTTON", "settings:start_about")],
+        [("START POSTER", "settings:start_poster"), ("ABOUT", "settings:start_about_toggle")],
         [("《 BACK", "settings:home")],
     ]))
 
@@ -254,12 +255,7 @@ async def render_start_poster(query):
 
 
 async def render_start_about(query, db):
-    cfg = await db.settings.find_one({"key": "start_message"}) or {}
-    await edit_page(query, f"START ABOUT BUTTON\nStatus: {'ENABLED ✅' if cfg.get('about_enabled', True) else 'DISABLED ❌'}", kb([
-        [("DISABLE" if cfg.get("about_enabled", True) else "ENABLE", "settings:start_about_toggle")],
-        [("EDIT ABOUT TEXT", "settings:start_about_text")],
-        [("《 BACK", "settings:start")],
-    ]))
+    await render_start(query, db)
 
 def _animation_mode_for_action(action: str) -> str:
     """Translate the two explicit mode buttons to their persisted values."""
@@ -555,9 +551,22 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             "Send the new Start Message text.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — link to the owner\\n<code>{hindi_anime}</code> — link to Lexi Anime Hindi",
             "start_text")
     elif action == "start_text_see":
+        import re
+        from html import unescape
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
         preview = str(cfg.get("text") or DEFAULT_START_TEXT)
-        await query.answer(preview, show_alert=True)
+        me = await query.bot.get_me()
+        bot_label = me.full_name or me.username or "Bot"
+        user_label = query.from_user.full_name or query.from_user.username or "User"
+        values = {
+            "{bot_mention}": bot_label, "{bot}": bot_label,
+            "{mention}": user_label, "{user_mention}": user_label, "{user}": user_label,
+            "{owner}": "Lexi", "{hindi_anime}": "Lexi Anime Hindi", "{anime}": "Lexi Anime",
+        }
+        for token, replacement in values.items():
+            preview = preview.replace(token, replacement)
+        preview = unescape(re.sub(r"</?[^>]+>", "", preview)).replace("\\n", "\n")
+        await query.answer(preview[:190], show_alert=True)
         return
     elif action == "start_text_default":
         await patch(db, "start_message", {"text": DEFAULT_START_TEXT}, {"enabled": True})
@@ -601,8 +610,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_start_about(query, db)
     elif action == "start_about_toggle":
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", True)}, {"enabled": True, "text": DEFAULT_START_TEXT, "about_enabled": True})
-        await render_start_about(query, db)
+        await patch(db, "start_message", {"about_enabled": not cfg.get("about_enabled", True)}, {"enabled": True, "text": DEFAULT_START_TEXT})
+        await render_start(query, db)
     elif action == "start_about_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_about_text")
         if query.message: await query.message.answer("Send the About text to show when the Start Message About button is tapped.")
