@@ -479,7 +479,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.set_state(SettingInput.waiting); await state.update_data(field=f"start_button_{index}_text", button_index=index)
         if query.message: await query.message.answer(f"Send text for Start Button {index}. Then send its URL.")
     elif action in ("start_button_text", "start_button_link"):
-        await state.set_state(SettingInput.waiting); await state.update_data(field=action, button_index="1")
+        await state.set_state(SettingInput.waiting); await state.update_data(field="start_button_1_text" if action == "start_button_text" else "start_button_1_link", button_index="1")
         if query.message: await query.message.answer("Send text for Start Button 1. Then send its URL." if action == "start_button_text" else "Send the URL for Start Button 1.")
     elif action == "start_poster": await render_start_poster(query)
     elif action == "start_poster_add":
@@ -578,7 +578,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.set_state(SettingInput.waiting); await state.update_data(field=f"invalid_button_{index}_text", button_index=index)
         if query.message: await query.message.answer(f"Send text for Invalid Button {index}. Then send its URL.")
     elif action in ("invalid_button_text", "invalid_button_link"):
-        await state.set_state(SettingInput.waiting); await state.update_data(field=action, button_index="1")
+        await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_button_1_text" if action == "invalid_button_text" else "invalid_button_1_link", button_index="1")
         if query.message: await query.message.answer("Send text for Invalid Button 1. Then send its URL." if action == "invalid_button_text" else "Send the URL for Invalid Button 1.")
     elif action == "invalid_poster": await render_poster(query)
     elif action == "poster_add":
@@ -872,6 +872,38 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await state.clear(); await message.answer("✨ Invalid-post poster updated successfully."); return
     if not value:
         await message.answer("Please send a non-empty value.")
+        return
+    if field.startswith("start_button_") and field.endswith("_text"):
+        index = field.split("_")[2]
+        await state.update_data(button_text=value, field=f"start_button_{index}_link")
+        await message.answer(f"Now send the URL for Start Button {index}.")
+        return
+    if field.startswith("start_button_") and field.endswith("_link"):
+        parsed = urlparse(value)
+        if parsed.scheme not in ("https", "http") or not parsed.netloc:
+            await message.answer("Button link must be a valid http/https URL.")
+            return
+        index = field.split("_")[2]
+        prev = await state.get_data()
+        await patch(db, "start_message", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT})
+        await state.clear()
+        await message.answer(f"✅ Start Button {index} saved and enabled.")
+        return
+    if field.startswith("invalid_button_") and field.endswith("_text"):
+        index = field.split("_")[2]
+        await state.update_data(button_text=value, field=f"invalid_button_{index}_link")
+        await message.answer(f"Now send the URL for Invalid Button {index}.")
+        return
+    if field.startswith("invalid_button_") and field.endswith("_link"):
+        parsed = urlparse(value)
+        if parsed.scheme not in ("https", "http") or not parsed.netloc:
+            await message.answer("Button link must be a valid http/https URL.")
+            return
+        index = field.split("_")[2]
+        prev = await state.get_data()
+        await patch(db, "invalid_post", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": False})
+        await state.clear()
+        await message.answer(f"✅ Invalid Button {index} saved and enabled.")
         return
     if field == "start_text":
         await patch(db, "start_message", {"text": value}, {"enabled": True})
