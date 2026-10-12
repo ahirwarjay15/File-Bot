@@ -157,7 +157,7 @@ async def render_start_button(query, db):
         except TelegramAPIError:
             pass
         panel = await query.message.answer(text, parse_mode="HTML", reply_markup=markup)
-        await query.bot_data.get("unused", None) if False else None
+        return panel
 
 
 async def refresh_button_panel(bot, chat_id, message_id, db, kind):
@@ -501,7 +501,9 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         return
     elif action == "start_button":
         await state.update_data(button_panel_kind="start")
-        await render_start_button(query, db)
+        panel = await render_start_button(query, db)
+        if panel:
+            await state.update_data(button_panel_chat_id=panel.chat.id, button_panel_message_id=panel.message_id)
     elif action.startswith("start_button_toggle:"):
         index = action.rsplit(":", 1)[1]
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
@@ -745,7 +747,8 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
             await message.answer("Set this button's text and link before enabling it.")
         else:
             await patch(db, cfg_key, {key: not enabled}, {"enabled": True, "text": DEFAULT_START_TEXT} if is_start else {"enabled": False})
-        await send_button_settings_reply_panel(message, db, kind)
+        panel_data = await state.get_data()
+        await send_button_settings_reply_panel(message, db, kind, panel_data.get("button_panel_chat_id"), panel_data.get("button_panel_message_id"))
         return
     if value in ("1 BUTTON", "2 BUTTON"):
         index = value[0]
@@ -754,7 +757,7 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
         await message.answer(f"Send text for {'Start' if is_start else 'Invalid'} Button {index}.")
         return
 
-async def send_button_settings_reply_panel(message: Message, db, kind: str):
+async def send_button_settings_reply_panel(message: Message, db, kind: str, panel_chat_id=None, panel_message_id=None):
     is_start = kind == "start"
     cfg = await db.settings.find_one({"key": "start_message" if is_start else "invalid_post"}) or {}
     status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True) if is_start else bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
@@ -762,7 +765,14 @@ async def send_button_settings_reply_panel(message: Message, db, kind: str):
     title = "START BUTTON" if is_start else "INVALID BUTTON"
     body = "Customize the button shown with your start message." if is_start else "Customize buttons shown with invalid posts."
     markup = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
-    panel = await message.answer(format_settings_page(f"{title}\n\n{body}\n\nButton 1: {status1}\nButton 2: {status2}"), parse_mode="HTML", reply_markup=markup)
+    page_text = format_settings_page(f"{title}\n\n{body}\n\nButton 1: {status1}\nButton 2: {status2}")
+    try:
+        if panel_chat_id and panel_message_id:
+            await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id, text=page_text, parse_mode="HTML")
+        else:
+            panel = await message.answer(page_text, parse_mode="HTML", reply_markup=markup)
+    except TelegramAPIError:
+        pass
 
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
