@@ -667,7 +667,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("Setting change cancelled.")
+    try:
+        await message.delete()
+    except TelegramAPIError:
+        pass
 
 @router.message(SettingInput.waiting)
 async def receive_setting_input(message: Message, state: FSMContext, settings: Settings, database):
