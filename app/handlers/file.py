@@ -15,8 +15,38 @@ class FileStates(StatesGroup):waiting_for_message=State()
 @router.message(Command("file"))
 async def file_command(message:Message,state:FSMContext,settings:Settings,database):
     if not message.from_user or not await is_owner_or_moderator(database.db,message.from_user.id,settings):return
-    if not settings.source_channel_id:await message.answer("Storage isn't configured. Set SOURCE_CHANNEL_ID first.");return
-    await state.set_state(FileStates.waiting_for_message);await message.answer("Send me the files you want to store. Send one message for this /file link, or use /cancel to stop.")
+    if not settings.source_channel_id:
+        await message.answer("Storage isn't configured. Set SOURCE_CHANNEL_ID to the numeric ID of your private storage channel.")
+        return
+    # Validate the configured ID and bot permissions before asking for a file.
+    try:
+        storage_chat = await message.bot.get_chat(settings.source_channel_id)
+        bot_member = await message.bot.get_chat_member(
+            chat_id=settings.source_channel_id,
+            user_id=(await message.bot.get_me()).id,
+        )
+        if bot_member.status not in ("administrator", "creator"):
+            await message.answer(
+                f"Storage channel found ({storage_chat.title or storage_chat.id}), "
+                "but the bot is not an administrator there. Promote it to admin "
+                "with permission to post messages, then try /file again."
+            )
+            return
+    except TelegramAPIError as exc:
+        log.exception("Storage channel preflight failed for SOURCE_CHANNEL_ID=%s", settings.source_channel_id)
+        detail = str(exc).lower()
+        if "chat not found" in detail:
+            reason = "Telegram cannot find this channel ID. Set SOURCE_CHANNEL_ID to the channel's numeric ID (usually starts with -100)."
+        elif "bot is not a member" in detail or "user not found" in detail:
+            reason = "The bot is not in this channel. Add the bot to the private storage channel and make it an administrator."
+        elif "administrator" in detail or "rights" in detail:
+            reason = "The bot needs administrator permission to post/copy messages in the storage channel."
+        else:
+            reason = f"Telegram rejected the storage channel configuration ({type(exc).__name__}). Verify SOURCE_CHANNEL_ID and bot admin access."
+        await message.answer(f"Storage channel check failed. {reason}")
+        return
+    await state.set_state(FileStates.waiting_for_message)
+    await message.answer("Send me the files you want to store. or use /cancel to stop.")
 
 @router.message(FileStates.waiting_for_message,Command("cancel"))
 async def cancel_file(message:Message,state:FSMContext):
