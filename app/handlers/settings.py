@@ -151,6 +151,30 @@ async def render_start_button(query, db):
         [("《 BACK", "settings:start")],
     ]))
 
+
+
+async def refresh_button_panel(bot, chat_id, message_id, db, kind):
+    """Refresh the existing button-settings panel after text/link input."""
+    if not chat_id or not message_id:
+        return
+    is_start = kind == "start"
+    cfg = await db.settings.find_one({"key": "start_message" if is_start else "invalid_post"}) or {}
+    status1 = "ON ✅" if cfg.get("button1_enabled", cfg.get("button_enabled", True) if is_start else bool(cfg.get("button_text") and cfg.get("button_url"))) else "OFF ❌"
+    status2 = "ON ✅" if cfg.get("button2_enabled", False) else "OFF ❌"
+    title = "START BUTTON" if is_start else "INVALID BUTTON"
+    back = "settings:start" if is_start else "settings:invalid"
+    prefix = "start" if is_start else "invalid"
+    page_text = format_settings_page(f"{title}\nCustomize buttons shown with {'your start message' if is_start else 'invalid posts'}.\n\nKeyboard Buttons")
+    keyboard = kb([
+        [(f"1 BUTTON TOGGLE: {status1}", f"settings:{prefix}_button_toggle:1"), (f"2 BUTTON TOGGLE: {status2}", f"settings:{prefix}_button_toggle:2")],
+        [("1 BUTTON", f"settings:{prefix}_button_1"), ("2 BUTTON", f"settings:{prefix}_button_2")],
+        [("《 BACK", back)],
+    ])
+    try:
+        await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=page_text, reply_markup=keyboard, parse_mode="HTML")
+    except TelegramAPIError:
+        pass
+
 async def render_start_poster(query):
     await edit_page(query, "S̲T̲A̲R̲T̲ ̲M̲E̲D̲I̲A̲\n\nInclude an image or GIF with your start message.", kb([
         [("✚ ADD", "settings:start_poster_add"), ("REMOVE", "settings:start_poster_remove")],
@@ -476,10 +500,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             await render_start_button(query, db)
     elif action in ("start_button_1", "start_button_2"):
         index = action.rsplit("_", 1)[1]
-        await state.set_state(SettingInput.waiting); await state.update_data(field=f"start_button_{index}_text", button_index=index)
+        await state.set_state(SettingInput.waiting); await state.update_data(field=f"start_button_{index}_text", button_index=index, panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="start")
         if query.message: await query.message.answer(f"Send text for Start Button {index}. Then send its URL.")
     elif action in ("start_button_text", "start_button_link"):
-        await state.set_state(SettingInput.waiting); await state.update_data(field="start_button_1_text" if action == "start_button_text" else "start_button_1_link", button_index="1")
+        await state.set_state(SettingInput.waiting); await state.update_data(field="start_button_1_text" if action == "start_button_text" else "start_button_1_link", button_index="1", panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="start")
         if query.message: await query.message.answer("Send text for Start Button 1. Then send its URL." if action == "start_button_text" else "Send the URL for Start Button 1.")
     elif action == "start_poster": await render_start_poster(query)
     elif action == "start_poster_add":
@@ -573,10 +597,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             await render_invalid_button(query, db)
     elif action in ("invalid_button_1", "invalid_button_2"):
         index = action.rsplit("_", 1)[1]
-        await state.set_state(SettingInput.waiting); await state.update_data(field=f"invalid_button_{index}_text", button_index=index)
+        await state.set_state(SettingInput.waiting); await state.update_data(field=f"invalid_button_{index}_text", button_index=index, panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="invalid")
         if query.message: await query.message.answer(f"Send text for Invalid Button {index}. Then send its URL.")
     elif action in ("invalid_button_text", "invalid_button_link"):
-        await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_button_1_text" if action == "invalid_button_text" else "invalid_button_1_link", button_index="1")
+        await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_button_1_text" if action == "invalid_button_text" else "invalid_button_1_link", button_index="1", panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="invalid")
         if query.message: await query.message.answer("Send text for Invalid Button 1. Then send its URL." if action == "invalid_button_text" else "Send the URL for Invalid Button 1.")
     elif action == "invalid_poster": await render_poster(query)
     elif action == "poster_add":
@@ -881,8 +905,8 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         index = field.split("_")[2]
         prev = await state.get_data()
         await patch(db, "start_message", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT})
+        await refresh_button_panel(message.bot, prev.get("panel_chat_id"), prev.get("panel_message_id"), db, "start")
         await state.clear()
-        await message.answer(f"✅ Start Button {index} saved and enabled.")
         return
     if field.startswith("invalid_button_") and field.endswith("_text"):
         index = field.split("_")[2]
@@ -897,8 +921,8 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         index = field.split("_")[2]
         prev = await state.get_data()
         await patch(db, "invalid_post", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": False})
+        await refresh_button_panel(message.bot, prev.get("panel_chat_id"), prev.get("panel_message_id"), db, "invalid")
         await state.clear()
-        await message.answer(f"✅ Invalid Button {index} saved and enabled.")
         return
     if field == "start_text":
         await patch(db, "start_message", {"text": value}, {"enabled": True})
