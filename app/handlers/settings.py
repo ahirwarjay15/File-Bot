@@ -91,8 +91,9 @@ async def edit_page(query, text, keyboard):
 
 async def render_home(query):
     me = await query.bot.get_me()
-    # Keep the bot name as plain escaped text: no clickable URL means no preview.
-    name = __import__("html").escape(me.full_name)
+    # The bot name remains a clickable mention, while previews are disabled in edit_page.
+    import html
+    name = f'<a href="https://t.me/{me.username}">{html.escape(me.full_name)}</a>' if me.username else html.escape(me.full_name)
     await edit_page(query, f"CUSTOMIZE\nName: {name}\n\nConfigure Bot Settings Using the Buttons Below.", kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
@@ -343,7 +344,7 @@ async def settings_command(message: Message, settings: Settings, database):
         return
     me = await message.bot.get_me()
     name = f'<a href="https://t.me/{me.username}">{__import__("html").escape(me.full_name)}</a>' if me.username else __import__("html").escape(me.full_name)
-    await message.answer(f"<b><u>C̲U̲S̲T̲O̲M̲I̲Z̲E̲</u></b>\n\nName: {name}\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", reply_markup=kb([
+    await message.answer(f"<b>CUSTOMIZE</b>\n{'_' * 9}\n\nName: {name}\n\n<i>Configure Bot Settings Using the Buttons Below.</i>", parse_mode="HTML", link_preview_options={"is_disabled": True}, reply_markup=kb([
         [("START MSG", "settings:start"), ("FORCE JOIN", "settings:forcejoin")],
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
