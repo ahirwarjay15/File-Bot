@@ -429,6 +429,7 @@ async def settings_command(message: Message, settings: Settings, database):
         [("ANIMATION", "settings:forcejoin_animation"), ("AUTO DELETE", "settings:auto")],
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
         [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
+        [("CUSTOM BUTTON", "settings:custom_button")],
         [("《 BACK", "settings:home_back")],
     ]))
 
