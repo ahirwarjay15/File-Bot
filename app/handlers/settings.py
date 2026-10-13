@@ -189,7 +189,7 @@ async def render_forcejoin(query, db, settings):
     channel_buttons = []
     for i, channel in enumerate(channels[:10]):
         channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        label = channel_cfg.get("button_text") or f"JOIN {i + 1}"
+        label = channel_cfg.get("button_text") or channel_cfg.get("channel_title") or channel.lstrip("@")
         channel_buttons.append((label, f"settings:forcejoin_channel:{i}"))
     other_buttons = []
     for i, item in enumerate(other_links[:10]):
@@ -1192,7 +1192,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "force_join", {"channels": channels})
         await db.settings.update_one(
             {"key": "force_join_channel", "channel": channel},
-            {"$set": {"key": "force_join_channel", "channel": channel, "button_url": button_url}},
+            {"$set": {"key": "force_join_channel", "channel": channel, "button_url": button_url, "channel_title": chat.title or channel.lstrip("@")}},
             upsert=True,
         )
         await state.clear()
