@@ -16,6 +16,15 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _as_utc_aware(value):
+    """MongoDB may decode UTC datetimes as naive; normalize before comparison."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 async def claim_delivery_request(db, request_key: str, user_id: int, payload: str) -> bool:
     try:
         await db.delivery_requests.insert_one({
@@ -228,7 +237,7 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
         doc = await db.batch_deliveries.find_one({"request_key": request_key})
         delivered_ids = list(doc.get("delivered_message_ids", []))
         deadline = doc.get("deadline")
-        if doc.get("auto_delete") and deadline and deadline > _now() and doc.get("alert_status") == "pending":
+        if doc.get("auto_delete") and deadline and _as_utc_aware(deadline) > _now() and doc.get("alert_status") == "pending":
             claimed = await db.batch_deliveries.update_one(
                 {"request_key": request_key, "status": "processing", "alert_status": "pending"},
                 {"$set": {"alert_status": "sending", "alert_started_at": _now()}},
