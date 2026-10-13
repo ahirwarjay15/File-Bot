@@ -354,3 +354,22 @@ def test_force_join_verification_resolves_public_chat_username_for_join_button()
     source = Path("app/handlers/start.py").read_text()
     assert source.count('target = f"https://t.me/{chat.username}"') >= 2
     assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
+
+def test_settings_flow_messages_are_tracked_for_page_navigation_cleanup():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    callback_start = source.index('@router.callback_query(F.data.startswith("settings:"))')
+    callback_end = source.index('@router.message(StateFilter(None), F.text)', callback_start)
+    callback_handler = source[callback_start:callback_end]
+    input_start = source.index('@router.message(SettingInput.waiting)')
+    input_end = source.index('@router.message(Command("setstart"))', input_start)
+    input_handler = source[input_start:input_end]
+
+    assert "await remove_temporary_prompts(query.bot, pending)" in callback_handler
+    assert "await tracked_answer(query.message, state," in callback_handler
+    assert "await tracked_answer(message, state," in input_handler
+    assert "async def clear_state_preserving_prompts(state):" in source
+    assert "prompt_ids = list(data.get(\"temporary_prompt_ids\", []))" in source
+    assert "await track_temporary_prompt(state, sent)" in source
+
