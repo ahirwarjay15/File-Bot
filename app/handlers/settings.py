@@ -1023,7 +1023,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             pending_chat_username=chat.username,
         )
         await message.answer(
-            f"Selected: {chat.title or chat.id}\\nNow choose the verification mode.",
+            f"Selected: {chat.title or chat.id}\nNow choose the verification mode.",
             reply_markup=ReplyKeyboardMarkup(
                 keyboard=[
                     [KeyboardButton(text="Normal Mode")],
@@ -1083,7 +1083,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await state.clear()
         mode_label = "Join Request Mode" if join_request_mode else "Normal Mode"
         await message.answer(
-            f"Force Join added successfully.\\nChat: {data.get('pending_chat_title') or channel_id}\\nMode: {mode_label}\\nInvite link has no expiry time or member limit.",
+            f"Force Join added successfully.\nChat: {data.get('pending_chat_title') or channel_id}\nMode: {mode_label}\nInvite link has no expiry time or member limit.",
             reply_markup=ReplyKeyboardRemove(),
         )
         return
