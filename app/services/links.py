@@ -26,11 +26,13 @@ def _shrtfly_endpoint(base_url: str) -> str | None:
 
 
 def _shrtfly_params(api_token: str, long_url: str) -> dict[str, str]:
-    """Build the full parameter set accepted by ShrtFly's legacy API."""
+    """Build parameters for the ShrtFly/AdLinkFly API."""
+    # The API expects the numeric mainstream ads type (0), not the label
+    # "mainstream". The label causes provider validation to fail.
     return {
         "api": api_token,
         "url": long_url,
-        "ads_type": "mainstream",
+        "ads_type": "0",
         "is_text_format": "false",
     }
 
