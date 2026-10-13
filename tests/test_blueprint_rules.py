@@ -208,3 +208,41 @@ def test_custom_button_settings_layout_uses_two_controls_per_row():
         ["Protect", "✖"],
         ["Update", "✖"],
     ]
+
+
+@pytest.mark.asyncio
+async def test_button_panel_refresh_keeps_inline_back_navigation():
+    from types import SimpleNamespace
+    from app.handlers.settings import refresh_button_panel
+
+    class SettingsCollection:
+        async def find_one(self, query):
+            return {
+                "button1_enabled": True,
+                "button1_text": "Updates",
+                "button1_url": "https://t.me/example",
+                "button2_enabled": False,
+            }
+
+    class FakeBot:
+        def __init__(self):
+            self.edited = None
+
+        async def edit_message_text(self, **kwargs):
+            self.edited = kwargs
+
+    bot = FakeBot()
+    await refresh_button_panel(bot, 123, 456, SimpleNamespace(settings=SettingsCollection()), "start")
+
+    assert bot.edited["chat_id"] == 123
+    assert bot.edited["message_id"] == 456
+    markup = bot.edited["reply_markup"]
+    callback_data = [
+        button.callback_data
+        for row in markup.inline_keyboard
+        for button in row
+        if button.callback_data
+    ]
+    assert "settings:start" in callback_data
+    assert "settings:start_button_1" in callback_data
+    assert "settings:start_button_2" in callback_data
