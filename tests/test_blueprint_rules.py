@@ -16,9 +16,9 @@ async def test_generating_batch_is_not_expired_mid_generation():
     assert not await _expired({"status": "generating", "last_activity_ts": 0})
 
 
-def test_batch_menu_exposes_generate_cancel_and_back():
+def test_batch_menu_exposes_only_generate_and_cancel():
     labels = [button.text for row in menu().inline_keyboard for button in row]
-    assert labels == ["ɢᴇɴᴇʀᴀᴛᴇ ʟɪɴᴋ", "ᴄᴀɴᴄᴇʟ", "《 BACK"]
+    assert labels == ["ɢᴇɴᴇʀᴀᴛᴇ ʟɪɴᴋ", "ᴄᴀɴᴄᴇʟ"]
 
 
 def test_force_join_signature_is_order_independent_but_configuration_sensitive():
