@@ -102,21 +102,23 @@ async def join_status(bot,user_id:int,channels:list[str],db=None)->list[str]:
 _gate_animation_tasks: dict[tuple[int, str], tuple[asyncio.Task, int | None]] = {}
 
 
-async def _cancel_gate_animation(bot, user_id: int, payload: str):
+async def _cancel_gate_animation(bot, user_id: int, payload: str,
+                               delete_separate: bool = True) -> int | None:
     entry = _gate_animation_tasks.pop((user_id, payload), None)
     if not entry:
-        return
+        return None
     task, separate_message_id = entry
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
-    if separate_message_id:
+    if separate_message_id and delete_separate:
         try:
             await bot.delete_message(user_id, separate_message_id)
         except TelegramAPIError:
             pass
+    return separate_message_id
 
 
 async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
@@ -263,8 +265,13 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     rendered = render_common_variables(raw_text, user, me).replace("{remaining_count}", str(len(missing)))
     markup = InlineKeyboardMarkup(inline_keyboard=rows)
 
+    separate_animation_id = None
     if animation_enabled:
-        await _cancel_gate_animation(bot, user.id, payload)
+        # Keep New Message animation visible until the replacement Force Join post
+        # has actually been sent; delete it immediately afterwards.
+        separate_animation_id = await _cancel_gate_animation(
+            bot, user.id, payload, delete_separate=(animation_mode != "new_message")
+        )
     if animation_enabled and animation_mode == "force_join_poster" and animation_post:
         # Stop the loop and turn its poster into the Force Join prompt.
         try:
@@ -280,8 +287,12 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             except TelegramAPIError:
                 pass
     else:
-        # New Message mode removes its temporary animation before the gate prompt.
-        await _send_force_join_post(bot, user.id, cfg, rendered, markup)
+        new_post = await _send_force_join_post(bot, user.id, cfg, rendered, markup)
+        if separate_animation_id:
+            try:
+                await bot.delete_message(chat_id=user.id, message_id=separate_animation_id)
+            except TelegramAPIError:
+                pass
     return True
 
 async def deliver_payload(bot,database,settings,user_id:int,payload:str,record:dict,request_key:str|None=None):
@@ -530,10 +541,21 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 except TelegramAPIError:
                     pass
         else:
-            # New Message mode: remove the temporary animation first. With animation
-            # disabled, still replace the old post only after the new one is delivered.
-            await _cancel_gate_animation(bot, user_id, payload)
+            # Publish the replacement first, then instantly remove the temporary
+            # New Message animation and the previous Force Join post.
+            separate_animation_id = None
+            if animation_enabled and animation_mode == "new_message":
+                separate_animation_id = await _cancel_gate_animation(
+                    bot, user_id, payload, delete_separate=False
+                )
+            else:
+                await _cancel_gate_animation(bot, user_id, payload)
             new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
+            if separate_animation_id:
+                try:
+                    await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+                except TelegramAPIError:
+                    pass
             if old_post and new_post.message_id != old_post.message_id:
                 try:
                     await old_post.delete()
