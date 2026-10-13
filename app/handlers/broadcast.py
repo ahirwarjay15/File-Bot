@@ -76,8 +76,9 @@ async def confirm(query: CallbackQuery, settings: Settings, database):
     if not draft:
         await query.answer("No pending broadcast draft, or it has already been queued.", show_alert=True)
         return
-    # A durable job is uniquely tied to the draft; duplicate callback clicks cannot create duplicate jobs.
-    job = await database.db.broadcast_jobs.find_one_and_update(
+    # Create the durable job and acknowledge immediately. The worker loads recipients
+    # asynchronously, so a large user database cannot make Telegram's callback time out.
+    await database.db.broadcast_jobs.update_one(
         {"draft_id": draft["_id"]},
         {"$setOnInsert": {
             "draft_id": draft["_id"], "admin_id": admin_id, "source_chat_id": draft["chat_id"],
@@ -85,22 +86,8 @@ async def confirm(query: CallbackQuery, settings: Settings, database):
             "report_message_id": draft.get("report_message_id"), "status": "preparing",
             "created_at": now(), "recipients_loaded": False,
         }},
-        upsert=True, return_document=True,
+        upsert=True,
     )
-    job_id = job["_id"]
-    if not job.get("recipients_loaded"):
-        ids = []
-        async for user in database.db.users.find({"banned": {"$ne": True}}, {"user_id": 1}):
-            ids.append({"job_id": job_id, "user_id": user["user_id"], "status": "pending"})
-        if ids:
-            try:
-                await database.db.broadcast_recipients.insert_many(ids, ordered=False)
-            except BulkWriteError:
-                # Unique job/user index makes this safe to repeat after an interrupted setup.
-                pass
-        await database.db.broadcast_jobs.update_one(
-            {"_id": job_id}, {"$set": {"recipients_loaded": True, "status": "pending", "recipient_count": len(ids)}}
-        )
     await query.answer("Broadcast queued.")
     if query.message:
         await query.message.edit_text("Broadcast queued. You will receive the delivery report when it finishes.")
