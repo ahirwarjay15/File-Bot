@@ -185,19 +185,14 @@ async def render_home(query):
 async def render_forcejoin(query, db, settings):
     channels = await effective_force_join_channels(type("DatabaseView", (), {"db": db})(), settings)
     cfg = await db.settings.find_one({"key": "force_join"}) or {}
-    other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
     channel_buttons = []
     for i, channel in enumerate(channels[:10]):
         channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
         label = channel_cfg.get("channel_title") or channel_cfg.get("button_text") or channel.lstrip("@")
         channel_buttons.append((label, f"settings:forcejoin_channel:{i}"))
-    other_buttons = []
-    for i, item in enumerate(other_links[:10]):
-        other_buttons.append((item.get("button_text") or f"JOIN {len(channels)+i+1}", f"settings:forcejoin_other_settings:{i}"))
     rows = []
     rows.extend([channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)])
-    rows.extend([other_buttons[i:i+2] for i in range(0, len(other_buttons), 2)])
-    if len(channels) + len(other_links) < 10:
+    if len(channels) < 10:
         rows.append([("✚ ADD", "settings:forcejoin_add")])
     rows.append([("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")])
     rows.extend([
@@ -209,7 +204,6 @@ async def render_forcejoin(query, db, settings):
             f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\n\n"
             "Users must verify the required Join Request channels before receiving files.\n\n"
             "Join Request channels accept membership or a pending join request.\n\n"
-            "Other links are treated as verified when all required Join Request channels are verified.\n\n"
             "You can add up to 10 force-join channels.")
     await edit_page(query, text, kb(rows))
 
@@ -555,7 +549,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if index < len(channels):
             channel = channels[index]
             cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-            await edit_page(query, f"CHANNEL SETTINGS\n\n{channel}\n\nSelect an option below.", kb([
+            channel_title = cfg.get("channel_title") or channel.lstrip("@")
+            await edit_page(query, f"CHANNEL SETTINGS\n\n{channel_title}\n\nSelect an option below.", kb([
                 [("BUTTON TEXT", f"settings:forcejoin_label:{index}"), ("REMOVE", f"settings:forcejoin_remove_one:{index}")],
                 [("《 BACK", "settings:forcejoin")],
             ]))
