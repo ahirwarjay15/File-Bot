@@ -121,6 +121,33 @@ async def show_input_prompt(query, state, field, prompt, back_action, **extra):
     )
 
 
+async def track_temporary_prompt(state, message):
+    """Track standalone bot prompts so navigation can remove them."""
+    data = await state.get_data()
+    ids = list(data.get("temporary_prompt_ids", []))
+    ids.append({"chat_id": message.chat.id, "message_id": message.message_id})
+    await state.update_data(temporary_prompt_ids=ids)
+
+
+async def remove_temporary_prompts(bot, data):
+    """Delete standalone prompts associated with the current settings flow."""
+    prompts = list(data.get("temporary_prompt_ids", []))
+    prompt_chat = data.get("input_prompt_chat_id")
+    prompt_message = data.get("input_prompt_message_id")
+    if prompt_chat and prompt_message:
+        prompts.append({"chat_id": prompt_chat, "message_id": prompt_message})
+    seen = set()
+    for prompt in prompts:
+        chat_id, message_id = prompt.get("chat_id"), prompt.get("message_id")
+        if not chat_id or not message_id or (chat_id, message_id) in seen:
+            continue
+        seen.add((chat_id, message_id))
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except TelegramAPIError:
+            pass
+
+
 async def remove_input_prompt(bot, data):
     chat_id = data.get("input_prompt_chat_id")
     message_id = data.get("input_prompt_message_id")
@@ -443,6 +470,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                   "forcejoin_message", "forcejoin_media", "forcejoin_animation", "animation_mode",
                   "mods", "shortener", "custom_button"}:
         pending = await state.get_data()
+        await remove_temporary_prompts(query.bot, pending)
         await remove_input_prompt(query.bot, pending)
         await state.clear()
     if action in {"home", "home_back"}: await render_home(query)
@@ -456,7 +484,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             [("《 BACK", "settings:forcejoin")],
         ]))
         if query.message:
-            await query.message.answer(
+            picker_prompt = await query.message.answer(
                 "Choose the type of chat to add. The bot must already be an administrator.",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
@@ -466,6 +494,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                     ], resize_keyboard=True, one_time_keyboard=True,
                 ),
             )
+            await track_temporary_prompt(state, picker_prompt)
         await state.set_state(SettingInput.waiting)
         await state.update_data(field="forcejoin_wait_chat")
     elif action == "forcejoin_other":
@@ -952,6 +981,7 @@ async def send_button_settings_reply_panel(message: Message, db, kind: str, pane
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
     pending = await state.get_data()
+    await remove_temporary_prompts(message.bot, pending)
     await remove_input_prompt(message.bot, pending)
     await state.clear()
     try:
@@ -1022,6 +1052,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                 ], resize_keyboard=True, one_time_keyboard=True,
             ),
         )
+        await track_temporary_prompt(state, mode_prompt)
         return
 
     if field == "forcejoin_wait_mode":
