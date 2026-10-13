@@ -957,7 +957,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     await query.answer()
 
 
-@router.message(StateFilter(None), F.text)
+@router.message(StateFilter(None), F.text, ~F.text.startswith("/"))
 async def handle_button_settings_reply_keyboard(message: Message, state: FSMContext, settings: Settings, database):
     if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
         return
