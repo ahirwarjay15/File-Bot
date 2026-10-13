@@ -24,8 +24,7 @@ class BatchState(StatesGroup):
 def menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="ɢᴇɴᴇʀᴀᴛᴇ ʟɪɴᴋ", callback_data="batch:generate")],
-        [InlineKeyboardButton(text="ᴄᴀɴᴄᴇʟ", callback_data="batch:cancel"),
-         InlineKeyboardButton(text="《 BACK", callback_data="batch:back")],
+        [InlineKeyboardButton(text="ᴄᴀɴᴄᴇʟ", callback_data="batch:cancel")],
     ])
 
 def _now():
@@ -138,7 +137,7 @@ async def cancel_command(message: Message, state: FSMContext, settings: Settings
             {"$set": {"status": "cancelled", "finished_at": _now()}},
         )
     await state.clear()
-    await message.answer("Batch process cancelled. No changes were made to previously saved files.")
+    await message.answer("Cancelled. Batch collection ended, your files were not saved.")
 
 async def _collect_message(message: Message, settings: Settings, database, uid: int):
     session = await _session(database.db, uid)
@@ -218,7 +217,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
     uid = query.from_user.id
     action = query.data.split(":", 1)[1]
     session = await _session(database.db, uid)
-    if action in ("cancel", "back"):
+    if action == "cancel":
         if session:
             await database.db.batch_sessions.update_one(
                 {"_id": session["_id"], "status": "collecting"},
@@ -226,7 +225,7 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
             )
         await state.clear()
         if query.message:
-            await query.message.edit_text("Batch process cancelled. No changes were made to previously saved files." if action == "cancel" else "Back. Batch collection ended; previously saved files were not changed.")
+            await query.message.edit_text("Cancelled. Batch collection ended, your files were not saved.")
         return
     if not session or await _expired(session):
         if session:
