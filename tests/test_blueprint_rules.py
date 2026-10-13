@@ -246,3 +246,16 @@ async def test_button_panel_refresh_keeps_inline_back_navigation():
     assert "settings:start" in callback_data
     assert "settings:start_button_1" in callback_data
     assert "settings:start_button_2" in callback_data
+
+
+def test_start_message_default_and_markdown_are_normalized_without_leaked_markers():
+    from app.handlers.settings import DEFAULT_START_TEXT
+    from app.services.text_format import normalize_telegram_text
+
+    assert DEFAULT_START_TEXT == "<b>Hey {user_mention}✨</b>\\n\\n<i>Welcome to the fastest and most secure file store bot!</i>"
+    rendered = normalize_telegram_text("**Hey {user_mention}✨**\\n\\n*Welcome to the fastest and most secure file store bot!*")
+    assert rendered == DEFAULT_START_TEXT
+    assert "\\\\n" not in rendered
+    assert "**" not in rendered
+    assert "*Welcome" not in rendered
+    assert normalize_telegram_text("`sample`") == "<code>sample</code>"
