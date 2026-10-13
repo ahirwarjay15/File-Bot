@@ -75,6 +75,17 @@ def time_words(minutes: int) -> str:
         return f"{hours} hour" if hours == 1 else f"{hours} hours"
     return f"{minutes} minutes"
 
+def custom_button_settings_rows(buttons):
+    """Render at most two configured custom buttons, one per row with its remove control."""
+    rows = []
+    for i, item in enumerate(buttons[:2]):
+        rows.append([
+            InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")),
+            InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"),
+        ])
+    return rows
+
+
 def kb(rows):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=unicode_buttons(label), callback_data=data) for label, data in row]
@@ -414,13 +425,7 @@ async def render_shortener(query, db):
 async def render_custom_buttons(query, db):
     cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
     buttons = cfg.get("buttons", [])[:2]
-    rows = []
-    # Keep each configured button and its remove control on a separate row (2 controls per row).
-    for i, item in enumerate(buttons):
-        rows.append([
-            InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")),
-            InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"),
-        ])
+    rows = custom_button_settings_rows(buttons)
     if len(buttons) < 2:
         rows.append([InlineKeyboardButton(text="✚", callback_data="settings:custom_button_add")])
     rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])
