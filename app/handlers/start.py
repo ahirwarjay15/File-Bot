@@ -482,13 +482,8 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 else:
                     animation_post = await bot.send_message(user_id, f"<i>{first}</i>", parse_mode="HTML")
                 await _start_gate_animation(bot, user_id, payload, animation_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, animation_only=True)
-                # Poster mode replaces the old gate as soon as the animation-only
-                # poster is visible; the same poster becomes the failed-check prompt.
-                if old_post and animation_post.message_id != old_post.message_id:
-                    try:
-                        await old_post.delete()
-                    except TelegramAPIError:
-                        pass
+                # Keep the old Force Join post visible throughout the animation.
+                # It is deleted only after the replacement post is ready.
             except TelegramAPIError:
                 log.warning("Could not create Force Join animation poster", exc_info=True)
                 animation_post = None
@@ -525,8 +520,8 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         markup = InlineKeyboardMarkup(inline_keyboard=rows)
 
         if animation_enabled and animation_mode == "force_join_poster" and animation_post:
-            # Reuse the animation poster for the failed-check prompt; the animation
-            # is stopped first, then the text and remaining-channel buttons return.
+            # Stop the animation, then turn its poster into the updated prompt.
+            # The old Force Join post remains until this replacement is ready.
             await _cancel_gate_animation(bot, user_id, payload)
             try:
                 if animation_post.photo or animation_post.animation or animation_post.document:
