@@ -17,6 +17,14 @@ log = logging.getLogger(__name__)
 def now():
     return datetime.now(timezone.utc)
 
+
+def confirmation_keyboard(draft_key: str) -> InlineKeyboardMarkup:
+    """Only show the explicit confirm/cancel choices on broadcast confirmation."""
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="ᴄᴏɴꜰɪʀᴍ", callback_data=f"broadcast:yes:{draft_key}"),
+        InlineKeyboardButton(text="ᴄᴀɴᴄᴇʟ", callback_data=f"broadcast:no:{draft_key}"),
+    ]])
+
 @router.message(Command("broadcast"))
 async def broadcast(message: Message, settings: Settings, database):
     if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
@@ -42,10 +50,7 @@ async def broadcast(message: Message, settings: Settings, database):
         await message.answer("Could not create the broadcast draft. Please try again.")
         return
     draft_key = draft["draft_key"]
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="ᴄᴏɴꜰɪʀᴍ", callback_data=f"broadcast:yes:{draft_key}"),
-        InlineKeyboardButton(text="ᴄᴀɴᴄᴇʟ", callback_data=f"broadcast:no:{draft_key}"),
-    ], [InlineKeyboardButton(text="《 BACK", callback_data=f"broadcast:back:{draft_key}")]])
+    keyboard = confirmation_keyboard(draft_key)
     await message.answer(f"BROADCAST CONFIRMATION\nReview the message before sending it to users.\nRecipients: {recipients}", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("broadcast:"))
