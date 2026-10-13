@@ -941,8 +941,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "stats":
         total = await db.users.count_documents({})
         blocked = await db.users.count_documents({"blocked": True})
-        me = await query.bot.get_me()
-        await query.answer(f"{me.full_name}\n\nUSERS: {total}\n\nBLOCKED: {blocked}", show_alert=True)
+        await query.answer(f"⛦ Total Users: {total}\n⛦ Banned Users: {blocked}", show_alert=True)
         return
     await query.answer()
 
