@@ -10,5 +10,5 @@ def normalize_telegram_text(value: str | None) -> str:
     # Convert common Markdown formatting so markers are never shown to users.
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text, flags=re.DOTALL)
     text = re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", r"<i>\1</i>", text)
-    text = re.sub(r"\`([^\`\n]+?)\`", r"<code>\1</code>", text)
+    text = re.sub(r"`([^`\n]+?)`", r"<code>\1</code>", text)
     return text
