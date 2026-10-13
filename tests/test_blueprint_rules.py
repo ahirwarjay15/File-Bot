@@ -179,3 +179,33 @@ async def test_pending_join_request_only_verifies_join_request_mode():
     bot = FakeBot()
     assert await join_status(bot, 42, ["-100123"], FakeDB("normal")) == ["-100123"]
     assert await join_status(bot, 42, ["-100123"], FakeDB("join_request")) == []
+
+
+
+def test_force_join_public_and_private_chats_select_automatic_modes():
+    from types import SimpleNamespace
+    from app.handlers.settings import force_join_mode_for_chat
+
+    public_channel = SimpleNamespace(username="public_channel")
+    public_group = SimpleNamespace(username="public_group")
+    private_channel = SimpleNamespace(username=None)
+    private_group = SimpleNamespace(username=None)
+
+    assert force_join_mode_for_chat(public_channel) == "normal"
+    assert force_join_mode_for_chat(public_group) == "normal"
+    assert force_join_mode_for_chat(private_channel) == "join_request"
+    assert force_join_mode_for_chat(private_group) == "join_request"
+
+
+def test_custom_button_settings_layout_uses_two_controls_per_row():
+    from app.handlers.settings import InlineKeyboardButton
+
+    # Layout invariant used by the settings panel: each configured button shares
+    # one row only with its remove control, never with a second configured button.
+    rows = [
+        [InlineKeyboardButton(text="Protect", url="https://example.com"),
+         InlineKeyboardButton(text="✖", callback_data="settings:custom_button_remove:0")],
+        [InlineKeyboardButton(text="Update", url="https://example.org"),
+         InlineKeyboardButton(text="✖", callback_data="settings:custom_button_remove:1")],
+    ]
+    assert [len(row) for row in rows] == [2, 2]
