@@ -372,4 +372,5 @@ def test_settings_flow_messages_are_tracked_for_page_navigation_cleanup():
     assert "async def clear_state_preserving_prompts(state):" in source
     assert "prompt_ids = list(data.get(\"temporary_prompt_ids\", []))" in source
     assert "await track_temporary_prompt(state, sent)" in source
+    assert "await remove_temporary_prompts(message.bot, data)" in source[source.index('@router.message(StateFilter(None), F.text)'):source.index("async def send_button_settings_reply_panel")]
 
