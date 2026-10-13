@@ -263,3 +263,12 @@ def test_start_message_default_and_markdown_are_normalized_without_leaked_marker
     assert "**" not in rendered
     assert "*Welcome" not in rendered
     assert normalize_telegram_text("`sample`") == "<code>sample</code>"
+
+
+def test_broadcast_confirmation_has_no_back_button():
+    from app.handlers.broadcast import confirmation_keyboard
+
+    labels = [button.text for row in confirmation_keyboard("draft123").inline_keyboard for button in row]
+    callbacks = [button.callback_data for row in confirmation_keyboard("draft123").inline_keyboard for button in row]
+    assert labels == ["ᴄᴏɴꜰɪʀᴍ", "ᴄᴀɴᴄᴇʟ"]
+    assert callbacks == ["broadcast:yes:draft123", "broadcast:no:draft123"]
