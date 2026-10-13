@@ -229,6 +229,17 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
                 animation_post = None
 
     missing = await join_status(bot, user.id, channels, database.db)
+    if animation_enabled:
+        # Let at least one complete frame cycle become visible even when Telegram
+        # answers membership checks very quickly.
+        frames_for_wait = animation_cfg.get("frames")
+        if not isinstance(frames_for_wait, list) or len(frames_for_wait) != 3:
+            frames_for_wait = [".", "..", "..."]
+        try:
+            frame_speed = min(1.0, max(0.10, float(animation_cfg.get("speed", 0.10))))
+        except (TypeError, ValueError):
+            frame_speed = 0.10
+        await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
     if not missing:
         await _cancel_gate_animation(bot, user.id, payload)
         if animation_post:
@@ -485,6 +496,17 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 animation_post = None
 
     missing=[] if await is_owner_or_moderator(database.db, user_id, settings) else await join_status(bot,user_id,channels,database.db)
+    if animation_enabled:
+        # Keep the verification animation alive for a visible frame cycle before
+        # stopping it and publishing the updated remaining-channel post.
+        frames_for_wait = animation_cfg.get("frames")
+        if not isinstance(frames_for_wait, list) or len(frames_for_wait) != 3:
+            frames_for_wait = [".", "..", "..."]
+        try:
+            frame_speed = min(1.0, max(0.10, float(animation_cfg.get("speed", 0.10))))
+        except (TypeError, ValueError):
+            frame_speed = 0.10
+        await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
     if missing:
         other_links = force_cfg.get("other_links", []) if isinstance(force_cfg.get("other_links", []), list) else []
         join_buttons = []
