@@ -1061,7 +1061,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             invite = await message.bot.create_chat_invite_link(
                 chat_id=int(chat_id),
                 creates_join_request=join_request_mode,
-                name=("File Bot Force Join - Join Request" if join_request_mode else "File Bot Force Join - Normal"),
+                name=("FB Force Join - Request" if join_request_mode else "FB Force Join - Normal"),
             )
         except TelegramAPIError:
             await message.answer("Telegram could not create this invite link. Check the bot's admin status and invite-link permission, then retry.")
