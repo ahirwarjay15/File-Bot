@@ -1284,7 +1284,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         # links, spoilers and other Telegram formatting can be reproduced exactly.
         notice_text = message.text if message.text is not None else value
         notice_entities = [
-            entity.model_dump(exclude_none=True)
+            entity.model_dump(mode="json", exclude_none=True)
             for entity in (message.entities or [])
         ]
         await patch(
