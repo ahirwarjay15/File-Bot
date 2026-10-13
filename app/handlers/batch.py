@@ -30,6 +30,22 @@ def menu():
 def _now():
     return datetime.now(timezone.utc)
 
+
+def is_batch_file(message: Message) -> bool:
+    """Only count actual file/media messages; each album item arrives as its own update."""
+    return any((
+        message.document, message.photo, message.video, message.audio,
+        message.animation, message.voice, message.video_note, message.sticker,
+    ))
+
+
+def ordered_batch_items(items: list[dict]) -> list[dict]:
+    """Deliver items in the same chronological message-ID order they were submitted."""
+    return sorted(items, key=lambda item: (
+        int(item.get("original_message_id", item.get("source_message_id", 0))),
+        int(item.get("source_message_id", 0)),
+    ))
+
 async def _session(db, user_id: int):
     return await db.batch_sessions.find_one({"admin_id": user_id, "status": {"$in": ["collecting", "generating"]}})
 
@@ -49,8 +65,8 @@ async def _expire_session(db, user_id: int):
 async def _render_status(message: Message, count: int, session=None, database=None):
     text = (
         f"BATCH STORAGE\n\nStored files: {count}/100\n\n"
-        "Want to add more messages? Just send them here!\n\n"
-        "✨ You can now send multiple messages at once."
+        "Send at least 2 files before generating a link.\n"
+        "Multiple files sent together are counted individually and kept in send order."
     )
     session = session or (await _session(database.db, message.from_user.id) if database and message.from_user else None)
     if session and session.get("status_message_id"):
@@ -155,6 +171,9 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
         return True
     if message.text and message.text.startswith("/"):
         return False
+    if not is_batch_file(message):
+        await message.answer("Please send a file or media item. A minimum of 2 files is required.")
+        return True
     items = session.get("items", [])
     if any(item.get("original_message_id") == message.message_id for item in items):
         await message.answer("This message is already included in the batch.")
@@ -238,10 +257,10 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
                 pass
             await query.message.answer("Time's up. Try again.\n/batch")
         return
-    items = sorted(session.get("items", []), key=lambda item: item.get("original_message_id", item.get("source_message_id", 0)))
-    if not items:
+    items = ordered_batch_items(session.get("items", []))
+    if len(items) < 2:
         if query.message:
-            await query.message.answer("Add at least one message first.")
+            await query.message.answer(f"Add at least 2 files first. Current count: {len(items)}.")
         return
     # Mark as generating before saving to prevent double-click duplicate batches.
     claim = await database.db.batch_sessions.update_one(
