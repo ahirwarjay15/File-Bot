@@ -550,44 +550,33 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         rendered = render_common_variables(raw_text, query.from_user, me).replace("{remaining_count}", str(len(missing)))
         markup = InlineKeyboardMarkup(inline_keyboard=rows)
 
-        if animation_enabled and animation_mode == "force_join_poster" and animation_post:
-            # Stop the animation, then turn its poster into the updated prompt.
-            # The old Force Join post remains until this replacement is ready.
-            await _cancel_gate_animation(bot, user_id, payload)
-            try:
-                if animation_post.photo or animation_post.animation or animation_post.document:
-                    await bot.edit_message_caption(chat_id=user_id, message_id=animation_post.message_id, caption=rendered, parse_mode="HTML", reply_markup=markup)
-                else:
-                    await bot.edit_message_text(chat_id=user_id, message_id=animation_post.message_id, text=rendered, parse_mode="HTML", reply_markup=markup)
-            except TelegramAPIError:
-                log.warning("Could not restore Force Join text on animation post", exc_info=True)
-                animation_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
-            if old_post and animation_post.message_id != old_post.message_id:
-                try:
-                    await old_post.delete()
-                except TelegramAPIError:
-                    pass
+        # Stop the animation, publish the replacement Force Join post, and
+        # immediately remove the temporary animation poster and previous post.
+        separate_animation_id = None
+        if animation_enabled and animation_mode == "new_message":
+            separate_animation_id = await _cancel_gate_animation(
+                bot, user_id, payload, delete_separate=False
+            )
         else:
-            # Publish the replacement first, then instantly remove the temporary
-            # New Message animation and the previous Force Join post.
-            separate_animation_id = None
-            if animation_enabled and animation_mode == "new_message":
-                separate_animation_id = await _cancel_gate_animation(
-                    bot, user_id, payload, delete_separate=False
-                )
-            else:
-                await _cancel_gate_animation(bot, user_id, payload)
-            new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
-            if separate_animation_id:
-                try:
-                    await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
-                except TelegramAPIError:
-                    pass
-            if old_post and new_post.message_id != old_post.message_id:
-                try:
-                    await old_post.delete()
-                except TelegramAPIError:
-                    pass
+            await _cancel_gate_animation(bot, user_id, payload)
+        new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
+        if animation_post and animation_post.message_id not in (
+            new_post.message_id, old_post.message_id if old_post else None
+        ):
+            try:
+                await animation_post.delete()
+            except TelegramAPIError:
+                pass
+        if separate_animation_id:
+            try:
+                await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+            except TelegramAPIError:
+                pass
+        if old_post and new_post.message_id != old_post.message_id:
+            try:
+                await old_post.delete()
+            except TelegramAPIError:
+                pass
         return
 
     # Verification succeeded: remove both the old Force Join post and any temporary
