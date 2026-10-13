@@ -14,6 +14,7 @@ from app.config import Settings
 from app.database.files import FileRepository
 from app.services.delivery import deliver_reference,deliver_batch,claim_delivery_request,finish_delivery_request
 from app.services.permissions import is_owner_or_moderator
+from app.services.text_format import normalize_telegram_text
 router=Router(name="start");log=logging.getLogger(__name__)
 
 def render_common_variables(raw_text, user, bot):
@@ -345,7 +346,7 @@ async def start_command(message:Message,command:CommandObject,settings:Settings,
         if cfg.get("about_enabled", True):
             rows.append([InlineKeyboardButton(text=cfg.get("about_button_text", "ᴀʙᴏᴜᴛ"), callback_data="start:about")])
         markup = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-        raw_text = cfg.get("text") or '<b>Hey {user_mention}✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!.</i>'
+        raw_text = normalize_telegram_text(cfg.get("text") or "<b>Hey {user_mention}✨</b>\\n\\n<i>Welcome to the fastest and most secure file store bot!</i>")
         me = await message.bot.get_me()
         text = render_common_variables(raw_text, user, me)
         if cfg.get("poster_file_id"):
