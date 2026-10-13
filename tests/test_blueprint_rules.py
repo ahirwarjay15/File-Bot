@@ -335,6 +335,9 @@ def test_new_message_animation_is_deleted_only_after_replacement_post():
     assert "delete_separate=False" in source
     send_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)')
     delete_position = source.index('await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)', send_position)
+    poster_delete_position = source.index('await animation_post.delete()', send_position)
+    old_post_delete_position = source.index('await old_post.delete()', send_position)
+    assert send_position < poster_delete_position < old_post_delete_position
     assert send_position < delete_position
 
 
