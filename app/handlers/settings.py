@@ -16,6 +16,17 @@ from app.handlers.start import effective_force_join_channels
 
 router = Router(name="settings")
 
+def shortener_validation_error(exc: Exception, token: str) -> str:
+    """Return useful provider diagnostics without echoing the submitted API token."""
+    status = getattr(exc, "status", None)
+    if status:
+        return f"Provider returned HTTP {status}. Check the API endpoint and token."
+    reason = str(exc).replace(token, "[hidden]").strip()
+    if not reason:
+        reason = type(exc).__name__
+    return f"Provider validation failed: {reason[:160]}"
+
+
 def normalize_http_url(raw: str) -> str | None:
     """Accept common URL forms while storing a canonical clickable URL."""
     value = str(raw or "").strip().strip("<>").strip()
@@ -1475,8 +1486,8 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         prev = await state.get_data()
         try:
             await shorten_url(prev["shortener_url"], value, "https://example.com")
-        except Exception:
-            await tracked_answer(message, state, "Provider validation failed. Check the API URL/token and try again.")
+        except Exception as exc:
+            await tracked_answer(message, state, shortener_validation_error(exc, value))
             return
         await patch(db, "shortener", {"enabled": True, "url": prev["shortener_url"], "token": value})
         await tracked_answer(message, state, f"✨ Successfully added {urlparse(prev['shortener_url']).netloc} as your link shortener provider.")
@@ -1609,8 +1620,8 @@ async def setshortener(m: Message, settings: Settings, database):
     if parsed.scheme not in ("https","http") or not parsed.netloc: await m.answer("API URL must be a valid http/https URL."); return
     try:
         await shorten_url(p[1], p[2], "https://example.com")
-    except Exception:
-        await m.answer("Provider validation failed. Check the API URL/token and try again.")
+    except Exception as exc:
+        await m.answer(shortener_validation_error(exc, p[2]))
         return
     await patch(database.db, "shortener", {"enabled":True,"url":p[1],"token":p[2]})
     await m.answer(f"Shortener provider configured: {parsed.netloc}. API token is stored privately.")
