@@ -512,7 +512,22 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         join_buttons = []
         for index, channel in enumerate(missing):
             channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-            target = channel_cfg.get("button_url") or (channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else None))
+            target = channel_cfg.get("button_url")
+            # Older entries and public chats stored as numeric IDs may not have
+            # a usable URL on their config record. Resolve the current chat to
+            # recover its public username/link before omitting a Join button.
+            chat = None
+            try:
+                chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
+                chat = await bot.get_chat(chat_arg)
+            except (TelegramAPIError, ValueError):
+                pass
+            if not target and chat and chat.username:
+                target = f"https://t.me/{chat.username}"
+            if not target and channel.startswith(("https://t.me/", "http://t.me/")):
+                target = channel
+            if not target and not channel.lstrip("-").isdigit():
+                target = f"https://t.me/{channel.lstrip('@')}"
             if target:
                 label = force_join_button_label(channel_cfg, index + 1)
                 join_buttons.append(InlineKeyboardButton(text=label, url=target))
