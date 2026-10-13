@@ -225,7 +225,7 @@ async def shorten_url(base_url: str, api_token: str, long_url: str) -> str:
                 session, "GET", f"https://{service}/create.php",
                 params={"format": "simple", "url": long_url},
             )
-        elif "tinyurl.com" in domain and not token:
+        elif "tinyurl.com" in domain:
             result = await _fetch(session, "GET", "https://tinyurl.com/api-create.php", params={"url": long_url})
         elif "cleanuri.com" in domain:
             result = await _fetch(session, "POST", "https://cleanuri.com/api/v1/shorten", json_data={"url": long_url})
