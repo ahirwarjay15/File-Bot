@@ -252,7 +252,11 @@ def test_start_message_default_and_markdown_are_normalized_without_leaked_marker
     from app.handlers.settings import DEFAULT_START_TEXT
     from app.services.text_format import normalize_telegram_text
 
-    assert DEFAULT_START_TEXT == "<b>Hey {user_mention}✨</b>\\n\\n<i>Welcome to the fastest and most secure file store bot!</i>"
+    assert DEFAULT_START_TEXT.splitlines() == [
+        "<b>Hey {user_mention}✨</b>",
+        "",
+        "<i>Welcome to the fastest and most secure file store bot!</i>",
+    ]
     rendered = normalize_telegram_text("**Hey {user_mention}✨**\\n\\n*Welcome to the fastest and most secure file store bot!*")
     assert rendered == DEFAULT_START_TEXT
     assert "\\\\n" not in rendered
