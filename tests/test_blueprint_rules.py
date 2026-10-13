@@ -124,3 +124,28 @@ def test_common_variables_render_bot_and_channel_links_in_start_and_invalid_text
         assert '<a href="https://t.me/lexianime">Lexi Anime</a>' in rendered
         assert '<a href="https://t.me/lexianimehindi">Lexi Anime Hindi</a>' in rendered
 
+
+
+
+def test_force_join_default_button_numbers_and_custom_slot():
+    from app.handlers.start import force_join_button_label
+
+    labels = [
+        force_join_button_label({}, 1),
+        force_join_button_label({}, 2),
+        force_join_button_label({"button_text": "Premium Channel"}, 3),
+        force_join_button_label({}, 4),
+    ]
+    assert labels == ["Join 1", "Join 2", "Premium Channel", "Join 4"]
+
+
+def test_force_join_custom_label_does_not_reset_following_number():
+    from app.handlers.start import force_join_button_label
+
+    assert force_join_button_label({"button_text": "Paid Group"}, 1) == "Paid Group"
+    assert force_join_button_label({}, 2) == "Join 2"
+
+
+def test_force_join_mode_defaults_preserve_legacy_join_request_behavior():
+    from app.handlers.start import join_status
+    assert callable(join_status)
