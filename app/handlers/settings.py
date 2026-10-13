@@ -1078,7 +1078,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         except TelegramAPIError:
             pass
         mode_label = "Join Request Mode" if mode == "join_request" else "Normal Mode"
-        await message.answer(f"Force Join added successfully.\\nChat: {chat.title or chat.id}\\nMode: {mode_label}\\nLink has no expiry time or member limit.", reply_markup=ReplyKeyboardRemove())
+        await message.answer(f"Force Join added successfully.\nChat: {chat.title or chat.id}\nMode: {mode_label}\nLink has no expiry time or member limit.", reply_markup=ReplyKeyboardRemove())
         # Restore the same original Force Join panel, now with the newly saved chat visible.
         if panel_chat_id and panel_message_id:
             cfg = await db.settings.find_one({"key": "force_join"}) or {}
@@ -1103,8 +1103,8 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                 [("VERIFY", "settings:forcejoin_verify_text")],
                 [("《 BACK", "settings:home")],
             ])
-            panel_text = ("FORCE JOIN\\n\\n" + f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\\n\\n"
-                          "Users must verify the required channels before receiving files.\\n\\n"
+            panel_text = ("FORCE JOIN\n\n" + f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\n\n"
+                          "Users must verify the required channels before receiving files.\n\n"
                           "You can add up to 10 force-join channels.")
             try:
                 await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id,
