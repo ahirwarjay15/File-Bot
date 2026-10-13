@@ -24,7 +24,7 @@ class ShortenerState(StatesGroup):
 
 def extract_target(source: str) -> str | None:
     """Accept a URL alone or a URL embedded in a replied-to message."""
-    urls = re.findall(r"https?://[^\\s<>]+", source)
+    urls = re.findall(r"https?://[^\s<>]+", source)
     if urls:
         target = urls[0].rstrip(").,;]")
     else:
