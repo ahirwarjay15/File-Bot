@@ -336,3 +336,21 @@ def test_new_message_animation_is_deleted_only_after_replacement_post():
     send_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)')
     delete_position = source.index('await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)', send_position)
     assert send_position < delete_position
+
+
+def test_force_join_add_cleans_prompts_and_returns_to_main_page():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    assert "await remove_temporary_prompts(message.bot, data)" in source
+    assert "await keyboard_removal.delete()" in source
+    assert "await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id" in source
+    assert "Force Join added successfully." not in source
+
+
+def test_force_join_verification_resolves_public_chat_username_for_join_button():
+    from pathlib import Path
+
+    source = Path("app/handlers/start.py").read_text()
+    assert source.count('target = f"https://t.me/{chat.username}"') >= 2
+    assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
