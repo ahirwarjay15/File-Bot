@@ -703,15 +703,37 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Send your new auto-delete message. Use {auto_delete_time} to insert the timer.")
     elif action == "auto_message_see":
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
-        saved = (cfg.get("notice") or DEFAULT_NOTICE).replace("{auto_delete_time}", time_words(int(cfg.get("minutes", 30))))
-        await query.answer(str(saved), show_alert=True)
+        saved = (cfg.get("notice") or DEFAULT_NOTICE).replace(
+            "{auto_delete_time}", time_words(int(cfg.get("minutes", 30)))
+        )
+        # Callback alert text is limited to 200 characters, so show the full
+        # notice as a regular message instead of trying to open it in an alert.
+        await query.answer("Opening auto-delete message preview…")
+        if query.message:
+            try:
+                await query.message.answer(
+                    str(saved), parse_mode="HTML",
+                    link_preview_options={"is_disabled": True},
+                )
+            except TelegramBadRequest:
+                import html
+                import re
+                plain = html.unescape(re.sub(r"</?[^>]+>", "", str(saved)))
+                await query.message.answer(plain, link_preview_options={"is_disabled": True})
         return
     elif action == "auto_message_default":
         await patch(db, "auto_delete", {"notice": DEFAULT_NOTICE}, {"enabled": False, "minutes": 30})
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
         default_text = DEFAULT_NOTICE.replace("{auto_delete_time}", time_words(int(cfg.get("minutes", 30))))
-        await query.answer(f"✅ Default successfully set!\n\n{default_text}", show_alert=True)
+        # Keep callback feedback short: Telegram callback alerts cannot display
+        # the full default template because it exceeds their 200-character cap.
+        await query.answer("Default auto-delete message restored.", show_alert=True)
         await render_auto_message(query, db)
+        if query.message:
+            await query.message.answer(
+                default_text, parse_mode="HTML",
+                link_preview_options={"is_disabled": True},
+            )
         return
     elif action == "after": await render_after(query, db)
     elif action == "after_toggle":
