@@ -316,3 +316,23 @@ def test_shortener_accepts_command_urls_and_plain_domains():
     assert extract_target("https://example.com/a") == "https://example.com/a"
     assert extract_target("example.com") == "https://example.com"
     assert extract_target("/batch") is None
+
+
+def test_force_join_settings_page_uses_real_line_breaks():
+    from app.handlers.settings import build_forcejoin_page
+
+    import inspect
+    source = inspect.getsource(build_forcejoin_page)
+    assert r"FORCE JOIN\\n\\n" not in source
+    assert r"FORCE JOIN\n\n" in source
+
+
+def test_new_message_animation_is_deleted_only_after_replacement_post():
+    from pathlib import Path
+
+    source = Path("app/handlers/start.py").read_text()
+    assert "delete_separate: bool = True" in source
+    assert "delete_separate=False" in source
+    send_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)')
+    delete_position = source.index('await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)', send_position)
+    assert send_position < delete_position
