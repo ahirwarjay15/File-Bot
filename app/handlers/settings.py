@@ -998,8 +998,24 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     value = (message.text or "").strip()
 
     if field in {"forcejoin_wait_chat", "forcejoin_wait_mode"} and value.casefold() == "cancel":
+        pending = await state.get_data()
+        panel_chat_id, panel_message_id = pending.get("forcejoin_panel_chat_id"), pending.get("forcejoin_panel_message_id")
+        await remove_temporary_prompts(message.bot, pending)
+        await remove_input_prompt(message.bot, pending)
         await state.clear()
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
         await message.answer("Force Join channel selection cancelled.", reply_markup=ReplyKeyboardRemove())
+        if panel_chat_id and panel_message_id:
+            try:
+                # Return the same panel to the Force Join page; never create a duplicate panel.
+                await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id,
+                    text=format_settings_page("FORCE JOIN\\n\\nChannel selection cancelled."),
+                    parse_mode="HTML", reply_markup=kb([[("《 BACK", "settings:home")], [("OPEN FORCE JOIN", "settings:forcejoin")]]))
+            except TelegramAPIError:
+                pass
         return
 
     if field == "forcejoin_wait_chat":
@@ -1112,60 +1128,6 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                     link_preview_options={"is_disabled": True})
             except TelegramAPIError:
                 pass
-        return
-
-    if field == "forcejoin_wait_mode":
-        normalized_mode = value.casefold()
-        if normalized_mode not in {"normal mode", "join request mode"}:
-            await message.answer("Choose Normal Mode or Join Request Mode from the keyboard, or tap Cancel.")
-            return
-        data = await state.get_data()
-        chat_id = data.get("pending_chat_id")
-        if not chat_id:
-            await state.clear()
-            await message.answer("Chat selection expired. Please start again from /settings → Force Join → Add.", reply_markup=ReplyKeyboardRemove())
-            return
-        channels = await effective_force_join_channels(database, settings)
-        channel_id = str(chat_id)
-        if channel_id in channels or (data.get("pending_chat_username") and "@" + data["pending_chat_username"] in channels):
-            await state.clear()
-            await message.answer("That Force Join chat is already configured.", reply_markup=ReplyKeyboardRemove())
-            return
-        if len(channels) >= 10:
-            await state.clear()
-            await message.answer("Maximum 10 Force Join channels/groups are allowed.", reply_markup=ReplyKeyboardRemove())
-            return
-        join_request_mode = normalized_mode == "join request mode"
-        try:
-            # No expire_date and no member_limit: links stay valid without a time or user cap.
-            invite = await message.bot.create_chat_invite_link(
-                chat_id=int(chat_id),
-                creates_join_request=join_request_mode,
-                name=("FB Force Join - Request" if join_request_mode else "FB Force Join - Normal"),
-            )
-        except TelegramAPIError:
-            await message.answer("Telegram could not create this invite link. Check the bot's admin status and invite-link permission, then retry.")
-            return
-        channels.append(channel_id)
-        await patch(db, "force_join", {"channels": channels})
-        await db.settings.update_one(
-            {"key": "force_join_channel", "channel": channel_id},
-            {"$set": {
-                "key": "force_join_channel",
-                "channel": channel_id,
-                "button_url": invite.invite_link,
-                "channel_title": data.get("pending_chat_title") or channel_id,
-                "chat_type": data.get("pending_chat_type"),
-                "mode": "join_request" if join_request_mode else "normal",
-            }},
-            upsert=True,
-        )
-        await state.clear()
-        mode_label = "Join Request Mode" if join_request_mode else "Normal Mode"
-        await message.answer(
-            f"Force Join added successfully.\nChat: {data.get('pending_chat_title') or channel_id}\nMode: {mode_label}\nInvite link has no expiry time or member limit.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
         return
 
     if field == "custom_button_text":
