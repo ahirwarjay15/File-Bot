@@ -212,7 +212,7 @@ async def render_home(query):
         [("《 BACK", "settings:home_back")],
     ]))
 
-async def render_forcejoin(query, db, settings):
+async def build_forcejoin_page(bot, db, settings):
     channels = await effective_force_join_channels(type("DatabaseView", (), {"db": db})(), settings)
     cfg = await db.settings.find_one({"key": "force_join"}) or {}
     channel_buttons = []
@@ -221,14 +221,12 @@ async def render_forcejoin(query, db, settings):
         label = channel_cfg.get("channel_title")
         if not label:
             try:
-                chat = await query.bot.get_chat(int(channel) if str(channel).lstrip("-").isdigit() else channel)
+                chat = await bot.get_chat(int(channel) if str(channel).lstrip("-").isdigit() else channel)
                 label = chat.title or chat.full_name or chat.username
             except (TelegramAPIError, ValueError):
                 label = channel_cfg.get("button_text") or channel.lstrip("@")
-        label = label or channel_cfg.get("button_text") or channel.lstrip("@")
-        channel_buttons.append((label, f"settings:forcejoin_channel:{i}"))
-    rows = []
-    rows.extend([channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)])
+        channel_buttons.append(((label or channel_cfg.get("button_text") or channel.lstrip("@"))[:64], f"settings:forcejoin_channel:{i}"))
+    rows = [channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)]
     if len(channels) < 10:
         rows.append([("✚ ADD", "settings:forcejoin_add")])
     rows.append([("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")])
@@ -237,12 +235,16 @@ async def render_forcejoin(query, db, settings):
         [("VERIFY", "settings:forcejoin_verify_text")],
         [("《 BACK", "settings:home")],
     ])
-    text = ("FORCE JOIN\n\n"
-            f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\n\n"
-            "Users must verify the required Join Request channels before receiving files.\n\n"
-            "Join Request channels accept membership or a pending join request.\n\n"
+    text = ("FORCE JOIN\\n\\n"
+            f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\\n\\n"
+            "Users must verify the required channels before receiving files.\\n\\n"
             "You can add up to 10 force-join channels.")
-    await edit_page(query, text, kb(rows))
+    return text, kb(rows)
+
+
+async def render_forcejoin(query, db, settings):
+    text, markup = await build_forcejoin_page(query.bot, db, settings)
+    await edit_page(query, text, markup)
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
