@@ -42,6 +42,8 @@ async def broadcast(message: Message, settings: Settings, database):
     await database.db.broadcast_drafts.update_one(
         {"admin_id": admin_id},
         {"$set": {"admin_id": admin_id, "chat_id": source.chat.id, "message_id": source.message_id,
+                  "reply_markup": (source.reply_markup.model_dump(mode="json", exclude_none=True)
+                                   if source.reply_markup else None),
                   "created_at": now(), "draft_key": token_urlsafe(8), "status": "draft"}},
         upsert=True,
     )
@@ -87,7 +89,8 @@ async def confirm(query: CallbackQuery, settings: Settings, database):
         {"draft_id": draft["_id"]},
         {"$setOnInsert": {
             "draft_id": draft["_id"], "admin_id": admin_id, "source_chat_id": draft["chat_id"],
-            "source_message_id": draft["message_id"], "report_chat_id": draft.get("report_chat_id", admin_id),
+            "source_message_id": draft["message_id"], "reply_markup": draft.get("reply_markup"),
+            "report_chat_id": draft.get("report_chat_id", admin_id),
             "report_message_id": draft.get("report_message_id"), "status": "preparing",
             "created_at": now(), "recipients_loaded": False,
         }},
@@ -109,6 +112,7 @@ async def run_broadcast_worker(bot, db, poll_seconds: int = 2):
                 {"$setOnInsert": {
                     "draft_id": draft["_id"], "admin_id": draft["admin_id"],
                     "source_chat_id": draft["chat_id"], "source_message_id": draft["message_id"],
+                    "reply_markup": draft.get("reply_markup"),
                     "report_chat_id": draft.get("report_chat_id", draft["admin_id"]),
                     "report_message_id": draft.get("report_message_id"),
                     "status": "preparing", "created_at": draft.get("queued_at", draft.get("created_at", now())),
@@ -168,7 +172,12 @@ async def run_broadcast_worker(bot, db, poll_seconds: int = 2):
             )
             continue
         try:
-            await bot.copy_message(chat_id=uid, from_chat_id=job["source_chat_id"], message_id=job["source_message_id"])
+            markup_data = job.get("reply_markup")
+            markup = InlineKeyboardMarkup.model_validate(markup_data) if markup_data else None
+            await bot.copy_message(
+                chat_id=uid, from_chat_id=job["source_chat_id"],
+                message_id=job["source_message_id"], reply_markup=markup,
+            )
             await db.broadcast_recipients.update_one({"_id": recipient["_id"]}, {"$set": {"status": "sent", "finished_at": now()}})
         except RetryAfter as exc:
             await db.broadcast_recipients.update_one({"_id": recipient["_id"]}, {"$set": {"status": "pending", "retry_after": float(exc.retry_after)}})
