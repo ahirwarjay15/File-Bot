@@ -234,7 +234,16 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
             )
             if claimed.modified_count:
                 try:
-                    alert = await bot.send_message(doc["user_id"], _notice({"notice": doc.get("notice")}, int(doc["minutes"])))
+                    notice_cfg = {"notice": doc.get("notice", DEFAULT_NOTICE)}
+                    if doc.get("notice_entities") is not None:
+                        notice_cfg["notice_entities"] = doc.get("notice_entities")
+                    notice_text, notice_entities, custom_format = format_notice(notice_cfg, int(doc["minutes"]))
+                    if custom_format:
+                        alert = await bot.send_message(
+                            doc["user_id"], notice_text, entities=notice_entities, parse_mode=None
+                        )
+                    else:
+                        alert = await bot.send_message(doc["user_id"], notice_text)
                     await db.batch_deliveries.update_one(
                         {"request_key": request_key, "status": "processing"},
                         {"$set": {"alert_status": "sent", "alert_message_id": alert.message_id, "alert_sent_at": _now()}},
@@ -292,7 +301,9 @@ async def deliver_batch(bot: Bot, db, *, user_id: int, batch: dict, deeplink: st
             "items": items, "item_states": [{"status": "pending"} for _ in items],
             "next_index": 0, "delivered_message_ids": [], "failed_count": 0,
             "auto_delete": bool(auto), "minutes": _minutes(auto) if auto else None,
-            "notice": (auto or {}).get("notice", DEFAULT_NOTICE), "deadline": None,
+            "notice": (auto or {}).get("notice", DEFAULT_NOTICE),
+            **({"notice_entities": auto["notice_entities"]} if auto and auto.get("notice_entities") is not None else {}),
+            "deadline": None,
             "alert_status": "pending", "deeplink": deeplink, "status": "processing",
             "created_at": _now(),
         }
