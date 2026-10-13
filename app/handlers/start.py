@@ -279,26 +279,23 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
 
     separate_animation_id = None
     if animation_enabled:
-        # Keep New Message animation visible until the replacement Force Join post
-        # has actually been sent; delete it immediately afterwards.
         separate_animation_id = await _cancel_gate_animation(
             bot, user.id, payload, delete_separate=(animation_mode != "new_message")
         )
     if animation_enabled and animation_mode == "force_join_poster" and animation_post:
-        # Publish the replacement Force Join post first, then instantly remove
-        # the temporary animated poster so both posts are never left visible.
-        await _send_force_join_post(bot, user.id, cfg, rendered, markup)
+        # The animation poster becomes the Force Join prompt; keep one post only.
+        if await _edit_force_join_post(animation_post, rendered, markup):
+            return True
         try:
             await animation_post.delete()
         except TelegramAPIError:
             pass
-    else:
-        new_post = await _send_force_join_post(bot, user.id, cfg, rendered, markup)
-        if separate_animation_id:
-            try:
-                await bot.delete_message(chat_id=user.id, message_id=separate_animation_id)
-            except TelegramAPIError:
-                pass
+    new_post = await _send_force_join_post(bot, user.id, cfg, rendered, markup)
+    if separate_animation_id:
+        try:
+            await bot.delete_message(chat_id=user.id, message_id=separate_animation_id)
+        except TelegramAPIError:
+            pass
     return True
 
 async def deliver_payload(bot,database,settings,user_id:int,payload:str,record:dict,request_key:str|None=None):
@@ -461,6 +458,18 @@ async def _send_force_join_post(bot, user_id: int, cfg: dict, text: str, markup:
         return await bot.send_message(user_id, text, reply_markup=markup, parse_mode="HTML")
 
 
+async def _edit_force_join_post(message: Message, text: str, markup: InlineKeyboardMarkup) -> bool:
+    """Edit the existing poster in place to show only channels still needing a join."""
+    try:
+        if message.animation or message.photo or message.document:
+            await message.edit_caption(caption=text, reply_markup=markup, parse_mode="HTML")
+        else:
+            await message.edit_text(text=text, reply_markup=markup, parse_mode="HTML")
+        return True
+    except TelegramAPIError:
+        log.warning("Could not edit animation poster into Force Join prompt", exc_info=True)
+        return False
+
 @router.callback_query(F.data.startswith("forcejoin:check:"))
 async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     await query.answer()
@@ -496,8 +505,12 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 else:
                     animation_post = await bot.send_message(user_id, f"<i>{first}</i>", parse_mode="HTML")
                 await _start_gate_animation(bot, user_id, payload, animation_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, animation_only=True)
-                # Keep the old Force Join post visible throughout the animation.
-                # It is deleted only after the replacement post is ready.
+                # New poster is live now; remove the previous Force Join post at once.
+                if animation_mode == "force_join_poster" and old_post:
+                    try:
+                        await old_post.delete()
+                    except TelegramAPIError:
+                        pass
             except TelegramAPIError:
                 log.warning("Could not create Force Join animation poster", exc_info=True)
                 animation_post = None
@@ -544,19 +557,20 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         rendered = render_common_variables(raw_text, query.from_user, me).replace("{remaining_count}", str(len(missing)))
         markup = InlineKeyboardMarkup(inline_keyboard=rows)
 
-        # Stop the animation, publish the replacement Force Join post, and
-        # immediately remove the temporary animation poster and previous post.
+        # Stop the animation, then edit its poster in place with the current
+        # remaining-channel buttons and configured Force Join message.
+        await _cancel_gate_animation(bot, user_id, payload)
+        if animation_enabled and animation_mode == "force_join_poster" and animation_post:
+            if await _edit_force_join_post(animation_post, rendered, markup):
+                return
+
         separate_animation_id = None
         if animation_enabled and animation_mode == "new_message":
             separate_animation_id = await _cancel_gate_animation(
                 bot, user_id, payload, delete_separate=False
             )
-        else:
-            await _cancel_gate_animation(bot, user_id, payload)
         new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
-        if animation_post and animation_post.message_id not in (
-            new_post.message_id, old_post.message_id if old_post else None
-        ):
+        if animation_post and animation_post.message_id != new_post.message_id:
             try:
                 await animation_post.delete()
             except TelegramAPIError:
@@ -566,7 +580,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
             except TelegramAPIError:
                 pass
-        if old_post and new_post.message_id != old_post.message_id:
+        if old_post and old_post.message_id != new_post.message_id:
             try:
                 await old_post.delete()
             except TelegramAPIError:
