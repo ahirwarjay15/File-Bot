@@ -38,7 +38,8 @@ def _extract_short_url(data) -> str:
     if isinstance(data, dict):
         keys = (
             "short_url", "shortUrl", "shortenedUrl", "shortened_url",
-            "shortlink", "shortLink", "short_link", "shortened", "short",
+            "shortenedLink", "shortened_link", "shortlink", "shortLink",
+            "short_link", "shortened", "short", "shortenedLinkUrl",
         )
         for key in keys:
             candidate = data.get(key)
@@ -54,6 +55,10 @@ def _extract_short_url(data) -> str:
         candidate = data.get("url")
         if isinstance(candidate, str) and candidate.startswith(("https://", "http://")):
             return candidate
+        status = str(data.get("status", "")).lower()
+        if status in {"error", "failed", "failure"}:
+            message = data.get("message") or data.get("error") or data.get("msg")
+            raise ValueError(str(message or "Provider rejected the API request"))
     raise ValueError("Provider response did not contain a valid short URL")
 
 
@@ -76,15 +81,21 @@ async def shorten_url(base_url: str, api_token: str, long_url: str) -> str:
             return _extract_short_url(data)
 
         if shrtfly:
-            async with session.get(shrtfly, params={"api": api_token, "url": long_url}) as response:
+            # Send explicit format and ad-type options for consistent responses
+            # across older and current ShrtFly API deployments.
+            params = {
+                "api": api_token,
+                "url": long_url,
+                "ads_type": "mainstream",
+                "is_text_format": "false",
+            }
+            async with session.get(shrtfly, params=params) as response:
                 response.raise_for_status()
                 body = await response.text()
             try:
                 data = json.loads(body)
             except (TypeError, ValueError):
                 data = body
-            if isinstance(data, dict) and str(data.get("status", "")).lower() in {"error", "failed", "failure"}:
-                raise ValueError(str(data.get("message") or data.get("error") or "ShrtFly rejected the API request"))
             return _extract_short_url(data)
 
         async with session.post(base_url, json={"url": long_url, "token": api_token}) as response:
