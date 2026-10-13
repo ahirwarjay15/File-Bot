@@ -127,6 +127,7 @@ async def show_input_prompt(query, state, field, prompt, back_action, **extra):
         parse_mode="HTML",
         link_preview_options={"is_disabled": True},
     )
+    await track_temporary_prompt(state, prompt_message)
     await state.set_state(SettingInput.waiting)
     await state.update_data(
         field=field,
