@@ -250,12 +250,36 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
                         {"request_key": request_key, "status": "processing"},
                         {"$set": {"alert_status": "sent", "alert_message_id": alert.message_id, "alert_sent_at": _now()}},
                     )
-                except TelegramAPIError as exc:
-                    await db.batch_deliveries.update_one(
-                        {"request_key": request_key, "status": "processing"},
-                        {"$set": {"alert_status": "failed", "alert_error": type(exc).__name__}},
-                    )
-                    log.exception("Batch delivered but auto-delete notice could not be sent")
+                except Exception as exc:
+                    # A malformed/custom notice must never turn a successful file
+                    # delivery into the generic "temporary error" response. Try a
+                    # plain-text fallback, then finish delivery even if the notice
+                    # itself cannot be sent.
+                    log.exception("Auto-delete notice failed; attempting safe fallback")
+                    fallback_sent = False
+                    try:
+                        fallback_text = doc.get("notice") or DEFAULT_NOTICE
+                        if "{auto_delete_time}" in fallback_text:
+                            fallback_text = fallback_text.replace(
+                                "{auto_delete_time}", format_notice({}, int(doc["minutes"]))[0].split(" after ")[-1].rstrip(".")
+                            )
+                        import re
+                        from html import unescape
+                        fallback_text = unescape(re.sub(r"</?[^>]+>", "", fallback_text))
+                        alert = await bot.send_message(doc["user_id"], fallback_text, parse_mode=None)
+                        fallback_sent = True
+                        await db.batch_deliveries.update_one(
+                            {"request_key": request_key, "status": "processing"},
+                            {"$set": {"alert_status": "sent", "alert_message_id": alert.message_id,
+                                      "alert_sent_at": _now(), "alert_fallback": True}},
+                        )
+                    except Exception:
+                        log.exception("Plain-text auto-delete notice fallback also failed")
+                    if not fallback_sent:
+                        await db.batch_deliveries.update_one(
+                            {"request_key": request_key, "status": "processing"},
+                            {"$set": {"alert_status": "failed", "alert_error": type(exc).__name__}},
+                        )
         elif doc.get("alert_status") == "sending":
             # Do not resend an alert with an ambiguous outcome after restart.
             await db.batch_deliveries.update_one(
