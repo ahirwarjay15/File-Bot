@@ -242,9 +242,9 @@ async def build_forcejoin_page(bot, db, settings):
         [("VERIFY", "settings:forcejoin_verify_text")],
         [("《 BACK", "settings:home")],
     ])
-    text = ("FORCE JOIN\\n\\n"
-            f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\\n\\n"
-            "Users must verify the required channels before receiving files.\\n\\n"
+    text = ("FORCE JOIN\n\n"
+            f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\n\n"
+            "Users must verify the required channels before receiving files.\n\n"
             "You can add up to 10 force-join channels.")
     return text, kb(rows)
 
