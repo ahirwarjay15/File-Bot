@@ -198,7 +198,7 @@ async def finish_input_panel(message, state, title, back_action):
         await message.delete()
     except TelegramAPIError:
         pass
-    await message.answer(f"<b><u>{title}</u></b>\n\nSaved successfully.")
+    await tracked_answer(message, state, f"<b><u>{title}</u></b>\n\nSaved successfully.")
 
 
 async def edit_page(query, text, keyboard):
@@ -1034,7 +1034,7 @@ async def cancel_setting_input(message: Message, state: FSMContext):
     except TelegramAPIError:
         pass
     # Never leave the user at a dead end after cancelling an input prompt.
-    await message.answer(
+    await tracked_answer(message, state, 
         "Input cancelled. Use Back to return to settings.",
         reply_markup=kb([[("《 BACK", f"settings:{back_action}")]]),
     )
