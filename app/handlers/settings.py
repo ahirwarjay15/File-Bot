@@ -293,9 +293,17 @@ async def refresh_button_panel(bot, chat_id, message_id, db, kind):
         [("1 BUTTON", f"settings:{prefix}_button_1"), ("2 BUTTON", f"settings:{prefix}_button_2")],
         [("《 BACK", back)],
     ])
-    markup = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=f"1 {status1}"), KeyboardButton(text=f"2 {status2}")], [KeyboardButton(text="1 BUTTON"), KeyboardButton(text="2 BUTTON")], [KeyboardButton(text="《 BACK")]], resize_keyboard=True)
     try:
-        await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=page_text, parse_mode="HTML")
+        # Keep the inline controls attached when refreshing the existing panel.
+        # In particular, the BACK callback must remain available after saving text/link.
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=page_text,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+            link_preview_options={"is_disabled": True},
+        )
     except TelegramAPIError:
         pass
 
@@ -469,6 +477,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     action = query.data.split(":", 1)[1]
     db = database.db
     pending = await state.get_data()
+    # Any inline navigation/control action supersedes the previous text-input
+    # wait. Keep FSM data (some multi-step flows need it), but disarm the old
+    # state before this callback optionally starts a new input flow.
+    await state.set_state(None)
     # Every inline settings action removes tracked standalone prompts.
     await remove_temporary_prompts(query.bot, pending)
     await remove_input_prompt(query.bot, pending)
