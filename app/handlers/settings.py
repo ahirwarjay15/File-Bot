@@ -132,26 +132,14 @@ async def remove_input_prompt(bot, data):
 
 
 async def finish_input_panel(message, state, title, back_action):
-    """Convert the original prompt message into the success confirmation."""
+    """Delete the temporary input prompt; send success separately and keep the panel."""
     data = await state.get_data()
-    chat_id = data.get("input_prompt_chat_id")
-    message_id = data.get("input_prompt_message_id")
-    if chat_id and message_id:
-        try:
-            await message.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"<b><u>{title}</u></b>\n\nSaved successfully.",
-                parse_mode="HTML",
-                reply_markup=kb([[("《 BACK", f"settings:{back_action}")]]),
-                link_preview_options={"is_disabled": True},
-            )
-        except TelegramAPIError:
-            pass
+    await remove_input_prompt(message.bot, data)
     try:
         await message.delete()
     except TelegramAPIError:
         pass
+    await message.answer(f"<b><u>{title}</u></b>\\n\\nSaved successfully.")
 
 
 async def edit_page(query, text, keyboard):
@@ -188,7 +176,14 @@ async def render_forcejoin(query, db, settings):
     channel_buttons = []
     for i, channel in enumerate(channels[:10]):
         channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        label = channel_cfg.get("channel_title") or channel_cfg.get("button_text") or channel.lstrip("@")
+        label = channel_cfg.get("channel_title")
+        if not label:
+            try:
+                chat = await query.bot.get_chat(int(channel) if str(channel).lstrip("-").isdigit() else channel)
+                label = chat.title or chat.full_name or chat.username
+            except (TelegramAPIError, ValueError):
+                label = channel_cfg.get("button_text") or channel.lstrip("@")
+        label = label or channel_cfg.get("button_text") or channel.lstrip("@")
         channel_buttons.append((label, f"settings:forcejoin_channel:{i}"))
     rows = []
     rows.extend([channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)])
@@ -465,8 +460,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                 "Choose the type of chat to add. The bot must already be an administrator.",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
-                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True))],
-                        [KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True)),
+                         KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, request_title=True, request_username=True))],
                         [KeyboardButton(text="Cancel")],
                     ], resize_keyboard=True, one_time_keyboard=True,
                 ),
