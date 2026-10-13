@@ -457,17 +457,16 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         return
     action = query.data.split(":", 1)[1]
     db = database.db
-    # Navigation/back actions always cancel an outstanding input flow without
-    # changing saved settings. Choice actions (SEE/DEFAULT, mode selection, etc.)
-    # are intentionally excluded so their pending data can be used.
+    pending = await state.get_data()
+    # Every inline settings action removes tracked standalone prompts.
+    await remove_temporary_prompts(query.bot, pending)
+    await remove_input_prompt(query.bot, pending)
+    await state.update_data(temporary_prompt_ids=[], input_prompt_chat_id=None, input_prompt_message_id=None)
     if action in {"home", "home_back", "start", "start_text", "start_button", "start_poster", "start_about",
                   "auto", "auto_time", "auto_message", "after", "after_text", "invalid", "invalid_text",
                   "invalid_button", "invalid_poster", "invalid_about", "forcejoin", "forcejoin_add",
                   "forcejoin_message", "forcejoin_media", "forcejoin_animation", "animation_mode",
                   "mods", "shortener", "custom_button"}:
-        pending = await state.get_data()
-        await remove_temporary_prompts(query.bot, pending)
-        await remove_input_prompt(query.bot, pending)
         await state.clear()
     if action in {"home", "home_back"}: await render_home(query)
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
