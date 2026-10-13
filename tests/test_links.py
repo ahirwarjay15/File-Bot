@@ -45,7 +45,7 @@ def test_shrtfly_request_includes_compatibility_parameters():
     assert _shrtfly_params("test-token", "https://example.org/file") == {
         "api": "test-token",
         "url": "https://example.org/file",
-        "ads_type": "mainstream",
+        "ads_type": "0",
         "is_text_format": "false",
     }
 
