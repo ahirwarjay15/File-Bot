@@ -522,8 +522,6 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                     await old_post.delete()
                 except TelegramAPIError:
                     pass
-            if animation_enabled and animation_mode == "new_message":
-                await _start_gate_animation(bot, user_id, payload, new_post, rendered, markup, animation_cfg)
         return
 
     # Verification succeeded: remove both the old Force Join post and any temporary
