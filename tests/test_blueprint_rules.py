@@ -149,3 +149,33 @@ def test_force_join_custom_label_does_not_reset_following_number():
 def test_force_join_mode_defaults_preserve_legacy_join_request_behavior():
     from app.handlers.start import join_status
     assert callable(join_status)
+
+
+
+@pytest.mark.asyncio
+async def test_pending_join_request_only_verifies_join_request_mode():
+    from types import SimpleNamespace
+    from app.handlers.start import join_status
+
+    class Collection:
+        def __init__(self, doc=None):
+            self.doc = doc
+
+        async def find_one(self, query):
+            return self.doc
+
+    class FakeDB:
+        def __init__(self, mode):
+            self.settings = Collection({"mode": mode})
+            self.pending_join_requests = Collection({"chat_id": -100123, "user_id": 42})
+
+    class FakeBot:
+        async def get_chat(self, chat_id):
+            return SimpleNamespace(id=-100123)
+
+        async def get_chat_member(self, chat_id, user_id):
+            return SimpleNamespace(status="left", is_member=False)
+
+    bot = FakeBot()
+    assert await join_status(bot, 42, ["-100123"], FakeDB("normal")) == ["-100123"]
+    assert await join_status(bot, 42, ["-100123"], FakeDB("join_request")) == []
