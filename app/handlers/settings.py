@@ -1022,8 +1022,10 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                 await message.answer("The bot is not an administrator in this chat. Add/promote the bot as admin, then try again.")
                 await state.clear()
                 return
-            if bot_member.status != "creator" and not getattr(bot_member, "can_invite_users", False):
-                await message.answer("The bot is admin but lacks permission to invite users/create invite links. Enable the invite-link permission for the bot and try again.")
+            # Public chats use their public t.me link and do not need a new invite link.
+            # Private chats need invite-link permission because they are added in Join Request mode.
+            if not chat.username and bot_member.status != "creator" and not getattr(bot_member, "can_invite_users", False):
+                await message.answer("The bot is admin but lacks permission to create an approval-required invite link. Enable invite-link permission and try again.")
                 await state.clear()
                 return
         except TelegramAPIError:
@@ -1075,11 +1077,37 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             pass
         mode_label = "Join Request Mode" if mode == "join_request" else "Normal Mode"
         await message.answer(f"Force Join added successfully.\\nChat: {chat.title or chat.id}\\nMode: {mode_label}\\nLink has no expiry time or member limit.", reply_markup=ReplyKeyboardRemove())
+        # Restore the same original Force Join panel, now with the newly saved chat visible.
         if panel_chat_id and panel_message_id:
+            cfg = await db.settings.find_one({"key": "force_join"}) or {}
+            current_channels = await effective_force_join_channels(database, settings)
+            channel_buttons = []
+            for i, channel in enumerate(current_channels[:10]):
+                channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
+                title = channel_cfg.get("channel_title")
+                if not title:
+                    try:
+                        resolved = await message.bot.get_chat(int(channel) if str(channel).lstrip("-").isdigit() else channel)
+                        title = resolved.title or resolved.full_name or resolved.username
+                    except (TelegramAPIError, ValueError):
+                        title = channel_cfg.get("button_text") or str(channel).lstrip("@")
+                channel_buttons.append((title or str(channel).lstrip("@"), f"settings:forcejoin_channel:{i}"))
+            rows = [channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)]
+            if len(current_channels) < 10:
+                rows.append([("✚ ADD", "settings:forcejoin_add")])
+            rows.append([("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")])
+            rows.extend([
+                [("FORCE JOIN MESSAGE", "settings:forcejoin_message"), ("FORCE JOIN MEDIA", "settings:forcejoin_media")],
+                [("VERIFY", "settings:forcejoin_verify_text")],
+                [("《 BACK", "settings:home")],
+            ])
+            panel_text = ("FORCE JOIN\\n\\n" + f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\\n\\n"
+                          "Users must verify the required channels before receiving files.\\n\\n"
+                          "You can add up to 10 force-join channels.")
             try:
                 await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id,
-                    text="FORCE JOIN\\n\\nChannel added successfully. Select Force Join to view the updated list.",
-                    reply_markup=kb([[("《 BACK", "settings:home")], [("OPEN FORCE JOIN", "settings:forcejoin")]]))
+                    text=format_settings_page(panel_text), parse_mode="HTML", reply_markup=kb(rows),
+                    link_preview_options={"is_disabled": True})
             except TelegramAPIError:
                 pass
         return
