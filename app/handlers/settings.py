@@ -166,7 +166,7 @@ async def finish_input_panel(message, state, title, back_action):
         await message.delete()
     except TelegramAPIError:
         pass
-    await message.answer(f"<b><u>{title}</u></b>\\n\\nSaved successfully.")
+    await message.answer(f"<b><u>{title}</u></b>\n\nSaved successfully.")
 
 
 async def edit_page(query, text, keyboard):
