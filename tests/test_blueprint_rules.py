@@ -363,7 +363,7 @@ def test_settings_flow_messages_are_tracked_for_page_navigation_cleanup():
 
     source = Path("app/handlers/settings.py").read_text()
     callback_start = source.index('@router.callback_query(F.data.startswith("settings:"))')
-    callback_end = source.index('@router.message(StateFilter(None), F.text)', callback_start)
+    callback_end = source.index('@router.message(StateFilter(None), F.text, ~F.text.startswith("/"))', callback_start)
     callback_handler = source[callback_start:callback_end]
     input_start = source.index('@router.message(SettingInput.waiting)')
     input_end = source.index('@router.message(Command("setstart"))', input_start)
@@ -375,7 +375,7 @@ def test_settings_flow_messages_are_tracked_for_page_navigation_cleanup():
     assert "async def clear_state_preserving_prompts(state):" in source
     assert "prompt_ids = list(data.get(\"temporary_prompt_ids\", []))" in source
     assert "await track_temporary_prompt(state, sent)" in source
-    assert "await remove_temporary_prompts(message.bot, data)" in source[source.index('@router.message(StateFilter(None), F.text)'):source.index("async def send_button_settings_reply_panel")]
+    assert "await remove_temporary_prompts(message.bot, data)" in source[source.index('@router.message(StateFilter(None), F.text, ~F.text.startswith("/"))'):source.index("async def send_button_settings_reply_panel")]
 
 
 
