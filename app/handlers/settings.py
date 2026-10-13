@@ -702,36 +702,27 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.set_state(SettingInput.waiting); await state.update_data(field="auto_notice")
         if query.message: await query.message.answer("Send your new auto-delete message. Use {auto_delete_time} to insert the timer.")
     elif action == "auto_message_see":
+        import re
+        from html import unescape
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
         from app.services.delivery import format_notice
-        saved, saved_entities, is_custom = format_notice(cfg, int(cfg.get("minutes", 30)), default_notice=DEFAULT_NOTICE)
-        await query.answer("Opening auto-delete message preview…")
-        if query.message:
-            if is_custom:
-                await query.message.answer(
-                    saved, entities=saved_entities, parse_mode=None,
-                    link_preview_options={"is_disabled": True},
-                )
-            else:
-                await query.message.answer(
-                    saved, parse_mode="HTML",
-                    link_preview_options={"is_disabled": True},
-                )
+        saved, _, is_custom = format_notice(cfg, int(cfg.get("minutes", 30)), default_notice=DEFAULT_NOTICE)
+        # Match Start Message SEE: Telegram popup alerts are plain text and
+        # have a short length limit, so strip formatting tags and show preview there.
+        preview = unescape(re.sub(r"</?[^>]+>", "", str(saved)))
+        await query.answer(preview[:190], show_alert=True)
         return
     elif action == "auto_message_default":
         await patch(db, "auto_delete", {"notice": DEFAULT_NOTICE}, {"enabled": False, "minutes": 30})
         await db.settings.update_one({"key": "auto_delete"}, {"$unset": {"notice_entities": ""}})
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
+        import re
+        from html import unescape
         default_text = DEFAULT_NOTICE.replace("{auto_delete_time}", time_words(int(cfg.get("minutes", 30))))
-        # Keep callback feedback short: Telegram callback alerts cannot display
-        # the full default template because it exceeds their 200-character cap.
-        await query.answer("Default auto-delete message restored.", show_alert=True)
+        preview = unescape(re.sub(r"</?[^>]+>", "", default_text))
+        # Match Start Message DEFAULT: show the restored default in the popup.
+        await query.answer("✅ Default successfully set!\n\n" + preview[:145], show_alert=True)
         await render_auto_message(query, db)
-        if query.message:
-            await query.message.answer(
-                default_text, parse_mode="HTML",
-                link_preview_options={"is_disabled": True},
-            )
         return
     elif action == "after": await render_after(query, db)
     elif action == "after_toggle":
