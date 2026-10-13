@@ -6,7 +6,7 @@ from secrets import token_urlsafe
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramBadRequest
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, MessageEntity
 
 log = logging.getLogger(__name__)
 DEFAULT_NOTICE = "Your files will be automatically deleted after {auto_delete_time}."
@@ -52,8 +52,10 @@ def _minutes(cfg):
     return value if value in allowed else 30
 
 
-def _notice(cfg, minutes):
-    value = (cfg or {}).get("notice") or DEFAULT_NOTICE
+def format_notice(cfg, minutes, default_notice=DEFAULT_NOTICE):
+    """Build the notice and preserve any saved Telegram formatting entities."""
+    cfg = cfg or {}
+    value = cfg.get("notice") or default_notice
     if minutes % 60 == 0 and minutes >= 60:
         hours = minutes // 60
         label = f"{hours} hour" if hours == 1 else f"{hours} hours"
@@ -61,7 +63,41 @@ def _notice(cfg, minutes):
         label = f"{minutes} minutes"
     else:
         label = f"{minutes // 60}h {minutes % 60}m"
-    return value.replace("{auto_delete_time}", label)
+    marker = "{auto_delete_time}"
+    entity_data = cfg.get("notice_entities")
+    custom = entity_data is not None
+    entities = [MessageEntity.model_validate(item) for item in entity_data] if custom else []
+    def units(text):
+        return len(text.encode("utf-16-le")) // 2
+    positions, cursor = [], 0
+    while True:
+        pos = value.find(marker, cursor)
+        if pos < 0:
+            break
+        positions.append(pos)
+        cursor = pos + len(marker)
+    text = value
+    for pos in reversed(positions):
+        start, old_len, new_len = units(value[:pos]), units(marker), units(label)
+        end, delta = start + old_len, new_len - old_len
+        for entity in entities:
+            es, ee = entity.offset, entity.offset + entity.length
+            if es >= end:
+                entity.offset += delta
+            elif es <= start and ee >= end:
+                entity.length += delta
+            elif es < start < ee < end:
+                entity.length = start - es
+            elif start < es < end < ee:
+                entity.offset = start + new_len
+                entity.length = ee - end
+        text = text[:pos] + label + text[pos + len(marker):]
+        value = value[:pos] + label + value[pos + len(marker):]
+    return text, entities, custom
+
+
+def _notice(cfg, minutes):
+    return format_notice(cfg, minutes)[0]
 
 
 async def _save_expiry_task(db, user_id, message_ids, deadline, deeplink, request_key=None, notice_message_id=None):
