@@ -112,7 +112,7 @@ async def _cancel_gate_animation(bot, user_id: int, payload: str):
 
 async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                         base_text: str, markup: InlineKeyboardMarkup, cfg: dict,
-                        separate_message_id: int | None):
+                        separate_message_id: int | None, animation_only: bool = False):
     frames = cfg.get("frames")
     if not isinstance(frames, list) or len(frames) != 3:
         frames = [".", "..", "..."]
@@ -133,7 +133,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                         chat_id=user_id, message_id=target_id, text=animated,
                     )
                 else:
-                    content = f"{base_text}\n\n<i>{animated}</i>"
+                    content = f"<i>{animated}</i>" if animation_only else f"{base_text}\n\n<i>{animated}</i>"
                     if gate_message.photo or gate_message.animation or gate_message.document:
                         await bot.edit_message_caption(
                             chat_id=user_id, message_id=target_id, caption=content,
@@ -160,7 +160,8 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
 
 
 async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: Message,
-                                base_text: str, markup: InlineKeyboardMarkup, cfg: dict):
+                                base_text: str, markup: InlineKeyboardMarkup, cfg: dict,
+                                animation_only: bool = False):
     if not cfg.get("enabled"):
         return
     await _cancel_gate_animation(bot, user_id, payload)
@@ -175,7 +176,7 @@ async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: M
             log.warning("Could not send separate Force Join animation", exc_info=True)
             return
     task = asyncio.create_task(
-        _animate_gate(bot, user_id, payload, gate_message, base_text, markup, cfg, separate_id)
+        _animate_gate(bot, user_id, payload, gate_message, base_text, markup, cfg, separate_id, animation_only)
     )
     _gate_animation_tasks[(user_id, payload)] = (task, separate_id)
 
@@ -376,96 +377,149 @@ async def remember_pending_join_request(event, database):
         upsert=True,
     )
 
+async def _send_force_join_post(bot, user_id: int, cfg: dict, text: str, markup: InlineKeyboardMarkup):
+    """Send a replacement Force Join post before removing the previous one."""
+    try:
+        if cfg.get("poster_file_id"):
+            return await bot.send_animation(user_id, cfg["poster_file_id"], caption=text, reply_markup=markup, parse_mode="HTML")
+        if cfg.get("poster_photo_id"):
+            return await bot.send_photo(user_id, cfg["poster_photo_id"], caption=text, reply_markup=markup, parse_mode="HTML")
+        return await bot.send_message(user_id, text, reply_markup=markup, parse_mode="HTML")
+    except TelegramAPIError:
+        log.warning("Configured Force Join poster could not be sent; using text post", exc_info=True)
+        return await bot.send_message(user_id, text, reply_markup=markup, parse_mode="HTML")
+
+
 @router.callback_query(F.data.startswith("forcejoin:check:"))
 async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     await query.answer()
     payload=query.data.split(":",2)[2]
-    if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):return
-    await _cancel_gate_animation(bot, query.from_user.id, query.data.split(":", 2)[2])
+    if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):
+        return
+
+    user_id = query.from_user.id
+    old_post = query.message
+    await _cancel_gate_animation(bot, user_id, payload)
     force_cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
     channels = await effective_force_join_channels(database, settings) if force_cfg.get("enabled", False) else []
-    missing=[] if await is_owner_or_moderator(database.db, query.from_user.id, settings) else await join_status(bot,query.from_user.id,channels,database.db)
+    animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
+    animation_enabled = bool(animation_cfg.get("enabled"))
+    animation_mode = animation_cfg.get("mode", "force_join_poster")
+    animation_post = None
+
+    # Start the selected animation before checking memberships so it remains visible
+    # while Telegram membership checks are in progress.
+    if old_post and animation_enabled:
+        if animation_mode == "new_message":
+            await _start_gate_animation(bot, user_id, payload, old_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg)
+        else:
+            frames = animation_cfg.get("frames")
+            if not isinstance(frames, list) or len(frames) != 3:
+                frames = [".", "..", "..."]
+            first = f"{html.escape(str(animation_cfg.get('prefix') or 'Checking..'))} {html.escape(str(frames[0]))}"
+            try:
+                if force_cfg.get("poster_file_id"):
+                    animation_post = await bot.send_animation(user_id, force_cfg["poster_file_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
+                elif force_cfg.get("poster_photo_id"):
+                    animation_post = await bot.send_photo(user_id, force_cfg["poster_photo_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
+                else:
+                    animation_post = await bot.send_message(user_id, f"<i>{first}</i>", parse_mode="HTML")
+                await _start_gate_animation(bot, user_id, payload, animation_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, animation_only=True)
+            except TelegramAPIError:
+                log.warning("Could not create Force Join animation poster", exc_info=True)
+                animation_post = None
+
+    missing=[] if await is_owner_or_moderator(database.db, user_id, settings) else await join_status(bot,user_id,channels,database.db)
     if missing:
-        if query.message:
-            cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
-            other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
-            join_buttons = []
-            for index, channel in enumerate(missing):
-                channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-                target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
-                if target:
-                    join_buttons.append(InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}", url=target))
-            for item in other_links:
-                if item.get("url"):
-                    join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
-            rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
-            rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
-            me = await bot.get_me()
-            raw_text = str(cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!")
-            rendered = render_common_variables(raw_text, query.from_user, me)
-            rendered = rendered.replace("{remaining_count}", str(len(missing)))
-            markup = InlineKeyboardMarkup(inline_keyboard=rows)
-            animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
-            gate_message = query.message
-            replace_gate = animation_cfg.get("enabled") and animation_cfg.get("mode") == "new_message"
-            if replace_gate:
+        other_links = force_cfg.get("other_links", []) if isinstance(force_cfg.get("other_links", []), list) else []
+        join_buttons = []
+        for index, channel in enumerate(missing):
+            channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
+            target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
+            if target:
+                label = channel_cfg.get("button_text") or channel_cfg.get("channel_title") or channel.lstrip("@")
+                join_buttons.append(InlineKeyboardButton(text=label[:64], url=target))
+        for item in other_links:
+            if item.get("url"):
+                join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
+        rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
+        rows.append([InlineKeyboardButton(text=force_cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
+        me = await bot.get_me()
+        raw_text = str(force_cfg.get("message") or "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!")
+        rendered = render_common_variables(raw_text, query.from_user, me).replace("{remaining_count}", str(len(missing)))
+        markup = InlineKeyboardMarkup(inline_keyboard=rows)
+
+        if animation_enabled and animation_mode == "force_join_poster" and animation_post:
+            # Reuse the animation poster for the failed-check prompt; the animation
+            # is stopped first, then the text and remaining-channel buttons return.
+            await _cancel_gate_animation(bot, user_id, payload)
+            try:
+                if animation_post.photo or animation_post.animation or animation_post.document:
+                    await bot.edit_message_caption(chat_id=user_id, message_id=animation_post.message_id, caption=rendered, parse_mode="HTML", reply_markup=markup)
+                else:
+                    await bot.edit_message_text(chat_id=user_id, message_id=animation_post.message_id, text=rendered, parse_mode="HTML", reply_markup=markup)
+            except TelegramAPIError:
+                log.warning("Could not restore Force Join text on animation post", exc_info=True)
+                animation_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
+            if old_post and animation_post.message_id != old_post.message_id:
                 try:
-                    if cfg.get("poster_file_id"):
-                        gate_message = await bot.send_animation(query.from_user.id, cfg["poster_file_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
-                    elif cfg.get("poster_photo_id"):
-                        gate_message = await bot.send_photo(query.from_user.id, cfg["poster_photo_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
-                    else:
-                        gate_message = await bot.send_message(query.from_user.id, rendered, reply_markup=markup, parse_mode="HTML")
-                    try:
-                        await query.message.delete()
-                    except TelegramAPIError:
-                        log.debug("Could not remove previous Force Join post after replacement")
-                except TelegramAPIError:
-                    log.warning("Could not replace the Force Join post; updating the existing post instead", exc_info=True)
-                    gate_message = query.message
-                    replace_gate = False
-            if not replace_gate:
-                try:
-                    if query.message.photo or query.message.animation or query.message.document:
-                        await query.message.edit_caption(caption=rendered, reply_markup=markup, parse_mode="HTML")
-                    else:
-                        await query.message.edit_text(rendered, reply_markup=markup, parse_mode="HTML")
+                    await old_post.delete()
                 except TelegramAPIError:
                     pass
-            if animation_cfg.get("enabled"):
-                await _start_gate_animation(bot, query.from_user.id, payload, gate_message, rendered, markup, animation_cfg)
+        else:
+            # New Message mode: remove the temporary animation first. With animation
+            # disabled, still replace the old post only after the new one is delivered.
+            await _cancel_gate_animation(bot, user_id, payload)
+            new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
+            if old_post and new_post.message_id != old_post.message_id:
+                try:
+                    await old_post.delete()
+                except TelegramAPIError:
+                    pass
+            if animation_enabled and animation_mode == "new_message":
+                await _start_gate_animation(bot, user_id, payload, new_post, rendered, markup, animation_cfg)
         return
+
+    # Verification succeeded: remove both the old Force Join post and any temporary
+    # animation/poster before delivering the requested file or batch.
+    await _cancel_gate_animation(bot, user_id, payload)
+    if animation_post and animation_post.message_id != (old_post.message_id if old_post else None):
+        try:
+            await animation_post.delete()
+        except TelegramAPIError:
+            pass
     repo=FileRepository(database.db)
     if payload.startswith("file_"):record=await repo.get_file(payload[5:])
     elif payload.startswith("batch_"):record=await repo.get_batch(payload[6:])
     else:return
     if not record:
-        if query.message:await query.message.answer("This link is invalid or expired.")
+        if old_post:
+            try: await old_post.delete()
+            except TelegramAPIError: pass
+        await bot.send_message(user_id,"This link is invalid or expired.")
         return
-    request_anchor = query.message.message_id if query.message else query.id
-    request_key = f"forcejoin:{query.from_user.id}:{request_anchor}:{payload}"
-    if not await claim_delivery_request(database.db, request_key, query.from_user.id, payload):
+    request_anchor = old_post.message_id if old_post else query.id
+    request_key = f"forcejoin:{user_id}:{request_anchor}:{payload}"
+    if not await claim_delivery_request(database.db, request_key, user_id, payload):
         return
-    await _mark_verified(database.db, query.from_user.id, channels)
-    if query.message:
-        try: await query.message.delete()
+    await _mark_verified(database.db, user_id, channels)
+    if old_post:
+        try: await old_post.delete()
         except TelegramAPIError: pass
     success = False
     try:
-        # The configured text animation has already been cancelled and its
-        # temporary message removed above. Do not send the legacy static GIF.
-        result=await deliver_payload(bot,database,settings,query.from_user.id,payload,record,request_key=request_key)
+        result=await deliver_payload(bot,database,settings,user_id,payload,record,request_key=request_key)
         if payload.startswith("batch_") and result[0]==0:
-            await bot.send_message(query.from_user.id,"None of the batch files could be delivered.")
+            await bot.send_message(user_id,"None of the batch files could be delivered.")
         elif payload.startswith("file_") and result[0] == 0:
-            await bot.send_message(query.from_user.id,"This file is currently unavailable. The source message may have been deleted or become inaccessible.")
+            await bot.send_message(user_id,"This file is currently unavailable. The source message may have been deleted or become inaccessible.")
         success = result[0] > 0
     except TelegramAPIError:
         log.exception("Delivery after Force Join failed")
-        await bot.send_message(query.from_user.id,"File delivery failed. Contact the owner.")
+        await bot.send_message(user_id,"File delivery failed. Contact the owner.")
     except Exception:
         log.exception("Unexpected delivery failure after Force Join")
-        await bot.send_message(query.from_user.id,"Delivery failed due to a temporary error.")
+        await bot.send_message(user_id,"Delivery failed due to a temporary error.")
     finally:
         try: await finish_delivery_request(database.db, request_key, success)
         except Exception: log.exception("Could not update Force Join delivery request status")
