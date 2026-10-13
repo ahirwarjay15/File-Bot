@@ -53,6 +53,10 @@ DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a
 class SettingInput(StatesGroup):
     waiting = State()
 
+def force_join_mode_for_chat(chat) -> str:
+    """Public usernames use the public link; private chats require join approval."""
+    return "normal" if getattr(chat, "username", None) else "join_request"
+
 async def allowed(m, settings, database):
     return bool(m.from_user and await is_owner_or_moderator(database.db, m.from_user.id, settings))
 
@@ -70,6 +74,17 @@ def time_words(minutes: int) -> str:
         hours = minutes // 60
         return f"{hours} hour" if hours == 1 else f"{hours} hours"
     return f"{minutes} minutes"
+
+def custom_button_settings_rows(buttons):
+    """Render at most two configured custom buttons, one per row with its remove control."""
+    rows = []
+    for i, item in enumerate(buttons[:2]):
+        rows.append([
+            InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")),
+            InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"),
+        ])
+    return rows
+
 
 def kb(rows):
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -121,6 +136,33 @@ async def show_input_prompt(query, state, field, prompt, back_action, **extra):
     )
 
 
+async def track_temporary_prompt(state, message):
+    """Track standalone bot prompts so navigation can remove them."""
+    data = await state.get_data()
+    ids = list(data.get("temporary_prompt_ids", []))
+    ids.append({"chat_id": message.chat.id, "message_id": message.message_id})
+    await state.update_data(temporary_prompt_ids=ids)
+
+
+async def remove_temporary_prompts(bot, data):
+    """Delete standalone prompts associated with the current settings flow."""
+    prompts = list(data.get("temporary_prompt_ids", []))
+    prompt_chat = data.get("input_prompt_chat_id")
+    prompt_message = data.get("input_prompt_message_id")
+    if prompt_chat and prompt_message:
+        prompts.append({"chat_id": prompt_chat, "message_id": prompt_message})
+    seen = set()
+    for prompt in prompts:
+        chat_id, message_id = prompt.get("chat_id"), prompt.get("message_id")
+        if not chat_id or not message_id or (chat_id, message_id) in seen:
+            continue
+        seen.add((chat_id, message_id))
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except TelegramAPIError:
+            pass
+
+
 async def remove_input_prompt(bot, data):
     chat_id = data.get("input_prompt_chat_id")
     message_id = data.get("input_prompt_message_id")
@@ -132,26 +174,14 @@ async def remove_input_prompt(bot, data):
 
 
 async def finish_input_panel(message, state, title, back_action):
-    """Convert the original prompt message into the success confirmation."""
+    """Delete the temporary input prompt; send success separately and keep the panel."""
     data = await state.get_data()
-    chat_id = data.get("input_prompt_chat_id")
-    message_id = data.get("input_prompt_message_id")
-    if chat_id and message_id:
-        try:
-            await message.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=f"<b><u>{title}</u></b>\n\nSaved successfully.",
-                parse_mode="HTML",
-                reply_markup=kb([[("《 BACK", f"settings:{back_action}")]]),
-                link_preview_options={"is_disabled": True},
-            )
-        except TelegramAPIError:
-            pass
+    await remove_input_prompt(message.bot, data)
     try:
         await message.delete()
     except TelegramAPIError:
         pass
+    await message.answer(f"<b><u>{title}</u></b>\n\nSaved successfully.")
 
 
 async def edit_page(query, text, keyboard):
@@ -182,16 +212,21 @@ async def render_home(query):
         [("《 BACK", "settings:home_back")],
     ]))
 
-async def render_forcejoin(query, db, settings):
+async def build_forcejoin_page(bot, db, settings):
     channels = await effective_force_join_channels(type("DatabaseView", (), {"db": db})(), settings)
     cfg = await db.settings.find_one({"key": "force_join"}) or {}
     channel_buttons = []
     for i, channel in enumerate(channels[:10]):
         channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        label = channel_cfg.get("channel_title") or channel_cfg.get("button_text") or channel.lstrip("@")
-        channel_buttons.append((label, f"settings:forcejoin_channel:{i}"))
-    rows = []
-    rows.extend([channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)])
+        label = channel_cfg.get("channel_title")
+        if not label:
+            try:
+                chat = await bot.get_chat(int(channel) if str(channel).lstrip("-").isdigit() else channel)
+                label = chat.title or chat.full_name or chat.username
+            except (TelegramAPIError, ValueError):
+                label = channel_cfg.get("button_text") or channel.lstrip("@")
+        channel_buttons.append(((label or channel_cfg.get("button_text") or channel.lstrip("@"))[:64], f"settings:forcejoin_channel:{i}"))
+    rows = [channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)]
     if len(channels) < 10:
         rows.append([("✚ ADD", "settings:forcejoin_add")])
     rows.append([("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")])
@@ -200,12 +235,16 @@ async def render_forcejoin(query, db, settings):
         [("VERIFY", "settings:forcejoin_verify_text")],
         [("《 BACK", "settings:home")],
     ])
-    text = ("FORCE JOIN\n\n"
-            f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\n\n"
-            "Users must verify the required Join Request channels before receiving files.\n\n"
-            "Join Request channels accept membership or a pending join request.\n\n"
+    text = ("FORCE JOIN\\n\\n"
+            f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\\n\\n"
+            "Users must verify the required channels before receiving files.\\n\\n"
             "You can add up to 10 force-join channels.")
-    await edit_page(query, text, kb(rows))
+    return text, kb(rows)
+
+
+async def render_forcejoin(query, db, settings):
+    text, markup = await build_forcejoin_page(query.bot, db, settings)
+    await edit_page(query, text, markup)
 
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
@@ -388,17 +427,7 @@ async def render_shortener(query, db):
 async def render_custom_buttons(query, db):
     cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
     buttons = cfg.get("buttons", [])[:2]
-    rows = []
-    # Put both configured buttons on the same row, with each button's own remove control.
-    button_row = []
-    for i, item in enumerate(buttons):
-        button_row.append(InlineKeyboardButton(
-            text=str(item.get("text", f"Button {i+1}"))[:64],
-            url=item.get("url"),
-        ))
-        button_row.append(InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"))
-    if button_row:
-        rows.append(button_row)
+    rows = custom_button_settings_rows(buttons)
     if len(buttons) < 2:
         rows.append([InlineKeyboardButton(text="✚", callback_data="settings:custom_button_add")])
     rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])
@@ -439,16 +468,16 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         return
     action = query.data.split(":", 1)[1]
     db = database.db
-    # Navigation/back actions always cancel an outstanding input flow without
-    # changing saved settings. Choice actions (SEE/DEFAULT, mode selection, etc.)
-    # are intentionally excluded so their pending data can be used.
+    pending = await state.get_data()
+    # Every inline settings action removes tracked standalone prompts.
+    await remove_temporary_prompts(query.bot, pending)
+    await remove_input_prompt(query.bot, pending)
+    await state.update_data(temporary_prompt_ids=[], input_prompt_chat_id=None, input_prompt_message_id=None)
     if action in {"home", "home_back", "start", "start_text", "start_button", "start_poster", "start_about",
                   "auto", "auto_time", "auto_message", "after", "after_text", "invalid", "invalid_text",
                   "invalid_button", "invalid_poster", "invalid_about", "forcejoin", "forcejoin_add",
                   "forcejoin_message", "forcejoin_media", "forcejoin_animation", "animation_mode",
                   "mods", "shortener", "custom_button"}:
-        pending = await state.get_data()
-        await remove_input_prompt(query.bot, pending)
         await state.clear()
     if action in {"home", "home_back"}: await render_home(query)
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
@@ -457,20 +486,23 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await patch(db, "force_join", {"enabled": not cfg.get("enabled", False)}, {"channels": [], "other_links": [], "message": "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"})
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_add":
-        await edit_page(query, "ADD FORCE JOIN\n\nChoose Group or Channel from the keyboard below. After selecting a chat, choose Normal Mode or Join Request Mode.", kb([
+        if query.message:
+            await state.update_data(forcejoin_panel_chat_id=query.message.chat.id, forcejoin_panel_message_id=query.message.message_id)
+        await edit_page(query, "ADD FORCE JOIN\n\nChoose Group or Channel from the keyboard below. Public chats use Normal Mode automatically; private chats use Join Request Mode automatically.", kb([
             [("《 BACK", "settings:forcejoin")],
         ]))
         if query.message:
-            await query.message.answer(
+            picker_prompt = await query.message.answer(
                 "Choose the type of chat to add. The bot must already be an administrator.",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
-                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True))],
-                        [KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True)),
+                         KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, request_title=True, request_username=True))],
                         [KeyboardButton(text="Cancel")],
                     ], resize_keyboard=True, one_time_keyboard=True,
                 ),
             )
+            await track_temporary_prompt(state, picker_prompt)
         await state.set_state(SettingInput.waiting)
         await state.update_data(field="forcejoin_wait_chat")
     elif action == "forcejoin_other":
@@ -957,6 +989,7 @@ async def send_button_settings_reply_panel(message: Message, db, kind: str, pane
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
     pending = await state.get_data()
+    await remove_temporary_prompts(message.bot, pending)
     await remove_input_prompt(message.bot, pending)
     await state.clear()
     try:
@@ -976,8 +1009,24 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     value = (message.text or "").strip()
 
     if field in {"forcejoin_wait_chat", "forcejoin_wait_mode"} and value.casefold() == "cancel":
+        pending = await state.get_data()
+        panel_chat_id, panel_message_id = pending.get("forcejoin_panel_chat_id"), pending.get("forcejoin_panel_message_id")
+        await remove_temporary_prompts(message.bot, pending)
+        await remove_input_prompt(message.bot, pending)
         await state.clear()
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
         await message.answer("Force Join channel selection cancelled.", reply_markup=ReplyKeyboardRemove())
+        if panel_chat_id and panel_message_id:
+            try:
+                panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
+                await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id,
+                    text=format_settings_page(panel_text), parse_mode="HTML", reply_markup=panel_markup,
+                    link_preview_options={"is_disabled": True})
+            except TelegramAPIError:
+                pass
         return
 
     if field == "forcejoin_wait_chat":
@@ -1002,8 +1051,10 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                 await message.answer("The bot is not an administrator in this chat. Add/promote the bot as admin, then try again.")
                 await state.clear()
                 return
-            if bot_member.status != "creator" and not getattr(bot_member, "can_invite_users", False):
-                await message.answer("The bot is admin but lacks permission to invite users/create invite links. Enable the invite-link permission for the bot and try again.")
+            # Public chats use their public t.me link and do not need a new invite link.
+            # Private chats need invite-link permission because they are added in Join Request mode.
+            if not chat.username and bot_member.status != "creator" and not getattr(bot_member, "can_invite_users", False):
+                await message.answer("The bot is admin but lacks permission to create an approval-required invite link. Enable invite-link permission and try again.")
                 await state.clear()
                 return
         except TelegramAPIError:
@@ -1011,76 +1062,59 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await state.clear()
             return
         await state.update_data(
-            field="forcejoin_wait_mode",
             pending_chat_id=chat.id,
             pending_chat_title=chat.title or str(chat.id),
             pending_chat_type=chat.type,
             pending_chat_username=chat.username,
         )
-        await message.answer(
-            f"Selected: {chat.title or chat.id}\nNow choose the verification mode.",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard=[
-                    [KeyboardButton(text="Normal Mode")],
-                    [KeyboardButton(text="Join Request Mode")],
-                    [KeyboardButton(text="Cancel")],
-                ], resize_keyboard=True, one_time_keyboard=True,
-            ),
-        )
-        return
-
-    if field == "forcejoin_wait_mode":
-        normalized_mode = value.casefold()
-        if normalized_mode not in {"normal mode", "join request mode"}:
-            await message.answer("Choose Normal Mode or Join Request Mode from the keyboard, or tap Cancel.")
-            return
         data = await state.get_data()
-        chat_id = data.get("pending_chat_id")
-        if not chat_id:
-            await state.clear()
-            await message.answer("Chat selection expired. Please start again from /settings → Force Join → Add.", reply_markup=ReplyKeyboardRemove())
-            return
         channels = await effective_force_join_channels(database, settings)
-        channel_id = str(chat_id)
-        if channel_id in channels or (data.get("pending_chat_username") and "@" + data["pending_chat_username"] in channels):
+        channel_id = str(chat.id)
+        if channel_id in channels or (chat.username and "@" + chat.username in channels):
+            await remove_temporary_prompts(message.bot, data)
             await state.clear()
             await message.answer("That Force Join chat is already configured.", reply_markup=ReplyKeyboardRemove())
             return
         if len(channels) >= 10:
+            await remove_temporary_prompts(message.bot, data)
             await state.clear()
             await message.answer("Maximum 10 Force Join channels/groups are allowed.", reply_markup=ReplyKeyboardRemove())
             return
-        join_request_mode = normalized_mode == "join request mode"
-        try:
-            # No expire_date and no member_limit: links stay valid without a time or user cap.
-            invite = await message.bot.create_chat_invite_link(
-                chat_id=int(chat_id),
-                creates_join_request=join_request_mode,
-                name=("FB Force Join - Request" if join_request_mode else "FB Force Join - Normal"),
-            )
-        except TelegramAPIError:
-            await message.answer("Telegram could not create this invite link. Check the bot's admin status and invite-link permission, then retry.")
-            return
+        mode = force_join_mode_for_chat(chat)
+        link = f"https://t.me/{chat.username}" if chat.username else None
+        if mode == "join_request":
+            try:
+                invite = await message.bot.create_chat_invite_link(chat_id=chat.id, creates_join_request=True, name="FB Force Join - Request")
+                link = invite.invite_link
+            except TelegramAPIError:
+                await remove_temporary_prompts(message.bot, data)
+                await state.clear()
+                await message.answer("Telegram could not create an approval-required invite link. Check the bot's admin status and invite-link permission.", reply_markup=ReplyKeyboardRemove())
+                return
         channels.append(channel_id)
         await patch(db, "force_join", {"channels": channels})
-        await db.settings.update_one(
-            {"key": "force_join_channel", "channel": channel_id},
-            {"$set": {
-                "key": "force_join_channel",
-                "channel": channel_id,
-                "button_url": invite.invite_link,
-                "channel_title": data.get("pending_chat_title") or channel_id,
-                "chat_type": data.get("pending_chat_type"),
-                "mode": "join_request" if join_request_mode else "normal",
-            }},
-            upsert=True,
-        )
+        await db.settings.update_one({"key": "force_join_channel", "channel": channel_id},
+            {"$set": {"key": "force_join_channel", "channel": channel_id, "button_url": link,
+                      "channel_title": chat.title or str(chat.id), "chat_type": chat.type, "mode": mode}}, upsert=True)
+        panel_chat_id, panel_message_id = data.get("forcejoin_panel_chat_id"), data.get("forcejoin_panel_message_id")
+        await remove_temporary_prompts(message.bot, data)
+        await remove_input_prompt(message.bot, data)
         await state.clear()
-        mode_label = "Join Request Mode" if join_request_mode else "Normal Mode"
-        await message.answer(
-            f"Force Join added successfully.\nChat: {data.get('pending_chat_title') or channel_id}\nMode: {mode_label}\nInvite link has no expiry time or member limit.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
+        mode_label = "Join Request Mode" if mode == "join_request" else "Normal Mode"
+        await message.answer(f"Force Join added successfully.\nChat: {chat.title or chat.id}\nMode: {mode_label}\nLink has no expiry time or member limit.", reply_markup=ReplyKeyboardRemove())
+        # Update the original Force Join panel in place with the newly saved channel.
+        if panel_chat_id and panel_message_id:
+            try:
+                panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
+                await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id,
+                    text=format_settings_page(panel_text), parse_mode="HTML", reply_markup=panel_markup,
+                    link_preview_options={"is_disabled": True})
+            except TelegramAPIError:
+                pass
         return
 
     if field == "custom_button_text":
@@ -1125,12 +1159,11 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if panel_chat and panel_message:
             current = buttons[:2]
             rows = []
-            button_row = []
             for i, item in enumerate(current):
-                button_row.append(InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")))
-                button_row.append(InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"))
-            if button_row:
-                rows.append(button_row)
+                rows.append([
+                    InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")),
+                    InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"),
+                ])
             if len(current) < 2:
                 rows.append([InlineKeyboardButton(text="✚", callback_data="settings:custom_button_add")])
             rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])

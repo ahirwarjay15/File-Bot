@@ -179,3 +179,32 @@ async def test_pending_join_request_only_verifies_join_request_mode():
     bot = FakeBot()
     assert await join_status(bot, 42, ["-100123"], FakeDB("normal")) == ["-100123"]
     assert await join_status(bot, 42, ["-100123"], FakeDB("join_request")) == []
+
+
+
+def test_force_join_public_and_private_chats_select_automatic_modes():
+    from types import SimpleNamespace
+    from app.handlers.settings import force_join_mode_for_chat
+
+    public_channel = SimpleNamespace(username="public_channel")
+    public_group = SimpleNamespace(username="public_group")
+    private_channel = SimpleNamespace(username=None)
+    private_group = SimpleNamespace(username=None)
+
+    assert force_join_mode_for_chat(public_channel) == "normal"
+    assert force_join_mode_for_chat(public_group) == "normal"
+    assert force_join_mode_for_chat(private_channel) == "join_request"
+    assert force_join_mode_for_chat(private_group) == "join_request"
+
+
+def test_custom_button_settings_layout_uses_two_controls_per_row():
+    from app.handlers.settings import custom_button_settings_rows
+
+    rows = custom_button_settings_rows([
+        {"text": "Protect", "url": "https://example.com"},
+        {"text": "Update", "url": "https://example.org"},
+    ])
+    assert [[button.text for button in row] for row in rows] == [
+        ["Protect", "✖"],
+        ["Update", "✖"],
+    ]
