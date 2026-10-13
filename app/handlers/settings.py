@@ -500,7 +500,6 @@ async def settings_command(message: Message, settings: Settings, database):
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
         [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
         [("CUSTOM BUTTON", "settings:custom_button")],
-        [("《 BACK", "settings:home_back")],
     ]))
 
 @router.callback_query(F.data.startswith("settings:"))
