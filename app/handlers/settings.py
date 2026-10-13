@@ -411,16 +411,12 @@ async def render_custom_buttons(query, db):
     cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
     buttons = cfg.get("buttons", [])[:2]
     rows = []
-    # Put both configured buttons on the same row, with each button's own remove control.
-    button_row = []
+    # Keep each configured button and its remove control on a separate row (2 controls per row).
     for i, item in enumerate(buttons):
-        button_row.append(InlineKeyboardButton(
-            text=str(item.get("text", f"Button {i+1}"))[:64],
-            url=item.get("url"),
-        ))
-        button_row.append(InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"))
-    if button_row:
-        rows.append(button_row)
+        rows.append([
+            InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")),
+            InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"),
+        ])
     if len(buttons) < 2:
         rows.append([InlineKeyboardButton(text="✚", callback_data="settings:custom_button_add")])
     rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])
@@ -1151,12 +1147,11 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if panel_chat and panel_message:
             current = buttons[:2]
             rows = []
-            button_row = []
             for i, item in enumerate(current):
-                button_row.append(InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")))
-                button_row.append(InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"))
-            if button_row:
-                rows.append(button_row)
+                rows.append([
+                    InlineKeyboardButton(text=str(item.get("text", f"Button {i+1}"))[:64], url=item.get("url")),
+                    InlineKeyboardButton(text="✖", callback_data=f"settings:custom_button_remove:{i}"),
+                ])
             if len(current) < 2:
                 rows.append([InlineKeyboardButton(text="✚", callback_data="settings:custom_button_add")])
             rows.append([InlineKeyboardButton(text="《 BACK", callback_data="settings:home")])
