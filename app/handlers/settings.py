@@ -5,7 +5,7 @@ from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery, MessageEntity, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
@@ -703,26 +703,24 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await query.message.answer("Send your new auto-delete message. Use {auto_delete_time} to insert the timer.")
     elif action == "auto_message_see":
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
-        saved = (cfg.get("notice") or DEFAULT_NOTICE).replace(
-            "{auto_delete_time}", time_words(int(cfg.get("minutes", 30)))
-        )
-        # Callback alert text is limited to 200 characters, so show the full
-        # notice as a regular message instead of trying to open it in an alert.
+        from app.services.delivery import format_notice
+        saved, saved_entities, is_custom = format_notice(cfg, int(cfg.get("minutes", 30)), default_notice=DEFAULT_NOTICE)
         await query.answer("Opening auto-delete message preview…")
         if query.message:
-            try:
+            if is_custom:
                 await query.message.answer(
-                    str(saved), parse_mode="HTML",
+                    saved, entities=saved_entities, parse_mode=None,
                     link_preview_options={"is_disabled": True},
                 )
-            except TelegramBadRequest:
-                import html
-                import re
-                plain = html.unescape(re.sub(r"</?[^>]+>", "", str(saved)))
-                await query.message.answer(plain, link_preview_options={"is_disabled": True})
+            else:
+                await query.message.answer(
+                    saved, parse_mode="HTML",
+                    link_preview_options={"is_disabled": True},
+                )
         return
     elif action == "auto_message_default":
         await patch(db, "auto_delete", {"notice": DEFAULT_NOTICE}, {"enabled": False, "minutes": 30})
+        await db.settings.update_one({"key": "auto_delete"}, {"$unset": {"notice_entities": ""}})
         cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
         default_text = DEFAULT_NOTICE.replace("{auto_delete_time}", time_words(int(cfg.get("minutes", 30))))
         # Keep callback feedback short: Telegram callback alerts cannot display
@@ -1281,7 +1279,19 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "start_message", {"button_url": value, "button_enabled": True}, {"enabled": True, "button_text": "📟 UPDATE CHANNEL", "button_url": "http://t.me/lexiAnime"})
         await message.answer("✨ Successfully updated start message button link.")
     elif field == "auto_notice":
-        await patch(db, "auto_delete", {"notice": value}, {"enabled": False, "minutes": 30})
+        # Telegram sends formatting as entities, not HTML/Markdown in message.text.
+        # Save the original text and entities together so bold, mono, quotes,
+        # links, spoilers and other Telegram formatting can be reproduced exactly.
+        notice_text = message.text if message.text is not None else value
+        notice_entities = [
+            entity.model_dump(exclude_none=True)
+            for entity in (message.entities or [])
+        ]
+        await patch(
+            db, "auto_delete",
+            {"notice": notice_text, "notice_entities": notice_entities},
+            {"enabled": False, "minutes": 30},
+        )
         await message.answer("✨ Auto-delete message updated successfully.")
     elif field == "after_text_message":
         await patch(db, "after_delete", {"text": value}, {"enabled": False, "button_text": DEFAULT_AFTER_BUTTON})
