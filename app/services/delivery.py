@@ -244,7 +244,8 @@ async def _process_batch_delivery(bot: Bot, db, request_key: str):
                             doc["user_id"], notice_text, entities=notice_entities, parse_mode=None
                         )
                     else:
-                        alert = await bot.send_message(doc["user_id"], notice_text)
+                        # Legacy/default notices use the built-in HTML template.
+                        alert = await bot.send_message(doc["user_id"], notice_text, parse_mode="HTML")
                     await db.batch_deliveries.update_one(
                         {"request_key": request_key, "status": "processing"},
                         {"$set": {"alert_status": "sent", "alert_message_id": alert.message_id, "alert_sent_at": _now()}},
