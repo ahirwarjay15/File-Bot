@@ -471,8 +471,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                 "Choose the type of chat to add. The bot must already be an administrator.",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
-                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, bot_is_member=True, request_title=True, request_username=True))],
-                        [KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, bot_is_member=True, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, request_title=True, request_username=True))],
                         [KeyboardButton(text="Cancel")],
                     ], resize_keyboard=True, one_time_keyboard=True,
                 ),
@@ -543,8 +543,8 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                 "Choose Group or Channel below.",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
-                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, bot_is_member=True, request_title=True, request_username=True))],
-                        [KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, bot_is_member=True, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, request_title=True, request_username=True))],
                         [KeyboardButton(text="Cancel")],
                     ], resize_keyboard=True, one_time_keyboard=True,
                 ),
