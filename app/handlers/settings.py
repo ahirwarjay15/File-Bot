@@ -954,6 +954,7 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
     data = await state.get_data()
     kind = data.get("button_panel_kind")
     if value == "《 BACK" and kind in ("start", "invalid"):
+        await remove_temporary_prompts(message.bot, data)
         await clear_state_preserving_prompts(state)
         # Return directly to the parent settings page while removing the reply keyboard.
         if kind == "start":
@@ -987,7 +988,7 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
         text_value = cfg.get(f"button{index}_text", cfg.get("button_text", "") if index == "1" else "")
         url_value = cfg.get(f"button{index}_url", cfg.get("button_url", "") if index == "1" else "")
         if not enabled and not (text_value and url_value):
-            await message.answer("Set this button's text and link before enabling it.")
+            await tracked_answer(message, state, "Set this button's text and link before enabling it.")
         else:
             await patch(db, cfg_key, {key: not enabled}, {"enabled": True, "text": DEFAULT_START_TEXT} if is_start else {"enabled": False})
         panel_data = await state.get_data()
@@ -997,7 +998,7 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
         index = value[0]
         await state.set_state(SettingInput.waiting)
         await state.update_data(field=f"{kind}_button_{index}_text", button_index=index, panel_kind=kind)
-        await message.answer(f"Send text for {'Start' if is_start else 'Invalid'} Button {index}.")
+        await tracked_answer(message, state, f"Send text for {'Start' if is_start else 'Invalid'} Button {index}.")
         return
 
 async def send_button_settings_reply_panel(message: Message, db, kind: str, panel_chat_id=None, panel_message_id=None):
