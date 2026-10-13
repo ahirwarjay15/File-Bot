@@ -153,12 +153,10 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                             parse_mode="HTML", reply_markup=markup,
                         )
             except TelegramBadRequest as exc:
-                # An unchanged frame is normal; transient edit rejections should not freeze
-                # the loop. TelegramRetryAfter is handled separately below.
+                # Telegram reports an unchanged edit when a frame repeats; keep the loop alive.
                 if "message is not modified" not in str(exc).lower():
-                    log.debug("Force Join animation edit rejected; continuing frame loop", exc_info=True)
-                await asyncio.sleep(max(speed, 0.3))
-                continue
+                    log.debug("Force Join animation edit rejected", exc_info=True)
+                    return
             except TelegramRetryAfter as exc:
                 await asyncio.sleep(max(speed, float(exc.retry_after)))
                 continue
