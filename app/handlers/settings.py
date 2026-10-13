@@ -5,7 +5,7 @@ from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, MessageEntity, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery, MessageEntity, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, KeyboardButtonRequestChat, ReplyKeyboardRemove
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
@@ -185,19 +185,14 @@ async def render_home(query):
 async def render_forcejoin(query, db, settings):
     channels = await effective_force_join_channels(type("DatabaseView", (), {"db": db})(), settings)
     cfg = await db.settings.find_one({"key": "force_join"}) or {}
-    other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
     channel_buttons = []
     for i, channel in enumerate(channels[:10]):
         channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
         label = channel_cfg.get("channel_title") or channel_cfg.get("button_text") or channel.lstrip("@")
         channel_buttons.append((label, f"settings:forcejoin_channel:{i}"))
-    other_buttons = []
-    for i, item in enumerate(other_links[:10]):
-        other_buttons.append((item.get("button_text") or f"JOIN {len(channels)+i+1}", f"settings:forcejoin_other_settings:{i}"))
     rows = []
     rows.extend([channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)])
-    rows.extend([other_buttons[i:i+2] for i in range(0, len(other_buttons), 2)])
-    if len(channels) + len(other_links) < 10:
+    if len(channels) < 10:
         rows.append([("✚ ADD", "settings:forcejoin_add")])
     rows.append([("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")])
     rows.extend([
@@ -209,7 +204,6 @@ async def render_forcejoin(query, db, settings):
             f"Status: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\n\n"
             "Users must verify the required Join Request channels before receiving files.\n\n"
             "Join Request channels accept membership or a pending join request.\n\n"
-            "Other links are treated as verified when all required Join Request channels are verified.\n\n"
             "You can add up to 10 force-join channels.")
     await edit_page(query, text, kb(rows))
 
@@ -463,10 +457,22 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await patch(db, "force_join", {"enabled": not cfg.get("enabled", False)}, {"channels": [], "other_links": [], "message": "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"})
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_add":
-        await edit_page(query, "ADD CHANNEL\n\nSelect a verification mode.\n\nJoin Request: Verify membership or a pending join request.\n\nOther: Add an external platform link.", kb([
-            [("OTHER", "settings:forcejoin_other"), ("JOIN REQUEST", "settings:forcejoin_join_request")],
+        await edit_page(query, "ADD FORCE JOIN\n\nChoose Group or Channel from the keyboard below. After selecting a chat, choose Normal Mode or Join Request Mode.", kb([
             [("《 BACK", "settings:forcejoin")],
         ]))
+        if query.message:
+            await query.message.answer(
+                "Choose the type of chat to add. The bot must already be an administrator.",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Cancel")],
+                    ], resize_keyboard=True, one_time_keyboard=True,
+                ),
+            )
+        await state.set_state(SettingInput.waiting)
+        await state.update_data(field="forcejoin_wait_chat")
     elif action == "forcejoin_other":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_other_url")
         if query.message: await query.message.answer("Send the link of any platform. Example: Facebook, Instagram or YouTube.")
@@ -524,15 +530,27 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.update_data(field="forcejoin_other_label")
         if query.message: await query.message.answer("Send custom button text for force-join channel button.")
     elif action == "forcejoin_join_request":
-        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_channel")
-        if query.message: await query.message.answer("Send a public channel username or forward a message from the channel. Make sure the bot is an administrator in the selected channel.")
+        await state.set_state(SettingInput.waiting)
+        await state.update_data(field="forcejoin_wait_chat")
+        if query.message:
+            await query.message.answer(
+                "Choose Group or Channel below.",
+                reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[
+                        [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Channel", request_chat=KeyboardButtonRequestChat(request_id=5102, chat_is_channel=True, request_title=True, request_username=True))],
+                        [KeyboardButton(text="Cancel")],
+                    ], resize_keyboard=True, one_time_keyboard=True,
+                ),
+            )
     elif action.startswith("forcejoin_channel:"):
         channels = await effective_force_join_channels(database, settings)
         index = int(action.split(":", 1)[1])
         if index < len(channels):
             channel = channels[index]
             cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-            await edit_page(query, f"CHANNEL SETTINGS\n\n{channel}\n\nSelect an option below.", kb([
+            channel_title = cfg.get("channel_title") or channel.lstrip("@")
+            await edit_page(query, f"CHANNEL SETTINGS\n\n{channel_title}\n\nSelect an option below.", kb([
                 [("BUTTON TEXT", f"settings:forcejoin_label:{index}"), ("REMOVE", f"settings:forcejoin_remove_one:{index}")],
                 [("《 BACK", "settings:forcejoin")],
             ]))
@@ -956,6 +974,115 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     field = data.get("field")
     db = database.db
     value = (message.text or "").strip()
+
+    if field in {"forcejoin_wait_chat", "forcejoin_wait_mode"} and value.casefold() == "cancel":
+        await state.clear()
+        await message.answer("Force Join channel selection cancelled.", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if field == "forcejoin_wait_chat":
+        shared = getattr(message, "chat_shared", None)
+        if not shared:
+            await message.answer("Please use the Group or Channel buttons to select a chat, or tap Cancel.")
+            return
+        if shared.request_id not in (5101, 5102):
+            await message.answer("That chat selection expired. Open /settings → Force Join → Add again.")
+            await state.clear()
+            return
+        expected_type = "channel" if shared.request_id == 5102 else "group"
+        try:
+            chat = await message.bot.get_chat(shared.chat_id)
+            allowed_types = {"channel"} if expected_type == "channel" else {"group", "supergroup"}
+            if chat.type not in allowed_types:
+                await message.answer("Please select the matching Group or Channel type.")
+                return
+            me = await message.bot.get_me()
+            bot_member = await message.bot.get_chat_member(chat.id, me.id)
+            if bot_member.status not in ("administrator", "creator"):
+                await message.answer("The bot is not an administrator in this chat. Add/promote the bot as admin, then try again.")
+                await state.clear()
+                return
+            if bot_member.status != "creator" and not getattr(bot_member, "can_invite_users", False):
+                await message.answer("The bot is admin but lacks permission to invite users/create invite links. Enable the invite-link permission for the bot and try again.")
+                await state.clear()
+                return
+        except TelegramAPIError:
+            await message.answer("The bot cannot access this chat. Make sure it is a chat where the bot is an administrator.")
+            await state.clear()
+            return
+        await state.update_data(
+            field="forcejoin_wait_mode",
+            pending_chat_id=chat.id,
+            pending_chat_title=chat.title or str(chat.id),
+            pending_chat_type=chat.type,
+            pending_chat_username=chat.username,
+        )
+        await message.answer(
+            f"Selected: {chat.title or chat.id}\nNow choose the verification mode.",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="Normal Mode")],
+                    [KeyboardButton(text="Join Request Mode")],
+                    [KeyboardButton(text="Cancel")],
+                ], resize_keyboard=True, one_time_keyboard=True,
+            ),
+        )
+        return
+
+    if field == "forcejoin_wait_mode":
+        normalized_mode = value.casefold()
+        if normalized_mode not in {"normal mode", "join request mode"}:
+            await message.answer("Choose Normal Mode or Join Request Mode from the keyboard, or tap Cancel.")
+            return
+        data = await state.get_data()
+        chat_id = data.get("pending_chat_id")
+        if not chat_id:
+            await state.clear()
+            await message.answer("Chat selection expired. Please start again from /settings → Force Join → Add.", reply_markup=ReplyKeyboardRemove())
+            return
+        channels = await effective_force_join_channels(database, settings)
+        channel_id = str(chat_id)
+        if channel_id in channels or (data.get("pending_chat_username") and "@" + data["pending_chat_username"] in channels):
+            await state.clear()
+            await message.answer("That Force Join chat is already configured.", reply_markup=ReplyKeyboardRemove())
+            return
+        if len(channels) >= 10:
+            await state.clear()
+            await message.answer("Maximum 10 Force Join channels/groups are allowed.", reply_markup=ReplyKeyboardRemove())
+            return
+        join_request_mode = normalized_mode == "join request mode"
+        try:
+            # No expire_date and no member_limit: links stay valid without a time or user cap.
+            invite = await message.bot.create_chat_invite_link(
+                chat_id=int(chat_id),
+                creates_join_request=join_request_mode,
+                name=("FB Force Join - Request" if join_request_mode else "FB Force Join - Normal"),
+            )
+        except TelegramAPIError:
+            await message.answer("Telegram could not create this invite link. Check the bot's admin status and invite-link permission, then retry.")
+            return
+        channels.append(channel_id)
+        await patch(db, "force_join", {"channels": channels})
+        await db.settings.update_one(
+            {"key": "force_join_channel", "channel": channel_id},
+            {"$set": {
+                "key": "force_join_channel",
+                "channel": channel_id,
+                "button_url": invite.invite_link,
+                "channel_title": data.get("pending_chat_title") or channel_id,
+                "chat_type": data.get("pending_chat_type"),
+                "mode": "join_request" if join_request_mode else "normal",
+            }},
+            upsert=True,
+        )
+        await state.clear()
+        mode_label = "Join Request Mode" if join_request_mode else "Normal Mode"
+        await message.answer(
+            f"Force Join added successfully.\nChat: {data.get('pending_chat_title') or channel_id}\nMode: {mode_label}\nInvite link has no expiry time or member limit.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
     if field == "custom_button_text":
         if not value or len(value) > 64:
             await message.answer("Button text must be between 1 and 64 characters.")
@@ -1137,66 +1264,8 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await message.answer("✨ Force-join poster updated successfully.")
         return
     if field == "forcejoin_channel":
-        channel = value.strip().strip("<>")
-        forwarded_origin = getattr(message, "forward_origin", None)
-        forwarded_chat = getattr(forwarded_origin, "chat", None)
-        if forwarded_chat is not None:
-            # A forwarded post is a reliable way to identify a private channel too.
-            channel = forwarded_chat.username or str(forwarded_chat.id)
-        elif channel.lower().startswith(("https://t.me/", "http://t.me/", "https://telegram.me/", "http://telegram.me/", "t.me/", "telegram.me/")):
-            parsed_channel = urlparse(channel if "://" in channel else "https://" + channel)
-            channel = "@" + parsed_channel.path.strip("/").split("/", 1)[0].lstrip("@")
-        elif channel.startswith("@"):
-            channel = channel.split("/", 1)[0]
-        elif channel.startswith("tg://resolve?domain="):
-            channel = "@" + channel.split("domain=", 1)[1].split("&", 1)[0]
-        if channel.startswith("@") and (len(channel) < 6 or not channel[1:].replace("_", "").isalnum()):
-            await message.answer("Send a valid public channel username or forward a post from the channel.")
-            return
-        try:
-            chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
-            chat = await message.bot.get_chat(chat_arg)
-            if chat.type not in ("channel", "supergroup"):
-                await message.answer("Force Join target must be a channel or supergroup.")
-                return
-            me = await message.bot.get_me()
-            bot_member = await message.bot.get_chat_member(chat.id, me.id)
-            if bot_member.status not in ("administrator", "creator"):
-                await message.answer("Make the bot an administrator in that channel before adding it to Force Join.")
-                return
-            button_url = getattr(chat, "invite_link", None)
-            if chat.username:
-                button_url = f"https://t.me/{chat.username}"
-            elif not button_url:
-                try:
-                    button_url = await message.bot.export_chat_invite_link(chat.id)
-                except TelegramAPIError:
-                    button_url = None
-            if not button_url:
-                await message.answer("The bot can verify this private channel, but it could not create an invite link. Give it permission to invite users and try again.")
-                return
-            channel = chat.username and "@" + chat.username or str(chat.id)
-        except TelegramAPIError:
-            await message.answer("The bot cannot access that channel. Check the username/forwarded post and bot permissions.")
-            return
-        channels = await effective_force_join_channels(database, settings)
-        if channel in channels:
-            await message.answer("That Force Join channel is already configured.")
-            await state.clear()
-            return
-        if len(channels) >= 10:
-            await message.answer("Maximum 10 Force Join channels are allowed.")
-            await state.clear()
-            return
-        channels.append(channel)
-        await patch(db, "force_join", {"channels": channels})
-        await db.settings.update_one(
-            {"key": "force_join_channel", "channel": channel},
-            {"$set": {"key": "force_join_channel", "channel": channel, "button_url": button_url, "channel_title": chat.title or channel.lstrip("@")}},
-            upsert=True,
-        )
         await state.clear()
-        await message.answer(f"Force Join channel {channel} added.")
+        await message.answer("Please add a Group or Channel using the chat-selection keyboard from /settings → Force Join → Add.")
         return
     if field == "start_poster":
         if message.animation:

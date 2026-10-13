@@ -71,6 +71,12 @@ async def _mark_verified(db, user_id: int, channels: list[str]):
         {"$set": {"force_join_signature": _join_signature(channels), "force_join_verified_at": datetime.now(timezone.utc)}},
     )
 
+def force_join_button_label(channel_cfg: dict, position: int) -> str:
+    """Custom text overrides the default; its slot still consumes its number."""
+    custom = str(channel_cfg.get("button_text") or "").strip()
+    return (custom or f"Join {position}")[:64]
+
+
 async def join_status(bot,user_id:int,channels:list[str],db=None)->list[str]:
     missing=[]
     for raw in channels:
@@ -81,7 +87,9 @@ async def join_status(bot,user_id:int,channels:list[str],db=None)->list[str]:
             chat = await bot.get_chat(chat_arg)
             member=await bot.get_chat_member(chat_id=chat.id,user_id=user_id)
             verified = member.status in ("creator","administrator","member") or (member.status=="restricted" and getattr(member,"is_member",False))
-            if not verified and db is not None:
+            channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) if db is not None else None
+            mode = (channel_cfg or {}).get("mode", "join_request")
+            if not verified and mode == "join_request" and db is not None:
                 pending = await db.pending_join_requests.find_one({"chat_id": chat.id, "user_id": user_id})
                 verified = bool(pending)
             if not verified: missing.append(channel)
@@ -145,8 +153,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                             parse_mode="HTML", reply_markup=markup,
                         )
             except TelegramBadRequest as exc:
-                # The first frame is often already visible when the loop starts.
-                # Telegram reports an unchanged edit as an error; keep the loop alive.
+                # Telegram reports an unchanged edit when a frame repeats; keep the loop alive.
                 if "message is not modified" not in str(exc).lower():
                     log.debug("Force Join animation edit rejected", exc_info=True)
                     return
@@ -220,6 +227,17 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
                 animation_post = None
 
     missing = await join_status(bot, user.id, channels, database.db)
+    if animation_enabled:
+        # Let at least one complete frame cycle become visible even when Telegram
+        # answers membership checks very quickly.
+        frames_for_wait = animation_cfg.get("frames")
+        if not isinstance(frames_for_wait, list) or len(frames_for_wait) != 3:
+            frames_for_wait = [".", "..", "..."]
+        try:
+            frame_speed = min(1.0, max(0.10, float(animation_cfg.get("speed", 0.10))))
+        except (TypeError, ValueError):
+            frame_speed = 0.10
+        await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
     if not missing:
         await _cancel_gate_animation(bot, user.id, payload)
         if animation_post:
@@ -230,17 +248,13 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
         await _mark_verified(database.db, user.id, channels)
         return False
 
-    other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
     join_buttons = []
     for index, channel in enumerate(missing):
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
+        target = channel_cfg.get("button_url") or (channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else None))
         if target:
-            label = channel_cfg.get("button_text") or channel_cfg.get("channel_title") or channel.lstrip("@")
-            join_buttons.append(InlineKeyboardButton(text=label[:64], url=target))
-    for item in other_links:
-        if item.get("url"):
-            join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
+            label = force_join_button_label(channel_cfg, index + 1)
+            join_buttons.append(InlineKeyboardButton(text=label, url=target))
     rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
     rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ",callback_data=f"forcejoin:check:{payload}")])
     raw_text = cfg.get("message") or "Hey {user_mention}! Please join my {remaining_count} remaining channel(s) to use me."
@@ -464,30 +478,32 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
                 else:
                     animation_post = await bot.send_message(user_id, f"<i>{first}</i>", parse_mode="HTML")
                 await _start_gate_animation(bot, user_id, payload, animation_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, animation_only=True)
-                # Poster mode replaces the old gate as soon as the animation-only
-                # poster is visible; the same poster becomes the failed-check prompt.
-                if old_post and animation_post.message_id != old_post.message_id:
-                    try:
-                        await old_post.delete()
-                    except TelegramAPIError:
-                        pass
+                # Keep the old Force Join post visible throughout the animation.
+                # It is deleted only after the replacement post is ready.
             except TelegramAPIError:
                 log.warning("Could not create Force Join animation poster", exc_info=True)
                 animation_post = None
 
     missing=[] if await is_owner_or_moderator(database.db, user_id, settings) else await join_status(bot,user_id,channels,database.db)
+    if animation_enabled:
+        # Keep the verification animation alive for a visible frame cycle before
+        # stopping it and publishing the updated remaining-channel post.
+        frames_for_wait = animation_cfg.get("frames")
+        if not isinstance(frames_for_wait, list) or len(frames_for_wait) != 3:
+            frames_for_wait = [".", "..", "..."]
+        try:
+            frame_speed = min(1.0, max(0.10, float(animation_cfg.get("speed", 0.10))))
+        except (TypeError, ValueError):
+            frame_speed = 0.10
+        await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
     if missing:
-        other_links = force_cfg.get("other_links", []) if isinstance(force_cfg.get("other_links", []), list) else []
         join_buttons = []
         for index, channel in enumerate(missing):
             channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-            target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
+            target = channel_cfg.get("button_url") or (channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else None))
             if target:
-                label = channel_cfg.get("button_text") or channel_cfg.get("channel_title") or channel.lstrip("@")
-                join_buttons.append(InlineKeyboardButton(text=label[:64], url=target))
-        for item in other_links:
-            if item.get("url"):
-                join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
+                label = force_join_button_label(channel_cfg, index + 1)
+                join_buttons.append(InlineKeyboardButton(text=label, url=target))
         rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
         rows.append([InlineKeyboardButton(text=force_cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
         me = await bot.get_me()
@@ -496,8 +512,8 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         markup = InlineKeyboardMarkup(inline_keyboard=rows)
 
         if animation_enabled and animation_mode == "force_join_poster" and animation_post:
-            # Reuse the animation poster for the failed-check prompt; the animation
-            # is stopped first, then the text and remaining-channel buttons return.
+            # Stop the animation, then turn its poster into the updated prompt.
+            # The old Force Join post remains until this replacement is ready.
             await _cancel_gate_animation(bot, user_id, payload)
             try:
                 if animation_post.photo or animation_post.animation or animation_post.document:
