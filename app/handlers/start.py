@@ -248,7 +248,6 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
         await _mark_verified(database.db, user.id, channels)
         return False
 
-    other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
     join_buttons = []
     for index, channel in enumerate(missing):
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
@@ -256,9 +255,6 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
         if target:
             label = force_join_button_label(channel_cfg, index + 1)
             join_buttons.append(InlineKeyboardButton(text=label, url=target))
-    for item in other_links:
-        if item.get("url"):
-            join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
     rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
     rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ",callback_data=f"forcejoin:check:{payload}")])
     raw_text = cfg.get("message") or "Hey {user_mention}! Please join my {remaining_count} remaining channel(s) to use me."
@@ -501,7 +497,6 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
             frame_speed = 0.10
         await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
     if missing:
-        other_links = force_cfg.get("other_links", []) if isinstance(force_cfg.get("other_links", []), list) else []
         join_buttons = []
         for index, channel in enumerate(missing):
             channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
@@ -509,9 +504,6 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
             if target:
                 label = force_join_button_label(channel_cfg, index + 1)
                 join_buttons.append(InlineKeyboardButton(text=label, url=target))
-        for item in other_links:
-            if item.get("url"):
-                join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
         rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
         rows.append([InlineKeyboardButton(text=force_cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
         me = await bot.get_me()
