@@ -71,6 +71,12 @@ async def _mark_verified(db, user_id: int, channels: list[str]):
         {"$set": {"force_join_signature": _join_signature(channels), "force_join_verified_at": datetime.now(timezone.utc)}},
     )
 
+def force_join_button_label(channel_cfg: dict, position: int) -> str:
+    """Custom text overrides the default; its slot still consumes its number."""
+    custom = str(channel_cfg.get("button_text") or "").strip()
+    return (custom or f"Join {position}")[:64]
+
+
 async def join_status(bot,user_id:int,channels:list[str],db=None)->list[str]:
     missing=[]
     for raw in channels:
@@ -81,7 +87,9 @@ async def join_status(bot,user_id:int,channels:list[str],db=None)->list[str]:
             chat = await bot.get_chat(chat_arg)
             member=await bot.get_chat_member(chat_id=chat.id,user_id=user_id)
             verified = member.status in ("creator","administrator","member") or (member.status=="restricted" and getattr(member,"is_member",False))
-            if not verified and db is not None:
+            channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) if db is not None else None
+            mode = (channel_cfg or {}).get("mode", "join_request")
+            if not verified and mode == "join_request" and db is not None:
                 pending = await db.pending_join_requests.find_one({"chat_id": chat.id, "user_id": user_id})
                 verified = bool(pending)
             if not verified: missing.append(channel)
@@ -145,11 +153,12 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                             parse_mode="HTML", reply_markup=markup,
                         )
             except TelegramBadRequest as exc:
-                # The first frame is often already visible when the loop starts.
-                # Telegram reports an unchanged edit as an error; keep the loop alive.
+                # An unchanged frame is normal; transient edit rejections should not freeze
+                # the loop. TelegramRetryAfter is handled separately below.
                 if "message is not modified" not in str(exc).lower():
-                    log.debug("Force Join animation edit rejected", exc_info=True)
-                    return
+                    log.debug("Force Join animation edit rejected; continuing frame loop", exc_info=True)
+                await asyncio.sleep(max(speed, 0.3))
+                continue
             except TelegramRetryAfter as exc:
                 await asyncio.sleep(max(speed, float(exc.retry_after)))
                 continue
@@ -234,10 +243,10 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     join_buttons = []
     for index, channel in enumerate(missing):
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
+        target = channel_cfg.get("button_url") or (channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else None))
         if target:
-            label = channel_cfg.get("button_text") or channel_cfg.get("channel_title") or channel.lstrip("@")
-            join_buttons.append(InlineKeyboardButton(text=label[:64], url=target))
+            label = force_join_button_label(channel_cfg, index + 1)
+            join_buttons.append(InlineKeyboardButton(text=label, url=target))
     for item in other_links:
         if item.get("url"):
             join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
@@ -481,10 +490,10 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         join_buttons = []
         for index, channel in enumerate(missing):
             channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-            target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
+            target = channel_cfg.get("button_url") or (channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else None))
             if target:
-                label = channel_cfg.get("button_text") or channel_cfg.get("channel_title") or channel.lstrip("@")
-                join_buttons.append(InlineKeyboardButton(text=label[:64], url=target))
+                label = force_join_button_label(channel_cfg, index + 1)
+                join_buttons.append(InlineKeyboardButton(text=label, url=target))
         for item in other_links:
             if item.get("url"):
                 join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
