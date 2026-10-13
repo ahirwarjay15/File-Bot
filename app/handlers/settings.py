@@ -53,6 +53,10 @@ DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a
 class SettingInput(StatesGroup):
     waiting = State()
 
+def force_join_mode_for_chat(chat) -> str:
+    """Public usernames use the public link; private chats require join approval."""
+    return "normal" if getattr(chat, "username", None) else "join_request"
+
 async def allowed(m, settings, database):
     return bool(m.from_user and await is_owner_or_moderator(database.db, m.from_user.id, settings))
 
@@ -1069,7 +1073,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await state.clear()
             await message.answer("Maximum 10 Force Join channels/groups are allowed.", reply_markup=ReplyKeyboardRemove())
             return
-        mode = "normal" if chat.username else "join_request"
+        mode = force_join_mode_for_chat(chat)
         link = f"https://t.me/{chat.username}" if chat.username else None
         if mode == "join_request":
             try:
