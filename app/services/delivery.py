@@ -66,7 +66,7 @@ def format_notice(cfg, minutes, default_notice=DEFAULT_NOTICE):
     marker = "{auto_delete_time}"
     entity_data = cfg.get("notice_entities")
     custom = entity_data is not None
-    entities = [MessageEntity.model_validate(item) for item in entity_data] if custom else []
+    entities = [dict(item) for item in entity_data] if custom else []
     def units(text):
         return len(text.encode("utf-16-le")) // 2
     positions, cursor = [], 0
@@ -81,19 +81,20 @@ def format_notice(cfg, minutes, default_notice=DEFAULT_NOTICE):
         start, old_len, new_len = units(value[:pos]), units(marker), units(label)
         end, delta = start + old_len, new_len - old_len
         for entity in entities:
-            es, ee = entity.offset, entity.offset + entity.length
+            es = int(entity.get("offset", 0))
+            ee = es + int(entity.get("length", 0))
             if es >= end:
-                entity.offset += delta
+                entity["offset"] = es + delta
             elif es <= start and ee >= end:
-                entity.length += delta
+                entity["length"] = int(entity.get("length", 0)) + delta
             elif es < start < ee < end:
-                entity.length = start - es
+                entity["length"] = start - es
             elif start < es < end < ee:
-                entity.offset = start + new_len
-                entity.length = ee - end
+                entity["offset"] = start + new_len
+                entity["length"] = ee - end
         text = text[:pos] + label + text[pos + len(marker):]
         value = value[:pos] + label + value[pos + len(marker):]
-    return text, entities, custom
+    return text, [MessageEntity.model_validate(item) for item in entities], custom
 
 
 def _notice(cfg, minutes):
