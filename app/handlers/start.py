@@ -285,19 +285,13 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             bot, user.id, payload, delete_separate=(animation_mode != "new_message")
         )
     if animation_enabled and animation_mode == "force_join_poster" and animation_post:
-        # Stop the loop and turn its poster into the Force Join prompt.
+        # Publish the replacement Force Join post first, then instantly remove
+        # the temporary animated poster so both posts are never left visible.
+        await _send_force_join_post(bot, user.id, cfg, rendered, markup)
         try:
-            if animation_post.photo or animation_post.animation or animation_post.document:
-                await bot.edit_message_caption(chat_id=user.id, message_id=animation_post.message_id, caption=rendered, parse_mode="HTML", reply_markup=markup)
-            else:
-                await bot.edit_message_text(chat_id=user.id, message_id=animation_post.message_id, text=rendered, parse_mode="HTML", reply_markup=markup)
+            await animation_post.delete()
         except TelegramAPIError:
-            log.warning("Could not convert animation poster to Force Join prompt", exc_info=True)
-            await _send_force_join_post(bot, user.id, cfg, rendered, markup)
-            try:
-                await animation_post.delete()
-            except TelegramAPIError:
-                pass
+            pass
     else:
         new_post = await _send_force_join_post(bot, user.id, cfg, rendered, markup)
         if separate_animation_id:
