@@ -183,28 +183,61 @@ async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: M
 
 async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->bool:
     user=message.from_user
-    if not user or user.id==settings.owner_id or await is_owner_or_moderator(database.db,user.id,settings):return False
+    if not user or user.id==settings.owner_id or await is_owner_or_moderator(database.db,user.id,settings):
+        return False
     cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
     if not cfg.get("enabled", False):
         return False
     channels = await effective_force_join_channels(database, settings)
-    # External links alone never create a verification gate. Check the live
-    # Telegram membership state on every deeplink; a cached signature must not
-    # let a user who later leaves a required channel bypass verification.
     if not channels:
         return False
+
+    animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
+    animation_enabled = bool(animation_cfg.get("enabled"))
+    animation_mode = animation_cfg.get("mode", "force_join_poster")
+    animation_post = None
+
+    # Deeplink entry performs a membership check too, so show the configured
+    # animation during that check rather than only after the user taps Verify.
+    if animation_enabled:
+        if animation_mode == "new_message":
+            await _start_gate_animation(bot, user.id, payload, message, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg)
+        else:
+            frames = animation_cfg.get("frames")
+            if not isinstance(frames, list) or len(frames) != 3:
+                frames = [".", "..", "..."]
+            first = f"{html.escape(str(animation_cfg.get('prefix') or 'Checking..'))} {html.escape(str(frames[0]))}"
+            try:
+                if cfg.get("poster_file_id"):
+                    animation_post = await bot.send_animation(user.id, cfg["poster_file_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
+                elif cfg.get("poster_photo_id"):
+                    animation_post = await bot.send_photo(user.id, cfg["poster_photo_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
+                else:
+                    animation_post = await bot.send_message(user.id, f"<i>{first}</i>", parse_mode="HTML")
+                await _start_gate_animation(bot, user.id, payload, animation_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, animation_only=True)
+            except TelegramAPIError:
+                log.warning("Could not create Force Join animation poster during deeplink check", exc_info=True)
+                animation_post = None
+
     missing = await join_status(bot, user.id, channels, database.db)
     if not missing:
+        await _cancel_gate_animation(bot, user.id, payload)
+        if animation_post:
+            try:
+                await animation_post.delete()
+            except TelegramAPIError:
+                pass
         await _mark_verified(database.db, user.id, channels)
         return False
-    cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
+
     other_links = cfg.get("other_links", []) if isinstance(cfg.get("other_links", []), list) else []
     join_buttons = []
     for index, channel in enumerate(missing):
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
         target = channel if channel.startswith("https://") else (f"https://t.me/{channel.lstrip('@')}" if not channel.lstrip("-").isdigit() else channel_cfg.get("button_url"))
         if target:
-            join_buttons.append(InlineKeyboardButton(text=channel_cfg.get("button_text") or f"ᴊᴏɪɴ {index+1}", url=target))
+            label = channel_cfg.get("button_text") or channel_cfg.get("channel_title") or channel.lstrip("@")
+            join_buttons.append(InlineKeyboardButton(text=label[:64], url=target))
     for item in other_links:
         if item.get("url"):
             join_buttons.append(InlineKeyboardButton(text=item.get("button_text") or "ᴊᴏɪɴ", url=item["url"]))
@@ -212,22 +245,28 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ",callback_data=f"forcejoin:check:{payload}")])
     raw_text = cfg.get("message") or "Hey {user_mention}! Please join my {remaining_count} remaining channel(s) to use me."
     me = await bot.get_me()
-    rendered = render_common_variables(raw_text, user, me)
-    rendered = rendered.replace("{remaining_count}", str(len(missing)))
+    rendered = render_common_variables(raw_text, user, me).replace("{remaining_count}", str(len(missing)))
     markup = InlineKeyboardMarkup(inline_keyboard=rows)
-    try:
-        if cfg.get("poster_file_id"):
-            gate_message = await message.answer_animation(cfg["poster_file_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
-        elif cfg.get("poster_photo_id"):
-            gate_message = await message.answer_photo(cfg["poster_photo_id"], caption=rendered, reply_markup=markup, parse_mode="HTML")
-        else:
-            gate_message = await message.answer(rendered,reply_markup=markup,parse_mode="HTML")
-    except TelegramAPIError:
-        # If a configured media item is invalid, preserve a usable verification interface.
-        gate_message = await message.answer(rendered, reply_markup=markup, parse_mode="HTML")
-    animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
-    if animation_cfg.get("enabled") and gate_message:
-        await _start_gate_animation(bot, user.id, payload, gate_message, rendered, markup, animation_cfg)
+
+    if animation_enabled:
+        await _cancel_gate_animation(bot, user.id, payload)
+    if animation_enabled and animation_mode == "force_join_poster" and animation_post:
+        # Stop the loop and turn its poster into the Force Join prompt.
+        try:
+            if animation_post.photo or animation_post.animation or animation_post.document:
+                await bot.edit_message_caption(chat_id=user.id, message_id=animation_post.message_id, caption=rendered, parse_mode="HTML", reply_markup=markup)
+            else:
+                await bot.edit_message_text(chat_id=user.id, message_id=animation_post.message_id, text=rendered, parse_mode="HTML", reply_markup=markup)
+        except TelegramAPIError:
+            log.warning("Could not convert animation poster to Force Join prompt", exc_info=True)
+            await _send_force_join_post(bot, user.id, cfg, rendered, markup)
+            try:
+                await animation_post.delete()
+            except TelegramAPIError:
+                pass
+    else:
+        # New Message mode removes its temporary animation before the gate prompt.
+        await _send_force_join_post(bot, user.id, cfg, rendered, markup)
     return True
 
 async def deliver_payload(bot,database,settings,user_id:int,payload:str,record:dict,request_key:str|None=None):
