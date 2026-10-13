@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State,StatesGroup
 from aiogram.types import Message,InlineKeyboardMarkup,InlineKeyboardButton,CopyTextButton
 from aiogram.exceptions import TelegramAPIError
+from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
 from app.database.files import FileRepository
 from app.services.permissions import is_owner_or_moderator
@@ -53,8 +54,11 @@ async def cancel_file(message:Message,state:FSMContext):
     await state.clear();await message.answer("File link creation cancelled.")
 
 @router.message(FileStates.waiting_for_message,F.text.startswith("/"))
-async def waiting_command(message:Message):
-    await message.answer("Send the message to store, or use /cancel.")
+async def waiting_command(message:Message,state:FSMContext):
+    # Do not let file-collection mode swallow other commands such as /batch
+    # or /shortener. /cancel has its own handler above.
+    await state.clear()
+    raise SkipHandler
 
 @router.message(FileStates.waiting_for_message)
 async def receive_file(message:Message,state:FSMContext,settings:Settings,database):
