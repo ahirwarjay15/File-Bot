@@ -191,12 +191,18 @@ async def edit_page(query, text, keyboard):
     try:
         await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
     except TelegramBadRequest as exc:
-        # A non-editable or unchanged panel must not create a duplicate prompt.
         if "message is not modified" in str(exc).lower():
             return
-        return
+        # If Telegram refuses to edit this message, provide a fresh working panel.
+        try:
+            await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
+        except TelegramAPIError:
+            pass
     except TelegramAPIError:
-        return
+        try:
+            await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
+        except TelegramAPIError:
+            pass
 
 async def render_home(query):
     me = await query.bot.get_me()
@@ -1001,6 +1007,7 @@ async def send_button_settings_reply_panel(message: Message, db, kind: str, pane
 @router.message(SettingInput.waiting, Command("cancel"))
 async def cancel_setting_input(message: Message, state: FSMContext):
     pending = await state.get_data()
+    back_action = pending.get("input_back_action") or "home"
     await remove_temporary_prompts(message.bot, pending)
     await remove_input_prompt(message.bot, pending)
     await state.clear()
@@ -1008,6 +1015,11 @@ async def cancel_setting_input(message: Message, state: FSMContext):
         await message.delete()
     except TelegramAPIError:
         pass
+    # Never leave the user at a dead end after cancelling an input prompt.
+    await message.answer(
+        "Input cancelled. Use Back to return to settings.",
+        reply_markup=kb([[("《 BACK", f"settings:{back_action}")]]),
+    )
 
 @router.message(SettingInput.waiting)
 async def receive_setting_input(message: Message, state: FSMContext, settings: Settings, database):
