@@ -477,7 +477,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "forcejoin_add":
         if query.message:
             await state.update_data(forcejoin_panel_chat_id=query.message.chat.id, forcejoin_panel_message_id=query.message.message_id)
-        await edit_page(query, "ADD FORCE JOIN\\n\\nChoose Group or Channel from the keyboard below. Public chats use Normal Mode automatically; private chats use Join Request Mode automatically.", kb([
+        await edit_page(query, "ADD FORCE JOIN\n\nChoose Group or Channel from the keyboard below. Public chats use Normal Mode automatically; private chats use Join Request Mode automatically.", kb([
             [("《 BACK", "settings:forcejoin")],
         ]))
         if query.message:
@@ -1012,7 +1012,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             try:
                 # Return the same panel to the Force Join page; never create a duplicate panel.
                 await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id,
-                    text=format_settings_page("FORCE JOIN\\n\\nChannel selection cancelled."),
+                    text=format_settings_page("FORCE JOIN\n\nChannel selection cancelled."),
                     parse_mode="HTML", reply_markup=kb([[("《 BACK", "settings:home")], [("OPEN FORCE JOIN", "settings:forcejoin")]]))
             except TelegramAPIError:
                 pass
