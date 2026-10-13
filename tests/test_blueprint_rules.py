@@ -198,14 +198,13 @@ def test_force_join_public_and_private_chats_select_automatic_modes():
 
 
 def test_custom_button_settings_layout_uses_two_controls_per_row():
-    from app.handlers.settings import InlineKeyboardButton
+    from app.handlers.settings import custom_button_settings_rows
 
-    # Layout invariant used by the settings panel: each configured button shares
-    # one row only with its remove control, never with a second configured button.
-    rows = [
-        [InlineKeyboardButton(text="Protect", url="https://example.com"),
-         InlineKeyboardButton(text="✖", callback_data="settings:custom_button_remove:0")],
-        [InlineKeyboardButton(text="Update", url="https://example.org"),
-         InlineKeyboardButton(text="✖", callback_data="settings:custom_button_remove:1")],
+    rows = custom_button_settings_rows([
+        {"text": "Protect", "url": "https://example.com"},
+        {"text": "Update", "url": "https://example.org"},
+    ])
+    assert [[button.text for button in row] for row in rows] == [
+        ["Protect", "✖"],
+        ["Update", "✖"],
     ]
-    assert [len(row) for row in rows] == [2, 2]
