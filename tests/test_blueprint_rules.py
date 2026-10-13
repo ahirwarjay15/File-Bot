@@ -377,3 +377,16 @@ def test_settings_flow_messages_are_tracked_for_page_navigation_cleanup():
     assert "await track_temporary_prompt(state, sent)" in source
     assert "await remove_temporary_prompts(message.bot, data)" in source[source.index('@router.message(StateFilter(None), F.text)'):source.index("async def send_button_settings_reply_panel")]
 
+
+
+
+def test_stats_alert_only_contains_total_and_banned_users():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    stats_block = source.split('elif action == "stats":', 1)[1].split('\n    await query.answer()', 1)[0]
+    assert '⛦ Total Users: {total}' in stats_block
+    assert '⛦ Banned Users: {blocked}' in stats_block
+    assert 'get_me()' not in stats_block
+    assert 'USERS:' not in stats_block
+    assert 'BLOCKED:' not in stats_block
