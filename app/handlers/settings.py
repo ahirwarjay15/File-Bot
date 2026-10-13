@@ -244,7 +244,6 @@ async def render_home(query):
         [("INVALID", "settings:invalid"), ("SHORTENER", "settings:shortener")],
         [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
         [("CUSTOM BUTTON", "settings:custom_button")],
-        [("《 BACK", "settings:home_back")],
     ]))
 
 async def build_forcejoin_page(bot, db, settings):
