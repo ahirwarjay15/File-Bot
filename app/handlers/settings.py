@@ -189,7 +189,7 @@ async def render_forcejoin(query, db, settings):
     channel_buttons = []
     for i, channel in enumerate(channels[:10]):
         channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        label = channel_cfg.get("button_text") or channel_cfg.get("channel_title") or channel.lstrip("@")
+        label = channel_cfg.get("channel_title") or channel_cfg.get("button_text") or channel.lstrip("@")
         channel_buttons.append((label, f"settings:forcejoin_channel:{i}"))
     other_buttons = []
     for i, item in enumerate(other_links[:10]):
