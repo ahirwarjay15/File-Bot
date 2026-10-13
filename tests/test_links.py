@@ -1,5 +1,10 @@
 import pytest
-from app.services.links import _extract_short_url, _gplinks_endpoint, _shrtfly_endpoint
+from app.services.links import (
+    _extract_short_url,
+    _gplinks_endpoint,
+    _shrtfly_endpoint,
+    _shrtfly_params,
+)
 
 
 def test_gplinks_website_uses_official_api_endpoint():
@@ -30,14 +35,27 @@ def test_invalid_shortener_response_fails():
         _extract_short_url({"status": "error"})
 
 
-
 def test_shrtfly_website_resolves_to_api_endpoint():
     assert _shrtfly_endpoint("https://shrtfly.com") == "https://shrtfly.com/api"
     assert _shrtfly_endpoint("https://www.shrtfly.com/") == "https://www.shrtfly.com/api"
     assert _shrtfly_endpoint("https://shrtfly.com/api") == "https://shrtfly.com/api"
 
 
+def test_shrtfly_request_includes_compatibility_parameters():
+    assert _shrtfly_params("test-token", "https://example.org/file") == {
+        "api": "test-token",
+        "url": "https://example.org/file",
+        "ads_type": "mainstream",
+        "is_text_format": "false",
+    }
+
+
 def test_nested_provider_response_shapes_are_supported():
     assert _extract_short_url({"data": {"short_url": "https://short.example/a"}}) == "https://short.example/a"
     assert _extract_short_url({"result": {"shortenedUrl": "https://short.example/b"}}) == "https://short.example/b"
     assert _extract_short_url({"shortLink": "https://short.example/c"}) == "https://short.example/c"
+
+
+def test_provider_error_message_is_preserved_for_diagnostics():
+    with pytest.raises(ValueError, match="Invalid API token"):
+        _extract_short_url({"status": "error", "message": "Invalid API token"})
