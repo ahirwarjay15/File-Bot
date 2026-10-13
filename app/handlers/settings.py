@@ -145,6 +145,22 @@ async def track_temporary_prompt(state, message):
     await state.update_data(temporary_prompt_ids=ids)
 
 
+async def tracked_answer(message, state, *args, **kwargs):
+    """Send a settings-flow message and remember it for cleanup on page navigation."""
+    sent = await message.answer(*args, **kwargs)
+    await track_temporary_prompt(state, sent)
+    return sent
+
+
+async def clear_state_preserving_prompts(state):
+    """Clear the active input flow without losing messages to delete on navigation."""
+    data = await state.get_data()
+    prompt_ids = list(data.get("temporary_prompt_ids", []))
+    await state.clear()
+    if prompt_ids:
+        await state.update_data(temporary_prompt_ids=prompt_ids)
+
+
 async def remove_temporary_prompts(bot, data):
     """Delete standalone prompts associated with the current settings flow."""
     prompts = list(data.get("temporary_prompt_ids", []))
@@ -497,7 +513,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                   "invalid_button", "invalid_poster", "invalid_about", "forcejoin", "forcejoin_add",
                   "forcejoin_message", "forcejoin_media", "forcejoin_animation", "animation_mode",
                   "mods", "shortener", "custom_button"}:
-        await state.clear()
+        await clear_state_preserving_prompts(state)
     if action in {"home", "home_back"}: await render_home(query)
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
     elif action == "forcejoin_toggle":
@@ -511,7 +527,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             [("《 BACK", "settings:forcejoin")],
         ]))
         if query.message:
-            picker_prompt = await query.message.answer(
+            picker_prompt = await tracked_answer(query.message, state, 
                 "Choose the type of chat to add. The bot must already be an administrator.",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
@@ -526,7 +542,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await state.update_data(field="forcejoin_wait_chat")
     elif action == "forcejoin_other":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_other_url")
-        if query.message: await query.message.answer("Send the link of any platform. Example: Facebook, Instagram or YouTube.")
+        if query.message: await tracked_answer(query.message, state, "Send the link of any platform. Example: Facebook, Instagram or YouTube.")
     elif action.startswith("forcejoin_other_settings:"):
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
         links = cfg.get("other_links", [])
@@ -544,7 +560,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if 0 <= index < len(links):
             await state.set_state(SettingInput.waiting)
             await state.update_data(field="forcejoin_existing_other_label", other_index=index)
-            if query.message: await query.message.answer("Send new button text for force-join channel button.")
+            if query.message: await tracked_answer(query.message, state, "Send new button text for force-join channel button.")
     elif action.startswith("forcejoin_other_remove:"):
         index = int(action.split(":", 1)[1])
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
@@ -557,34 +573,34 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         data = await state.get_data()
         url = data.get("pending_url")
         if not url:
-            await state.clear()
-            if query.message: await query.message.answer("Add process expired. Please start again.")
+            await clear_state_preserving_prompts(state)
+            if query.message: await tracked_answer(query.message, state, "Add process expired. Please start again.")
             return
         channels = await effective_force_join_channels(database, settings)
         if len(channels) >= 10:
-            await state.clear()
-            if query.message: await query.message.answer("Maximum 10 force-join channels allowed.")
+            await clear_state_preserving_prompts(state)
+            if query.message: await tracked_answer(query.message, state, "Maximum 10 force-join channels allowed.")
             return
         key = f"other:{datetime.now(timezone.utc).timestamp():.0f}"
         await patch(db, "force_join", {"other_links": (await db.settings.find_one({"key": "force_join"}) or {}).get("other_links", []) + [{"key": key, "url": url, "button_text": f"Join {len(channels)+1}"}]})
-        await state.clear()
-        if query.message: await query.message.answer(f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
+        await clear_state_preserving_prompts(state)
+        if query.message: await tracked_answer(query.message, state, f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
         await render_forcejoin(query, db, settings)
         return
     elif action == "forcejoin_other_custom":
         data = await state.get_data()
         if not data.get("pending_url"):
-            await state.clear()
-            if query.message: await query.message.answer("Add process expired. Please start again.")
+            await clear_state_preserving_prompts(state)
+            if query.message: await tracked_answer(query.message, state, "Add process expired. Please start again.")
             return
         await state.set_state(SettingInput.waiting)
         await state.update_data(field="forcejoin_other_label")
-        if query.message: await query.message.answer("Send custom button text for force-join channel button.")
+        if query.message: await tracked_answer(query.message, state, "Send custom button text for force-join channel button.")
     elif action == "forcejoin_join_request":
         await state.set_state(SettingInput.waiting)
         await state.update_data(field="forcejoin_wait_chat")
         if query.message:
-            await query.message.answer(
+            await tracked_answer(query.message, state, 
                 "Choose Group or Channel below.",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
@@ -610,7 +626,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         index = int(action.split(":", 1)[1])
         if index < len(channels):
             await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_label", channel=channels[index])
-            if query.message: await query.message.answer("Send new button text for force-join channel button.")
+            if query.message: await tracked_answer(query.message, state, "Send new button text for force-join channel button.")
     elif action.startswith("forcejoin_remove_one:"):
         channels = await effective_force_join_channels(database, settings)
         index = int(action.split(":", 1)[1])
@@ -630,14 +646,14 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         ]))
     elif action == "forcejoin_media_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_media")
-        if query.message: await query.message.answer("Only GIFs and images are supported. Send the new force-join poster here.")
+        if query.message: await tracked_answer(query.message, state, "Only GIFs and images are supported. Send the new force-join poster here.")
     elif action == "forcejoin_media_remove":
         await db.settings.update_one({"key": "force_join"}, {"$unset": {"poster_file_id": "", "poster_photo_id": ""}}, upsert=True)
-        if query.message: await query.message.answer("✨ Force-join poster removed successfully.")
+        if query.message: await tracked_answer(query.message, state, "✨ Force-join poster removed successfully.")
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_verify_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_verify_text")
-        if query.message: await query.message.answer("Send your new verification button text.")
+        if query.message: await tracked_answer(query.message, state, "Send your new verification button text.")
     elif action == "forcejoin_remove":
         channels = await effective_force_join_channels(database, settings)
         rows = [[(channel, f"settings:forcejoin_del:{i}")] for i, channel in enumerate(channels)]
@@ -728,17 +744,17 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action in ("start_button_1", "start_button_2"):
         index = action.rsplit("_", 1)[1]
         await state.set_state(SettingInput.waiting); await state.update_data(field=f"start_button_{index}_text", button_index=index, panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="start")
-        if query.message: await query.message.answer(f"Send text for Start Button {index}.")
+        if query.message: await tracked_answer(query.message, state, f"Send text for Start Button {index}.")
     elif action in ("start_button_text", "start_button_link"):
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_button_1_text" if action == "start_button_text" else "start_button_1_link", button_index="1", panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="start")
-        if query.message: await query.message.answer("Send text for Start Button 1." if action == "start_button_text" else "Now send the URL for Start Button 1.")
+        if query.message: await tracked_answer(query.message, state, "Send text for Start Button 1." if action == "start_button_text" else "Now send the URL for Start Button 1.")
     elif action == "start_poster": await render_start_poster(query)
     elif action == "start_poster_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="start_poster")
-        if query.message: await query.message.answer("Only GIFs and images are supported. Send the new start message poster here.")
+        if query.message: await tracked_answer(query.message, state, "Only GIFs and images are supported. Send the new start message poster here.")
     elif action == "start_poster_remove":
         await db.settings.update_one({"key": "start_message"}, {"$unset": {"poster_file_id": "", "poster_photo_id": ""}}, upsert=True)
-        if query.message: await query.message.answer("✨ Successfully removed your bot start poster.")
+        if query.message: await tracked_answer(query.message, state, "✨ Successfully removed your bot start poster.")
         await render_start_poster(query)
     elif action == "start_about":
         await render_start_about(query, db)
@@ -770,7 +786,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "auto_message": await render_auto_message(query, db)
     elif action == "auto_message_edit":
         await state.set_state(SettingInput.waiting); await state.update_data(field="auto_notice")
-        if query.message: await query.message.answer("Send your new auto-delete message. Use {auto_delete_time} to insert the timer.")
+        if query.message: await tracked_answer(query.message, state, "Send your new auto-delete message. Use {auto_delete_time} to insert the timer.")
     elif action == "auto_message_see":
         import re
         from html import unescape
@@ -799,7 +815,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
         if not auto:
             await patch(db, "after_delete", {"enabled": False}, {"text": DEFAULT_AFTER_TEXT, "button_text": DEFAULT_AFTER_BUTTON})
-            if query.message: await query.message.answer("After Delete only works when Auto Delete is enabled.")
+            if query.message: await tracked_answer(query.message, state, "After Delete only works when Auto Delete is enabled.")
             await render_after(query, db)
             return
         cfg = await db.settings.find_one({"key": "after_delete"}) or {}
@@ -808,7 +824,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "after_text": await render_after_text(query)
     elif action in ("after_text_message", "after_text_button"):
         await state.set_state(SettingInput.waiting); await state.update_data(field=action)
-        if query.message: await query.message.answer("Send the new after-delete message text." if action == "after_text_message" else "Send new button text for the after-delete message.")
+        if query.message: await tracked_answer(query.message, state, "Send the new after-delete message text." if action == "after_text_message" else "Send new button text for the after-delete message.")
     elif action == "invalid": await render_invalid(query, db)
     elif action == "invalid_toggle":
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
@@ -839,17 +855,17 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action in ("invalid_button_1", "invalid_button_2"):
         index = action.rsplit("_", 1)[1]
         await state.set_state(SettingInput.waiting); await state.update_data(field=f"invalid_button_{index}_text", button_index=index, panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="invalid")
-        if query.message: await query.message.answer(f"Send text for Invalid Button {index}.")
+        if query.message: await tracked_answer(query.message, state, f"Send text for Invalid Button {index}.")
     elif action in ("invalid_button_text", "invalid_button_link"):
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_button_1_text" if action == "invalid_button_text" else "invalid_button_1_link", button_index="1", panel_chat_id=query.message.chat.id if query.message else None, panel_message_id=query.message.message_id if query.message else None, panel_kind="invalid")
-        if query.message: await query.message.answer("Send text for Invalid Button 1." if action == "invalid_button_text" else "Now send the URL for Invalid Button 1.")
+        if query.message: await tracked_answer(query.message, state, "Send text for Invalid Button 1." if action == "invalid_button_text" else "Now send the URL for Invalid Button 1.")
     elif action == "invalid_poster": await render_poster(query)
     elif action == "poster_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="poster")
-        if query.message: await query.message.answer("Only GIFs and images are supported. Send the new invalid-post poster here.")
+        if query.message: await tracked_answer(query.message, state, "Only GIFs and images are supported. Send the new invalid-post poster here.")
     elif action == "poster_remove":
         await db.settings.update_one({"key": "invalid_post"}, {"$unset": {"poster_file_id": "", "poster_photo_id": ""}}, upsert=True)
-        if query.message: await query.message.answer("✨ Invalid-post poster removed successfully.")
+        if query.message: await tracked_answer(query.message, state, "✨ Invalid-post poster removed successfully.")
         await render_poster(query)
     elif action == "invalid_about": await render_about(query, db)
     elif action == "invalid_about_toggle":
@@ -858,15 +874,15 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await render_about(query, db)
     elif action == "invalid_about_text":
         await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_about_text")
-        if query.message: await query.message.answer("Send the About text to show when the About button is tapped.")
+        if query.message: await tracked_answer(query.message, state, "Send the About text to show when the About button is tapped.")
     elif action == "forcejoin_animation":
         await render_animation(query, db)
     elif action == "animation_prefix":
         await state.set_state(SettingInput.waiting); await state.update_data(field="animation_prefix")
-        if query.message: await query.message.answer("Send new prefix text for the loop animation.")
+        if query.message: await tracked_answer(query.message, state, "Send new prefix text for the loop animation.")
     elif action == "animation_frames":
         await state.set_state(SettingInput.waiting); await state.update_data(field="animation_frame_1", pending_frames=[])
-        if query.message: await query.message.answer("Send the first frame for the loop animation.")
+        if query.message: await tracked_answer(query.message, state, "Send the first frame for the loop animation.")
     elif action == "animation_toggle":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
         await patch(db, "animation", {"enabled": not cfg.get("enabled", False)}, {"prefix": "Checking..", "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
@@ -895,7 +911,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "shortener": await render_shortener(query, db)
     elif action == "shortener_add":
         await state.set_state(SettingInput.waiting); await state.update_data(field="shortener_url")
-        if query.message: await query.message.answer("Send your shortener website URL here (for example https://gplinks.com). Compatible provider API endpoints are also accepted.")
+        if query.message: await tracked_answer(query.message, state, "Send your shortener website URL here (for example https://gplinks.com). Compatible provider API endpoints are also accepted.")
     elif action == "shortener_remove":
         await db.settings.update_one({"key": "shortener"}, {"$set": {"enabled": False}, "$unset": {"token": ""}})
         await render_shortener(query, db)
@@ -906,7 +922,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if await db.moderators.count_documents({}) >= 3:
             await query.answer("Maximum 3 moderators allowed.", show_alert=True); return
         await state.set_state(SettingInput.waiting); await state.update_data(field="mod_id")
-        if query.message: await query.message.answer("Please send the Telegram user ID of the new moderator.")
+        if query.message: await tracked_answer(query.message, state, "Please send the Telegram user ID of the new moderator.")
     elif action == "mod_remove":
         if query.from_user.id != settings.owner_id:
             await query.answer("Only the owner can remove moderators.", show_alert=True); return
@@ -919,7 +935,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             await query.answer("Only the owner can remove moderators.", show_alert=True); return
         uid = int(action.split(":", 1)[1])
         result = await db.moderators.delete_one({"user_id": uid})
-        if query.message: await query.message.answer("✨ Successfully removed moderator." if result.deleted_count else "Moderator not found.")
+        if query.message: await tracked_answer(query.message, state, "✨ Successfully removed moderator." if result.deleted_count else "Moderator not found.")
         await render_mods(query, db)
     elif action == "stats":
         total = await db.users.count_documents({})
@@ -938,7 +954,7 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
     data = await state.get_data()
     kind = data.get("button_panel_kind")
     if value == "《 BACK" and kind in ("start", "invalid"):
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         # Return directly to the parent settings page while removing the reply keyboard.
         if kind == "start":
             parent_text = format_settings_page("START MESSAGE\nCustomize your bot's start message using the following options.")
@@ -1012,7 +1028,7 @@ async def cancel_setting_input(message: Message, state: FSMContext):
     back_action = pending.get("input_back_action") or "home"
     await remove_temporary_prompts(message.bot, pending)
     await remove_input_prompt(message.bot, pending)
-    await state.clear()
+    await clear_state_preserving_prompts(state)
     try:
         await message.delete()
     except TelegramAPIError:
@@ -1039,12 +1055,12 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         panel_chat_id, panel_message_id = pending.get("forcejoin_panel_chat_id"), pending.get("forcejoin_panel_message_id")
         await remove_temporary_prompts(message.bot, pending)
         await remove_input_prompt(message.bot, pending)
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         try:
             await message.delete()
         except TelegramAPIError:
             pass
-        await message.answer("Force Join channel selection cancelled.", reply_markup=ReplyKeyboardRemove())
+        await tracked_answer(message, state, "Force Join channel selection cancelled.", reply_markup=ReplyKeyboardRemove())
         if panel_chat_id and panel_message_id:
             try:
                 panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
@@ -1058,34 +1074,34 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     if field == "forcejoin_wait_chat":
         shared = getattr(message, "chat_shared", None)
         if not shared:
-            await message.answer("Please use the Group or Channel buttons to select a chat, or tap Cancel.")
+            await tracked_answer(message, state, "Please use the Group or Channel buttons to select a chat, or tap Cancel.")
             return
         if shared.request_id not in (5101, 5102):
-            await message.answer("That chat selection expired. Open /settings → Force Join → Add again.")
-            await state.clear()
+            await tracked_answer(message, state, "That chat selection expired. Open /settings → Force Join → Add again.")
+            await clear_state_preserving_prompts(state)
             return
         expected_type = "channel" if shared.request_id == 5102 else "group"
         try:
             chat = await message.bot.get_chat(shared.chat_id)
             allowed_types = {"channel"} if expected_type == "channel" else {"group", "supergroup"}
             if chat.type not in allowed_types:
-                await message.answer("Please select the matching Group or Channel type.")
+                await tracked_answer(message, state, "Please select the matching Group or Channel type.")
                 return
             me = await message.bot.get_me()
             bot_member = await message.bot.get_chat_member(chat.id, me.id)
             if bot_member.status not in ("administrator", "creator"):
-                await message.answer("The bot is not an administrator in this chat. Add/promote the bot as admin, then try again.")
-                await state.clear()
+                await tracked_answer(message, state, "The bot is not an administrator in this chat. Add/promote the bot as admin, then try again.")
+                await clear_state_preserving_prompts(state)
                 return
             # Public chats use their public t.me link and do not need a new invite link.
             # Private chats need invite-link permission because they are added in Join Request mode.
             if not chat.username and bot_member.status != "creator" and not getattr(bot_member, "can_invite_users", False):
-                await message.answer("The bot is admin but lacks permission to create an approval-required invite link. Enable invite-link permission and try again.")
-                await state.clear()
+                await tracked_answer(message, state, "The bot is admin but lacks permission to create an approval-required invite link. Enable invite-link permission and try again.")
+                await clear_state_preserving_prompts(state)
                 return
         except TelegramAPIError:
-            await message.answer("The bot cannot access this chat. Make sure it is a chat where the bot is an administrator.")
-            await state.clear()
+            await tracked_answer(message, state, "The bot cannot access this chat. Make sure it is a chat where the bot is an administrator.")
+            await clear_state_preserving_prompts(state)
             return
         await state.update_data(
             pending_chat_id=chat.id,
@@ -1098,13 +1114,13 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         channel_id = str(chat.id)
         if channel_id in channels or (chat.username and "@" + chat.username in channels):
             await remove_temporary_prompts(message.bot, data)
-            await state.clear()
-            await message.answer("That Force Join chat is already configured.", reply_markup=ReplyKeyboardRemove())
+            await clear_state_preserving_prompts(state)
+            await tracked_answer(message, state, "That Force Join chat is already configured.", reply_markup=ReplyKeyboardRemove())
             return
         if len(channels) >= 10:
             await remove_temporary_prompts(message.bot, data)
-            await state.clear()
-            await message.answer("Maximum 10 Force Join channels/groups are allowed.", reply_markup=ReplyKeyboardRemove())
+            await clear_state_preserving_prompts(state)
+            await tracked_answer(message, state, "Maximum 10 Force Join channels/groups are allowed.", reply_markup=ReplyKeyboardRemove())
             return
         mode = force_join_mode_for_chat(chat)
         link = f"https://t.me/{chat.username}" if chat.username else None
@@ -1114,8 +1130,8 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                 link = invite.invite_link
             except TelegramAPIError:
                 await remove_temporary_prompts(message.bot, data)
-                await state.clear()
-                await message.answer("Telegram could not create an approval-required invite link. Check the bot's admin status and invite-link permission.", reply_markup=ReplyKeyboardRemove())
+                await clear_state_preserving_prompts(state)
+                await tracked_answer(message, state, "Telegram could not create an approval-required invite link. Check the bot's admin status and invite-link permission.", reply_markup=ReplyKeyboardRemove())
                 return
         channels.append(channel_id)
         await patch(db, "force_join", {"channels": channels})
@@ -1125,14 +1141,14 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         panel_chat_id, panel_message_id = data.get("forcejoin_panel_chat_id"), data.get("forcejoin_panel_message_id")
         await remove_temporary_prompts(message.bot, data)
         await remove_input_prompt(message.bot, data)
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         try:
             await message.delete()
         except TelegramAPIError:
             pass
         # Hide the chat-picker keyboard without leaving a new prompt in the chat.
         try:
-            keyboard_removal = await message.answer(" ", reply_markup=ReplyKeyboardRemove())
+            keyboard_removal = await tracked_answer(message, state, " ", reply_markup=ReplyKeyboardRemove())
             await keyboard_removal.delete()
         except TelegramAPIError:
             pass
@@ -1150,7 +1166,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
 
     if field == "custom_button_text":
         if not value or len(value) > 64:
-            await message.answer("Button text must be between 1 and 64 characters.")
+            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
             return
         data = await state.get_data()
         await state.update_data(custom_button_pending_text=value, field="custom_button_url")
@@ -1159,7 +1175,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         except TelegramAPIError:
             pass
         await remove_input_prompt(message.bot, data)
-        prompt = await message.answer("Now send the button URL (https://... or t.me/...).")
+        prompt = await tracked_answer(message, state, "Now send the button URL (https://... or t.me/...).")
         await state.update_data(
             input_prompt_chat_id=prompt.chat.id,
             input_prompt_message_id=prompt.message_id,
@@ -1168,14 +1184,14 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     if field == "custom_button_url":
         normalized = normalize_http_url(value)
         if not normalized:
-            await message.answer("Please send a valid http/https URL.")
+            await tracked_answer(message, state, "Please send a valid http/https URL.")
             return
         prev = await state.get_data()
         cfg = await db.settings.find_one({"key": "custom_buttons"}) or {}
         buttons = list(cfg.get("buttons", []))
         if len(buttons) >= 2:
-            await message.answer("Maximum 2 custom buttons allowed.")
-            await state.clear()
+            await tracked_answer(message, state, "Maximum 2 custom buttons allowed.")
+            await clear_state_preserving_prompts(state)
             return
         buttons.append({"text": prev.get("custom_button_pending_text", ""), "url": normalized})
         await patch(db, "custom_buttons", {"buttons": buttons})
@@ -1209,16 +1225,16 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                 )
             except TelegramAPIError:
                 pass
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         return
     if field == "animation_prefix":
         await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
-        await state.clear()
-        await message.answer("✨ Animation prefix updated successfully.")
+        await clear_state_preserving_prompts(state)
+        await tracked_answer(message, state, "✨ Animation prefix updated successfully.")
         return
     if field in ("animation_frame_1", "animation_frame_2", "animation_frame_3"):
         if not message.text or not value:
-            await message.answer("Please send a non-empty text frame.")
+            await tracked_answer(message, state, "Please send a non-empty text frame.")
             return
         frames = list(data.get("pending_frames", []))
         frames.append(value)
@@ -1226,22 +1242,22 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             next_field = f"animation_frame_{len(frames)+1}"
             await state.update_data(field=next_field, pending_frames=frames)
             prompt = "Now send the middle frame." if len(frames) == 1 else "Send the last frame."
-            await message.answer(prompt)
+            await tracked_answer(message, state, prompt)
             return
         await patch(db, "animation", {"frames": frames}, {"enabled": False, "prefix": "Checking..", "speed": 0.10, "mode": "force_join_poster"})
-        await state.clear()
-        await message.answer("✨ Animation frames updated successfully.")
+        await clear_state_preserving_prompts(state)
+        await tracked_answer(message, state, "✨ Animation frames updated successfully.")
         return
     if field == "forcejoin_other_url":
         normalized_url = normalize_http_url(value)
         if not normalized_url:
-            await message.answer("Please send a valid link, e.g. example.com, https://example.com, t.me/channel, or @channel.")
+            await tracked_answer(message, state, "Please send a valid link, e.g. example.com, https://example.com, t.me/channel, or @channel.")
             return
         value = normalized_url
         channels = await effective_force_join_channels(database, settings)
         if len(channels) >= 10:
-            await message.answer("Maximum 10 force-join channels allowed.")
-            await state.clear()
+            await tracked_answer(message, state, "Maximum 10 force-join channels allowed.")
+            await clear_state_preserving_prompts(state)
             return
         # External links are stored inside force_join.other_links, not as
         # separate force_join_channel documents. Compare normalized URLs there
@@ -1254,10 +1270,10 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         }
         existing_other = await db.settings.find_one({"key": "force_join_channel", "url": value})
         if value in configured_urls or existing_other:
-            await message.answer("That link is already configured.")
+            await tracked_answer(message, state, "That link is already configured.")
             return
         await state.update_data(field="forcejoin_other_label", pending_url=value)
-        await message.answer("Use the default button text or set a custom button text.", reply_markup=kb([
+        await tracked_answer(message, state, "Use the default button text or set a custom button text.", reply_markup=kb([
             [("DEFAULT", "settings:forcejoin_other_default"), ("CUSTOM", "settings:forcejoin_other_custom")],
             [("《 BACK", "settings:forcejoin")],
         ]))
@@ -1268,19 +1284,19 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         channels = await effective_force_join_channels(database, settings)
         other_links = list(cfg.get("other_links", []))
         if len(channels) + len(other_links) >= 10:
-            await message.answer("Maximum 10 force-join channels allowed.")
-            await state.clear()
+            await tracked_answer(message, state, "Maximum 10 force-join channels allowed.")
+            await clear_state_preserving_prompts(state)
             return
         url = prev.get("pending_url")
         if not url:
-            await message.answer("Add process expired. Please start again.")
-            await state.clear()
+            await tracked_answer(message, state, "Add process expired. Please start again.")
+            await clear_state_preserving_prompts(state)
             return
         channel_key = f"other:{len(other_links)+1}"
         other_links.append({"key": channel_key, "url": url, "button_text": value})
         await patch(db, "force_join", {"other_links": other_links})
-        await state.clear()
-        await message.answer(f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
+        await clear_state_preserving_prompts(state)
+        await tracked_answer(message, state, f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
         return
     if field == "forcejoin_existing_other_label":
         prev = await state.get_data()
@@ -1290,31 +1306,31 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if 0 <= index < len(links):
             links[index]["button_text"] = value
             await patch(db, "force_join", {"other_links": links})
-            await message.answer("✨ Successfully updated force-join button text.")
+            await tracked_answer(message, state, "✨ Successfully updated force-join button text.")
         else:
-            await message.answer("Channel setting expired. Please reopen it.")
-        await state.clear()
+            await tracked_answer(message, state, "Channel setting expired. Please reopen it.")
+        await clear_state_preserving_prompts(state)
         return
     if field == "forcejoin_label":
         prev = await state.get_data()
         channel = prev.get("channel")
         if not channel:
-            await message.answer("Channel setting expired. Please reopen it.")
-            await state.clear()
+            await tracked_answer(message, state, "Channel setting expired. Please reopen it.")
+            await clear_state_preserving_prompts(state)
             return
         await patch(db, "force_join_channel", {"channel": channel, "button_text": value})
-        await state.clear()
-        await message.answer(f"✨ Successfully updated button text for {channel} force-join button.")
+        await clear_state_preserving_prompts(state)
+        await tracked_answer(message, state, f"✨ Successfully updated button text for {channel} force-join button.")
         return
     if field == "forcejoin_message":
         await patch(db, "force_join", {"message": value})
         await finish_input_panel(message, state, "FORCE JOIN MESSAGE", "forcejoin")
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         return
     if field == "forcejoin_verify_text":
         await patch(db, "force_join", {"verify_text": value})
-        await state.clear()
-        await message.answer("✨ Successfully updated verification button text.")
+        await clear_state_preserving_prompts(state)
+        await tracked_answer(message, state, "✨ Successfully updated verification button text.")
         return
     if field == "forcejoin_media":
         if message.animation:
@@ -1322,14 +1338,14 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         elif message.photo:
             await patch(db, "force_join", {"poster_photo_id": message.photo[-1].file_id, "poster_file_id": None})
         else:
-            await message.answer("Only GIFs and images are supported. Send a photo or GIF.")
+            await tracked_answer(message, state, "Only GIFs and images are supported. Send a photo or GIF.")
             return
-        await state.clear()
-        await message.answer("✨ Force-join poster updated successfully.")
+        await clear_state_preserving_prompts(state)
+        await tracked_answer(message, state, "✨ Force-join poster updated successfully.")
         return
     if field == "forcejoin_channel":
-        await state.clear()
-        await message.answer("Please add a Group or Channel using the chat-selection keyboard from /settings → Force Join → Add.")
+        await clear_state_preserving_prompts(state)
+        await tracked_answer(message, state, "Please add a Group or Channel using the chat-selection keyboard from /settings → Force Join → Add.")
         return
     if field == "start_poster":
         if message.animation:
@@ -1337,72 +1353,72 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         elif message.photo:
             await patch(db, "start_message", {"poster_photo_id": message.photo[-1].file_id, "poster_file_id": None}, {"enabled": True})
         else:
-            await message.answer("Only GIFs and images are supported. Send a photo or GIF.")
+            await tracked_answer(message, state, "Only GIFs and images are supported. Send a photo or GIF.")
             return
-        await state.clear(); await message.answer("✨ Start poster updated successfully."); return
+        await clear_state_preserving_prompts(state); await tracked_answer(message, state, "✨ Start poster updated successfully."); return
     if field == "poster":
         if message.animation:
             await patch(db, "invalid_post", {"poster_file_id": message.animation.file_id, "poster_photo_id": None}, {"enabled": False})
         elif message.photo:
             await patch(db, "invalid_post", {"poster_photo_id": message.photo[-1].file_id, "poster_file_id": None}, {"enabled": False})
         else:
-            await message.answer("Only GIFs and images are supported. Send a photo or GIF.")
+            await tracked_answer(message, state, "Only GIFs and images are supported. Send a photo or GIF.")
             return
-        await state.clear(); await message.answer("✨ Invalid-post poster updated successfully."); return
+        await clear_state_preserving_prompts(state); await tracked_answer(message, state, "✨ Invalid-post poster updated successfully."); return
     if not value:
-        await message.answer("Please send a non-empty value.")
+        await tracked_answer(message, state, "Please send a non-empty value.")
         return
     if field.startswith("start_button_") and field.endswith("_text"):
         index = field.split("_")[2]
         await state.update_data(button_text=value, field=f"start_button_{index}_link")
-        await message.answer(f"Now send the URL for Start Button {index}.")
+        await tracked_answer(message, state, f"Now send the URL for Start Button {index}.")
         return
     if field.startswith("start_button_") and field.endswith("_link"):
         normalized_url = normalize_http_url(value)
         if not normalized_url:
-            await message.answer("Button link must be a valid URL, e.g. example.com, t.me/channel, @channel, or https://example.com.")
+            await tracked_answer(message, state, "Button link must be a valid URL, e.g. example.com, t.me/channel, @channel, or https://example.com.")
             return
         value = normalized_url
         index = field.split("_")[2]
         prev = await state.get_data()
         await patch(db, "start_message", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT})
         await refresh_button_panel(message.bot, prev.get("panel_chat_id"), prev.get("panel_message_id"), db, "start")
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         await state.update_data(button_panel_kind=prev.get("panel_kind"), button_panel_chat_id=prev.get("button_panel_chat_id"), button_panel_message_id=prev.get("button_panel_message_id"))
         return
     if field.startswith("invalid_button_") and field.endswith("_text"):
         index = field.split("_")[2]
         await state.update_data(button_text=value, field=f"invalid_button_{index}_link")
-        await message.answer(f"Now send the URL for Invalid Button {index}.")
+        await tracked_answer(message, state, f"Now send the URL for Invalid Button {index}.")
         return
     if field.startswith("invalid_button_") and field.endswith("_link"):
         parsed = urlparse(value)
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
-            await message.answer("Button link must be a valid http/https URL.")
+            await tracked_answer(message, state, "Button link must be a valid http/https URL.")
             return
         index = field.split("_")[2]
         prev = await state.get_data()
         await patch(db, "invalid_post", {f"button{index}_text": prev.get("button_text", ""), f"button{index}_url": value, f"button{index}_enabled": True}, {"enabled": False})
         await refresh_button_panel(message.bot, prev.get("panel_chat_id"), prev.get("panel_message_id"), db, "invalid")
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         await state.update_data(button_panel_kind=prev.get("panel_kind"))
         return
     if field == "start_text":
         value = normalize_telegram_text(value)
         await patch(db, "start_message", {"text": value}, {"enabled": True})
         await finish_input_panel(message, state, "START MESSAGE TEXT", "start_text")
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         return
     elif field == "start_button_text":
         await patch(db, "start_message", {"button_text": value, "button_enabled": True}, {"enabled": True, "text": DEFAULT_START_TEXT, "button_url": "http://t.me/lexiAnime", "about_enabled": True})
-        await message.answer("✨ Successfully updated start message button text.")
+        await tracked_answer(message, state, "✨ Successfully updated start message button text.")
     elif field == "start_button_link":
         parsed = urlparse(value)
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
-            await message.answer("Button link must be a valid http/https URL.")
+            await tracked_answer(message, state, "Button link must be a valid http/https URL.")
             return
         await patch(db, "start_message", {"button_url": value, "button_enabled": True}, {"enabled": True, "button_text": "📟 UPDATE CHANNEL", "button_url": "http://t.me/lexiAnime"})
-        await message.answer("✨ Successfully updated start message button link.")
+        await tracked_answer(message, state, "✨ Successfully updated start message button link.")
     elif field == "auto_notice":
         # Telegram sends formatting as entities, not HTML/Markdown in message.text.
         # Save the original text and entities together so bold, mono, quotes,
@@ -1417,76 +1433,76 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             {"notice": notice_text, "notice_entities": notice_entities},
             {"enabled": False, "minutes": 30},
         )
-        await message.answer("✨ Auto-delete message updated successfully.")
+        await tracked_answer(message, state, "✨ Auto-delete message updated successfully.")
     elif field == "after_text_message":
         await patch(db, "after_delete", {"text": value}, {"enabled": False, "button_text": DEFAULT_AFTER_BUTTON})
-        await message.answer("✨ After-delete message text updated successfully.")
+        await tracked_answer(message, state, "✨ After-delete message text updated successfully.")
     elif field == "after_text_button":
         await patch(db, "after_delete", {"button_text": value}, {"enabled": False, "text": DEFAULT_AFTER_TEXT})
-        await message.answer("✨ After-delete button text updated successfully.")
+        await tracked_answer(message, state, "✨ After-delete button text updated successfully.")
     elif field == "invalid_text":
         await patch(db, "invalid_post", {"text": value}, {"enabled": False, "about_enabled": False})
         await finish_input_panel(message, state, "INVALID MESSAGE TEXT", "invalid")
-        await state.clear()
+        await clear_state_preserving_prompts(state)
         return
     elif field == "invalid_button_text":
         await state.update_data(button_text=value, field="invalid_button_link")
-        await message.answer("Send new button link for the invalid post.")
+        await tracked_answer(message, state, "Send new button link for the invalid post.")
         return
     elif field == "invalid_button_link":
         parsed = urlparse(value)
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
-            await message.answer("Button link must be a valid http/https URL.")
+            await tracked_answer(message, state, "Button link must be a valid http/https URL.")
             return
         prev = await state.get_data()
         values = {"button_url": value}
         if prev.get("button_text"): values["button_text"] = prev["button_text"]
         await patch(db, "invalid_post", values, {"enabled": False})
-        await message.answer("✨ Successfully updated invalid post button link.")
+        await tracked_answer(message, state, "✨ Successfully updated invalid post button link.")
     elif field == "invalid_about_text":
         await patch(db, "invalid_post", {"about_text": value}, {"enabled": False, "about_enabled": True})
-        await message.answer("Invalid About text updated.")
+        await tracked_answer(message, state, "Invalid About text updated.")
     elif field == "shortener_url":
         normalized_url = normalize_http_url(value)
         if not normalized_url:
-            await message.answer("Please send a valid shortener URL, e.g. example.com or https://example.com/api.")
+            await tracked_answer(message, state, "Please send a valid shortener URL, e.g. example.com or https://example.com/api.")
             return
         await state.update_data(shortener_url=normalized_url, field="shortener_token")
-        await message.answer("Send your API token. It will be masked in settings and never logged.")
+        await tracked_answer(message, state, "Send your API token. It will be masked in settings and never logged.")
         return
     elif field == "shortener_token":
         prev = await state.get_data()
         try:
             await shorten_url(prev["shortener_url"], value, "https://example.com")
         except Exception:
-            await message.answer("Provider validation failed. Check the API URL/token and try again.")
+            await tracked_answer(message, state, "Provider validation failed. Check the API URL/token and try again.")
             return
         await patch(db, "shortener", {"enabled": True, "url": prev["shortener_url"], "token": value})
-        await message.answer(f"✨ Successfully added {urlparse(prev['shortener_url']).netloc} as your link shortener provider.")
+        await tracked_answer(message, state, f"✨ Successfully added {urlparse(prev['shortener_url']).netloc} as your link shortener provider.")
     elif field == "mod_id":
         if not value.isdigit() or int(value) <= 0:
-            await message.answer("Please send a valid numeric Telegram user ID.")
+            await tracked_answer(message, state, "Please send a valid numeric Telegram user ID.")
             return
         uid = int(value)
         if uid == settings.owner_id:
-            await message.answer("Owner is not stored as a moderator.")
+            await tracked_answer(message, state, "Owner is not stored as a moderator.")
             return
         if await db.users.find_one({"user_id": uid, "banned": True}):
-            await message.answer("Unban this user before adding them as a moderator.")
-            await state.clear(); return
+            await tracked_answer(message, state, "Unban this user before adding them as a moderator.")
+            await clear_state_preserving_prompts(state); return
         if await db.moderators.find_one({"user_id": uid}):
-            await message.answer("This user is already a moderator.")
-            await state.clear(); return
+            await tracked_answer(message, state, "This user is already a moderator.")
+            await clear_state_preserving_prompts(state); return
         if await db.moderators.count_documents({}) >= 3:
-            await message.answer("Maximum 3 moderators allowed.")
-            await state.clear(); return
+            await tracked_answer(message, state, "Maximum 3 moderators allowed.")
+            await clear_state_preserving_prompts(state); return
         user = await db.users.find_one({"user_id": uid}) or {}
         name = user.get("first_name") or f"User {uid}"
         await db.moderators.insert_one({"user_id": uid, "first_name": name, "username": user.get("username")})
-        await message.answer(f"✨ Successfully added {name} as moderator.")
+        await tracked_answer(message, state, f"✨ Successfully added {name} as moderator.")
     else:
-        await message.answer("Unknown setting. Open /settings to try again.")
-    await state.clear()
+        await tracked_answer(message, state, "Unknown setting. Open /settings to try again.")
+    await clear_state_preserving_prompts(state)
 
 # Backwards-compatible command aliases for owners/moderators who prefer commands.
 @router.message(Command("setstart"))
