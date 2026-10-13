@@ -3,6 +3,7 @@ import re
 from urllib.parse import urlparse
 from aiogram import Router
 from aiogram.filters import Command
+from aiogram.filters.command import CommandObject
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton
 from app.config import Settings
 from app.services.permissions import is_owner_or_moderator
@@ -11,14 +12,15 @@ from app.services.links import shorten_url
 router = Router(name="shortener")
 
 @router.message(Command("shortener"))
-async def shortener_command(message: Message, settings: Settings, database):
+async def shortener_command(message: Message, settings: Settings, database, command: CommandObject):
     if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
         return
     cfg = await database.db.settings.find_one({"key": "shortener", "enabled": True})
     if not cfg:
         await message.answer("Shortener isn't configured. Open /settings → Link Shortener → ADD.")
         return
-    source = (message.text or "").partition(" ")[2].strip()
+    # CommandObject strips an optional @BotName suffix in group commands.
+    source = (command.args or "").strip()
     if not source and message.reply_to_message:
         source = message.reply_to_message.text or message.reply_to_message.caption or ""
     urls = re.findall(r"https?://[^\s<>]+", source)
