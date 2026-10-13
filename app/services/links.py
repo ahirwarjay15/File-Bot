@@ -25,6 +25,16 @@ def _shrtfly_endpoint(base_url: str) -> str | None:
     return f"{parsed.scheme or 'https'}://{parsed.netloc}/api"
 
 
+def _shrtfly_params(api_token: str, long_url: str) -> dict[str, str]:
+    """Build the full parameter set accepted by ShrtFly's legacy API."""
+    return {
+        "api": api_token,
+        "url": long_url,
+        "ads_type": "mainstream",
+        "is_text_format": "false",
+    }
+
+
 def _extract_short_url(data) -> str:
     """Read common response keys, including nested API response envelopes."""
     if isinstance(data, str):
@@ -81,15 +91,7 @@ async def shorten_url(base_url: str, api_token: str, long_url: str) -> str:
             return _extract_short_url(data)
 
         if shrtfly:
-            # Send explicit format and ad-type options for consistent responses
-            # across older and current ShrtFly API deployments.
-            params = {
-                "api": api_token,
-                "url": long_url,
-                "ads_type": "mainstream",
-                "is_text_format": "false",
-            }
-            async with session.get(shrtfly, params=params) as response:
+            async with session.get(shrtfly, params=_shrtfly_params(api_token, long_url)) as response:
                 response.raise_for_status()
                 body = await response.text()
             try:
