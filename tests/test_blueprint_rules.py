@@ -272,3 +272,47 @@ def test_broadcast_confirmation_has_no_back_button():
     callbacks = [button.callback_data for row in confirmation_keyboard("draft123").inline_keyboard for button in row]
     assert labels == ["ᴄᴏɴꜰɪʀᴍ", "ᴄᴀɴᴄᴇʟ"]
     assert callbacks == ["broadcast:yes:draft123", "broadcast:no:draft123"]
+
+
+def test_batch_requires_two_files_and_preserves_message_order():
+    from types import SimpleNamespace
+    from app.handlers.batch import is_batch_file, ordered_batch_items
+
+    assert is_batch_file(SimpleNamespace(
+        document=None, photo=None, video=None, audio=None, animation=None,
+        voice=None, video_note=None, sticker=None,
+    )) is False
+    assert is_batch_file(SimpleNamespace(
+        document=object(), photo=None, video=None, audio=None, animation=None,
+        voice=None, video_note=None, sticker=None,
+    )) is True
+    items = [
+        {"original_message_id": 12, "source_message_id": 102},
+        {"original_message_id": 10, "source_message_id": 100},
+        {"original_message_id": 11, "source_message_id": 101},
+    ]
+    assert [item["original_message_id"] for item in ordered_batch_items(items)] == [10, 11, 12]
+
+
+def test_batch_repository_rejects_single_file_batch():
+    import inspect
+    from app.database.files import FileRepository
+
+    source = inspect.getsource(FileRepository.save_batch)
+    assert "len(items) < 2" in source
+    assert "2 to 100 files" in source
+
+
+def test_broadcast_job_restores_saved_inline_keyboard():
+    from aiogram.types import InlineKeyboardMarkup
+    markup_data = {"inline_keyboard": [[{"text": "Open", "url": "https://example.com"}]]}
+    markup = InlineKeyboardMarkup.model_validate(markup_data)
+    assert markup.inline_keyboard[0][0].url == "https://example.com"
+
+
+def test_shortener_accepts_command_urls_and_plain_domains():
+    from app.handlers.shortener import extract_target
+
+    assert extract_target("https://example.com/a") == "https://example.com/a"
+    assert extract_target("example.com") == "https://example.com"
+    assert extract_target("/batch") is None
