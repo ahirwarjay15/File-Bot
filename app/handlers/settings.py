@@ -1130,9 +1130,14 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.delete()
         except TelegramAPIError:
             pass
-        mode_label = "Join Request Mode" if mode == "join_request" else "Normal Mode"
-        await message.answer(f"Force Join added successfully.\nChat: {chat.title or chat.id}\nMode: {mode_label}\nLink has no expiry time or member limit.", reply_markup=ReplyKeyboardRemove())
-        # Update the original Force Join panel in place with the newly saved channel.
+        # Hide the chat-picker keyboard without leaving a new prompt in the chat.
+        try:
+            keyboard_removal = await message.answer(" ", reply_markup=ReplyKeyboardRemove())
+            await keyboard_removal.delete()
+        except TelegramAPIError:
+            pass
+        # Delete the selected-chat message too; all picker prompts are removed above.
+        # Refresh the original panel in place so the user lands on the Force Join main page.
         if panel_chat_id and panel_message_id:
             try:
                 panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
