@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
 from app.services.permissions import is_owner_or_moderator
+from app.services.text_format import normalize_telegram_text
 from app.services.links import shorten_url
 from app.handlers.start import effective_force_join_channels
 
@@ -45,7 +46,7 @@ def unicode_buttons(value: str) -> str:
     return "".join(ch.translate(table) if ch.isascii() and ch.isalpha() else ch for ch in str(value))
 AUTO_DELETE_MINUTES = (2, 5, 15, 30, 60, 180, 360, 720, 1440)
 DEFAULT_NOTICE = "<b>⚠️ Cᴏᴘʏʀɪɢʜᴛ Nᴏᴛɪᴄᴇ..</b>\n<blockquote>Yᴏᴜʀ ғɪʟᴇs ᴡɪʟʟ ʙᴇ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ᴅᴇʟᴇᴛᴇᴅ ɪɴ {auto_delete_time}.</blockquote>\n<blockquote>ᴘʟᴇᴀsᴇ ғᴏʀᴡᴀʀᴅ ᴏʀ sᴀᴠᴇ ʏᴏᴜʀ ғɪʟᴇs sᴏᴍᴇᴡʜᴇʀᴇ sᴀғᴇ sᴏ ʏᴏᴜ ᴄᴀɴ ᴀᴄᴄᴇss ᴛʜᴇᴍ ᴀɴʏᴛɪᴍᴇ!</blockquote>"
-DEFAULT_START_TEXT = "<b>Hey {user_mention}✨</b>\\n\\n<i>Welcome to the fastest and most secure file store bot!.</i>"
+DEFAULT_START_TEXT = "<b>Hey {user_mention}✨</b>\n\n<i>Welcome to the fastest and most secure file store bot!</i>"
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
 DEFAULT_AFTER_BUTTON = "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ"
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
@@ -686,7 +687,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         import re
         from html import unescape
         cfg = await db.settings.find_one({"key": "start_message"}) or {}
-        preview = str(cfg.get("text") or DEFAULT_START_TEXT)
+        preview = normalize_telegram_text(cfg.get("text") or DEFAULT_START_TEXT)
         me = await query.bot.get_me()
         bot_label = me.full_name or me.username or "Bot"
         user_label = query.from_user.full_name or query.from_user.username or "User"
@@ -697,12 +698,13 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         }
         for token, replacement in values.items():
             preview = preview.replace(token, replacement)
-        preview = unescape(re.sub(r"</?[^>]+>", "", preview)).replace("\n", "\n")
+        preview = unescape(re.sub(r"</?[^>]+>", "", preview))
+        preview = re.sub(r"[*_`]", "", preview)
         await query.answer(preview[:190], show_alert=True)
         return
     elif action == "start_text_default":
         await patch(db, "start_message", {"text": DEFAULT_START_TEXT}, {"enabled": True})
-        await query.answer("✅ Default successfully set!\n\nHey 𝑳𝑬𝑿𝑰! ✨\n\nWelcome to the fastest and most secure file store bot!!.\n\n✦ Made by: Lexi\n✦ Made for: Lexi Anime", show_alert=True)
+        await query.answer("✅ Default Start Message set.", show_alert=True)
         await render_start_text(query)
         return
     elif action == "start_button":
@@ -1381,6 +1383,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await state.update_data(button_panel_kind=prev.get("panel_kind"))
         return
     if field == "start_text":
+        value = normalize_telegram_text(value)
         await patch(db, "start_message", {"text": value}, {"enabled": True})
         await finish_input_panel(message, state, "START MESSAGE TEXT", "start_text")
         await state.clear()
