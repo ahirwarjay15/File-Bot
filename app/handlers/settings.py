@@ -1042,7 +1042,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             pending_chat_type=chat.type,
             pending_chat_username=chat.username,
         )
-        await message.answer(
+        mode_prompt = await message.answer(
             f"Selected: {chat.title or chat.id}\nNow choose the verification mode.",
             reply_markup=ReplyKeyboardMarkup(
                 keyboard=[
