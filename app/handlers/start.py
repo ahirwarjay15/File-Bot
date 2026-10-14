@@ -70,7 +70,7 @@ def normalize_animation_config(cfg: dict | None) -> dict:
     if legacy_default:
         normalized["prefix"] = "Checking"
         normalized["frames"] = [".", "..", "..."]
-        normalized["speed"] = 0.25
+        normalized["speed"] = 0.15
     frames = normalized.get("frames")
     if not isinstance(frames, list) or len(frames) != 3:
         normalized["frames"] = [".", "..", "..."]
@@ -78,7 +78,7 @@ def normalize_animation_config(cfg: dict | None) -> dict:
         speed = float(normalized.get("speed", 0.25))
     except (TypeError, ValueError):
         speed = 1.0
-    normalized["speed"] = min(1.0, max(0.25, speed))
+    normalized["speed"] = min(1.0, max(0.15, speed))
     if normalized.get("mode") not in ("force_join_poster", "new_message"):
         normalized["mode"] = "force_join_poster"
     return normalized
@@ -157,26 +157,17 @@ async def _cancel_gate_animation(bot, user_id: int, payload: str,
                                  delete_separate: bool = True) -> int | None:
     key = (user_id, payload)
     entry = _gate_animation_tasks.pop(key, None)
-    stop_event = _gate_animation_stop_events.get(key)
-    if not entry:
-        if stop_event:
-            stop_event.set()
-        return None
-    task, separate_message_id = entry
+    stop_event = _gate_animation_stop_events.pop(key, None)
     if stop_event:
         stop_event.set()
-    try:
-        await asyncio.wait_for(task, timeout=5.0)
-    except asyncio.TimeoutError:
+    if not entry:
+        return None
+    task, separate_message_id = entry
+    # Animation is best-effort UI only: never make Force Join or file delivery
+    # wait for a frame sleep or a slow Telegram edit request to finish.
+    if not task.done():
         task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-    except asyncio.CancelledError:
-        pass
-    finally:
-        _gate_animation_stop_events.pop(key, None)
+    await asyncio.gather(task, return_exceptions=True)
     if separate_message_id and delete_separate:
         try:
             await bot.delete_message(user_id, separate_message_id)
@@ -199,7 +190,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
         speed = float(cfg.get("speed", 0.25))
     except (TypeError, ValueError):
         speed = 1.0
-    speed = min(1.0, max(0.25, speed))
+    speed = min(1.0, max(0.15, speed))
     mode = cfg.get("mode", "force_join_poster")
     target_id = separate_message_id if mode == "new_message" else gate_message.message_id
     frame_index = 0  # The first frame is already visible.
