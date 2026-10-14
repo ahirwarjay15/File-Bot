@@ -361,6 +361,8 @@ async def render_animation(query, db):
     frames = cfg.get("frames", [".", "..", "..."])
     frames_text = " | ".join(str(frame) for frame in frames)
     prefix = str(cfg.get("prefix") or "Checking")
+    if prefix == "Checking..":
+        prefix = "Checking"
     mode = cfg.get("mode", "force_join_poster")
     mode_label = "NEW MESSAGE" if mode == "new_message" else "FORCE JOIN POSTER"
     speed = float(cfg.get("speed", 0.10))
