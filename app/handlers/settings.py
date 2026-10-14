@@ -358,21 +358,32 @@ def _animation_mode_for_action(action: str) -> str:
 
 async def render_animation(query, db):
     cfg = await db.settings.find_one({"key": "animation"}) or {}
-    frames = cfg.get("frames", [".", "..", "..."])
+    legacy_default = not cfg.get("prefix") or cfg.get("prefix") == "Checking.."
+    if legacy_default:
+        cfg.update({"prefix": "Checking", "frames": [".", "..", "..."], "speed": 0.10})
+        await db.settings.update_one(
+            {"key": "animation"},
+            {"$set": {"prefix": "Checking", "frames": [".", "..", "..."], "speed": 0.10}},
+            upsert=True,
+        )
+    frames = cfg.get("frames")
+    if not isinstance(frames, list) or len(frames) != 3:
+        frames = [".", "..", "..."]
     frames_text = " | ".join(str(frame) for frame in frames)
     prefix = str(cfg.get("prefix") or "Checking")
-    if prefix == "Checking..":
-        prefix = "Checking"
     mode = cfg.get("mode", "force_join_poster")
     mode_label = "NEW MESSAGE" if mode == "new_message" else "FORCE JOIN POSTER"
-    speed = float(cfg.get("speed", 0.10))
+    try:
+        speed = float(cfg.get("speed", 0.10))
+    except (TypeError, ValueError):
+        speed = 0.10
+    speed = min(1.0, max(0.10, speed))
     await edit_page(query, f"ANIMATION\n\nAdd a custom animation for the verification process.\n\nPrefix: {prefix}\nFrames: {frames_text}\nSpeed: {speed:.2f}s per frame\nMode: {mode_label}\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
         [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
         [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
         [("MODE", "settings:animation_mode_toggle")],
         [("《 BACK", "settings:home")],
     ]))
-
 async def render_auto(query, db):
     cfg = await db.settings.find_one({"key": "auto_delete"}) or {}
     after = await db.settings.find_one({"key": "after_delete"}) or {}
