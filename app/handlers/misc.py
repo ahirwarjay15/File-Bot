@@ -14,9 +14,9 @@ DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a
 DEFAULT_ABOUT = (
     "✨ ᴀʙᴏᴜᴛ ᴍᴇ\n\n"
     "✰ ᴍʏ ɴᴀᴍᴇ: {bot_name}\n\n"
-    "✰ creator: Lexi\n\n"
-    "✰ ᴍʏ ᴏᴡɴᴇʀ: Lexi\n\n"
-    "✰ made for: Lexi Anime\n\n"
+    "✰ creator: {owner}\n\n"
+    "✰ ᴍʏ ᴏᴡɴᴇʀ: {owner}\n\n"
+    "✰ made for: {anime}\n\n"
     "✰ ᴠᴇʀsɪᴏɴ: [V 0.1]"
 )
 
@@ -139,9 +139,6 @@ async def invalid_about(query: CallbackQuery, database, bot):
     me = await bot.get_me()
     raw = cfg.get("about_text") or DEFAULT_ABOUT
     rendered = _render_user_text(str(raw), user, me).replace("{bot_name}", _render_user_text("{bot_mention}", user, me))
-    rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
-    rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
-    rendered = rendered.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
     await _edit_same_post(message, rendered, _about_markup())
 
 
