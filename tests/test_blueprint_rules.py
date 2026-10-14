@@ -653,13 +653,15 @@ def test_invalid_post_does_not_delete_submitted_message_when_response_fails():
     assert "keeping the submitted message" in handler
 
 
-def test_invalid_post_is_for_non_commands_even_when_sender_is_owner_or_moderator():
+def test_invalid_post_ignores_commands_banned_users_owner_and_moderators():
     from pathlib import Path
 
     source = Path("app/handlers/misc.py").read_text()
     handler = source.split("async def invalid_post", 1)[1].split("@router.callback_query", 1)[0]
     assert 'message.text and message.text.startswith("/")' in handler
     assert "if await is_banned(database.db, user.id):" in handler
+    assert "if await is_owner_or_moderator(database.db, user.id, settings):" in handler
     assert 'find_one({"key": "invalid_post"})' in handler
     assert 'if not cfg.get("enabled", False):' in handler
-    assert "is_owner_or_moderator(database.db, user.id, settings)" not in handler
+    assert 'log.info("Invalid-post skipped: setting disabled or missing")' in handler
+    assert 'log.exception("Invalid-post handler failed before completing")' in handler
