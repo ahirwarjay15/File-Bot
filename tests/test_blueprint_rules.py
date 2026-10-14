@@ -467,3 +467,14 @@ def test_force_join_chat_shared_message_and_cancel_keyboard_are_cleaned_up():
     cancel_block = input_handler.split('if field in {"forcejoin_wait_chat", "forcejoin_wait_mode"}', 1)[1].split('if field == "forcejoin_wait_chat":', 1)[0]
     assert "Force Join channel selection cancelled." not in cancel_block
     assert "keyboard_removal.delete()" in cancel_block
+
+
+def test_settings_command_message_is_deleted_and_picker_keyboard_is_removed_on_navigation():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    settings_command = source.split('async def settings_command', 1)[1].split('@router.callback_query', 1)[0]
+    assert "await message.delete()" in settings_command
+    callbacks = source.split('async def settings_callbacks', 1)[1].split('\nasync def ', 1)[0]
+    assert 'pending.get("field") == "forcejoin_wait_chat"' in callbacks
+    assert 'reply_markup=ReplyKeyboardRemove()' in callbacks
