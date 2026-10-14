@@ -43,7 +43,10 @@ def render_common_variables(raw_text, user, bot):
 
 async def effective_force_join_channels(database, settings) -> list[str]:
     cfg = await database.db.settings.find_one({"key": "force_join"})
-    raw_channels = cfg.get("channels", []) if cfg is not None and isinstance(cfg.get("channels"), list) else settings.force_join_channels
+    configured = cfg.get("channels") if cfg is not None else None
+    # An empty database list can be created by toggling Force Join before any
+    # channels are added. In that case keep the environment configuration usable.
+    raw_channels = configured if isinstance(configured, list) and configured else settings.force_join_channels
     channels = []
     for raw in raw_channels:
         channel = str(raw).strip()
@@ -113,9 +116,22 @@ async def _mark_verified(db, user_id: int, channels: list[str]):
     )
 
 def force_join_button_label(channel_cfg: dict, position: int) -> str:
-    """Custom text overrides the default; its slot still consumes its number."""
+    """Prefer a custom label, then the resolved channel title, then a numbered fallback."""
     custom = str(channel_cfg.get("button_text") or "").strip()
-    return (custom or f"Join {position}")[:64]
+    channel_title = str(channel_cfg.get("channel_title") or "").strip()
+    return (custom or channel_title or f"Join {position}")[:64]
+
+
+def _pending_request_is_recent(pending: dict | None, now=None, max_age_seconds: int = 86400) -> bool:
+    """Only honor a join request recorded recently; legacy records without a timestamp expire."""
+    requested_at = (pending or {}).get("requested_at")
+    if not isinstance(requested_at, datetime):
+        return False
+    now = now or datetime.now(timezone.utc)
+    if requested_at.tzinfo is None:
+        requested_at = requested_at.replace(tzinfo=timezone.utc)
+    age = (now - requested_at.astimezone(timezone.utc)).total_seconds()
+    return 0 <= age <= max_age_seconds
 
 
 async def join_status(bot, user_id: int, channels: list[str], db=None) -> list[str]:
@@ -138,7 +154,9 @@ async def join_status(bot, user_id: int, channels: list[str], db=None) -> list[s
             mode = (channel_cfg or {}).get("mode", "join_request")
             if not verified and mode == "join_request" and db is not None:
                 pending = await db.pending_join_requests.find_one({"chat_id": chat.id, "user_id": user_id})
-                verified = bool(pending)
+                verified = _pending_request_is_recent(pending)
+                if pending and not verified:
+                    await db.pending_join_requests.delete_one({"chat_id": chat.id, "user_id": user_id})
             return None if verified else channel
         except TelegramAPIError:
             return channel
@@ -809,16 +827,7 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
     if not await claim_delivery_request(database.db, request_key, user_id, payload):
         return
     await _mark_verified(database.db, user_id, channels)
-    if old_post:
-        try: await old_post.delete()
-        except TelegramAPIError: pass
-    if separate_animation_id:
-        async def cleanup_finished_animation():
-            try:
-                await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
-            except TelegramAPIError:
-                pass
-        asyncio.create_task(cleanup_finished_animation())
+    # Preserve the verification post until at least one requested file is delivered.
     success = False
     try:
         result=await deliver_payload(bot,database,settings,user_id,payload,record,request_key=request_key)
@@ -827,6 +836,19 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
         elif payload.startswith("file_") and result[0] == 0:
             await bot.send_message(user_id,"This file is currently unavailable. The source message may have been deleted or become inaccessible.")
         success = result[0] > 0
+        if success:
+            if old_post:
+                try:
+                    await old_post.delete()
+                except TelegramAPIError:
+                    log.info("Could not remove Force Join post after successful delivery")
+            if separate_animation_id:
+                async def cleanup_finished_animation():
+                    try:
+                        await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+                    except TelegramAPIError:
+                        pass
+                asyncio.create_task(cleanup_finished_animation())
     except TelegramAPIError:
         log.exception("Delivery after Force Join failed")
         await bot.send_message(user_id,"File delivery failed. Contact the owner.")
