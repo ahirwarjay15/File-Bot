@@ -91,9 +91,13 @@ async def invalid_post(message: Message, settings: Settings, database):
     if not user or (message.text and message.text.startswith("/")):
         return
     await FileRepository(database.db).save_user(user)
-    if await is_banned(database.db, user.id) or await is_owner_or_moderator(database.db, user.id, settings):
+    # Invalid-post is for ordinary non-command messages from any user, including
+    # the owner/moderators when they are testing it. Settings/FSM handlers run first.
+    if await is_banned(database.db, user.id):
         return
-    cfg = await database.db.settings.find_one({"key": "invalid_post", "enabled": True})
+    cfg = await database.db.settings.find_one({"key": "invalid_post"}) or {}
+    if not cfg.get("enabled", False):
+        return
     if not cfg:
         return
     me = await message.bot.get_me()
