@@ -64,7 +64,7 @@ def test_settings_buttons_use_small_caps_with_required_exceptions():
 def test_invalid_post_about_defaults_to_multiline_standard_about():
     from app.handlers.misc import DEFAULT_ABOUT
 
-    assert "\\n" not in DEFAULT_ABOUT
+    assert "\n" not in DEFAULT_ABOUT
     assert "\n" in DEFAULT_ABOUT
     assert "{bot_name}" in DEFAULT_ABOUT
 
@@ -257,9 +257,9 @@ def test_start_message_default_and_markdown_are_normalized_without_leaked_marker
         "",
         "<i>Welcome to the fastest and most secure file store bot!</i>",
     ]
-    rendered = normalize_telegram_text("**Hey {user_mention}✨**\\n\\n*Welcome to the fastest and most secure file store bot!*")
+    rendered = normalize_telegram_text("**Hey {user_mention}✨**\n\n*Welcome to the fastest and most secure file store bot!*")
     assert rendered == DEFAULT_START_TEXT
-    assert "\\\\n" not in rendered
+    assert "\\\n" not in rendered
     assert "**" not in rendered
     assert "*Welcome" not in rendered
     assert normalize_telegram_text("`sample`") == "<code>sample</code>"
@@ -323,7 +323,7 @@ def test_force_join_settings_page_uses_real_line_breaks():
 
     import inspect
     source = inspect.getsource(build_forcejoin_page)
-    assert r"FORCE JOIN\\n\\n" not in source
+    assert r"FORCE JOIN\n\n" not in source
     assert r"FORCE JOIN\n\n" in source
 
 
@@ -575,8 +575,8 @@ def test_invalid_post_deletes_submitted_text_media_only_after_response_succeeds(
     from pathlib import Path
 
     source = Path("app/handlers/misc.py").read_text()
-    handler = source.split("@router.message()\\nasync def invalid_post", 1)[1].split(
-        "\\n\\n@router.callback_query(F.data == \"invalid:about\")", 1
+    handler = source.split("@router.message()\nasync def invalid_post", 1)[1].split(
+        "\n\n@router.callback_query(F.data == \"invalid:about\")", 1
     )[0]
     assert "response = await message.answer_animation(" in handler
     assert "response = await message.answer_photo(" in handler
