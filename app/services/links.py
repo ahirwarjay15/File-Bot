@@ -5,6 +5,7 @@ a browser User-Agent cannot guarantee bypassing a provider's anti-bot challenge.
 """
 import asyncio
 import hashlib
+import ipaddress
 import json
 import logging
 import re
@@ -40,7 +41,17 @@ def _normalized_provider_url(base_url: str) -> str:
     parsed = urlparse(value)
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Shortener provider URL must be a valid HTTP(S) URL")
-    host = parsed.hostname.lower()
+    if parsed.username or parsed.password:
+        raise ValueError("Shortener provider URL must not contain embedded credentials")
+    host = parsed.hostname.lower().rstrip(".")
+    if host in {"localhost", "localhost.localdomain"} or host.endswith((".localhost", ".local", ".internal", ".test")):
+        raise ValueError("Shortener provider URL cannot target a local or internal hostname")
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None and not address.is_global:
+        raise ValueError("Shortener provider URL cannot target a private or non-public IP address")
     path = parsed.path.rstrip("/")
     if host in {"gplinks.com", "www.gplinks.com", "gplinks.in", "www.gplinks.in"} and path in {"", "/api"}:
         return "https://api.gplinks.com/st"
@@ -211,7 +222,7 @@ async def shorten_url(base_url: str, api_token: str, long_url: str) -> str:
             )
         elif "adfoc.us" in domain:
             result = await _fetch(
-                session, "GET", "http://adfoc.us/api/",
+                session, "GET", "https://adfoc.us/api/",
                 params={"key": token, "url": long_url},
             )
         elif "cutt.ly" in domain:
