@@ -1420,6 +1420,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await tracked_answer(message, state, f"✨ Successfully updated button text for {channel} force-join button.")
         return
     if field == "forcejoin_message":
+        value = formatted_input_text(message, value)
         await patch(db, "force_join", {"message": value})
         await finish_input_panel(message, state, "FORCE JOIN MESSAGE", "forcejoin")
         await clear_state_preserving_prompts(state)
@@ -1501,7 +1502,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await state.update_data(button_panel_kind=prev.get("panel_kind"))
         return
     if field == "start_text":
-        value = normalize_telegram_text(value)
+        value = formatted_input_text(message, value)
         await patch(db, "start_message", {"text": value}, {"enabled": True})
         await finish_input_panel(message, state, "START MESSAGE TEXT", "start_text")
         await clear_state_preserving_prompts(state)
@@ -1532,12 +1533,14 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         )
         await tracked_answer(message, state, "✨ Auto-delete message updated successfully.")
     elif field == "after_text_message":
+        value = formatted_input_text(message, value)
         await patch(db, "after_delete", {"text": value}, {"enabled": False, "button_text": DEFAULT_AFTER_BUTTON})
         await tracked_answer(message, state, "✨ After-delete message text updated successfully.")
     elif field == "after_text_button":
         await patch(db, "after_delete", {"button_text": value}, {"enabled": False, "text": DEFAULT_AFTER_TEXT})
         await tracked_answer(message, state, "✨ After-delete button text updated successfully.")
     elif field == "invalid_text":
+        value = formatted_input_text(message, value)
         await patch(db, "invalid_post", {"text": value}, {"enabled": False, "about_enabled": False})
         await finish_input_panel(message, state, "INVALID MESSAGE TEXT", "invalid")
         await clear_state_preserving_prompts(state)
