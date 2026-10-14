@@ -3,6 +3,7 @@ import logging
 import hashlib
 import html
 import asyncio
+import time
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from aiogram import Router,F
@@ -117,41 +118,65 @@ def force_join_button_label(channel_cfg: dict, position: int) -> str:
     return (custom or f"Join {position}")[:64]
 
 
-async def join_status(bot,user_id:int,channels:list[str],db=None)->list[str]:
-    missing=[]
-    for raw in channels:
-        channel=raw.strip()
-        if not channel:continue
+async def join_status(bot, user_id: int, channels: list[str], db=None) -> list[str]:
+    """Check memberships concurrently while preserving configured channel order."""
+    async def check_channel(raw: str) -> str | None:
+        channel = raw.strip()
+        if not channel:
+            return None
         try:
             chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
             chat = await bot.get_chat(chat_arg)
-            member=await bot.get_chat_member(chat_id=chat.id,user_id=user_id)
-            verified = member.status in ("creator","administrator","member") or (member.status=="restricted" and getattr(member,"is_member",False))
-            channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) if db is not None else None
+            member = await bot.get_chat_member(chat_id=chat.id, user_id=user_id)
+            verified = member.status in ("creator", "administrator", "member") or (
+                member.status == "restricted" and getattr(member, "is_member", False)
+            )
+            channel_cfg = (
+                await db.settings.find_one({"key": "force_join_channel", "channel": channel})
+                if db is not None else None
+            )
             mode = (channel_cfg or {}).get("mode", "join_request")
             if not verified and mode == "join_request" and db is not None:
                 pending = await db.pending_join_requests.find_one({"chat_id": chat.id, "user_id": user_id})
                 verified = bool(pending)
-            if not verified: missing.append(channel)
+            return None if verified else channel
         except TelegramAPIError:
-            missing.append(channel)
-    return missing
+            return channel
+
+    results = await asyncio.gather(*(check_channel(channel) for channel in channels))
+    return [channel for channel in results if channel is not None]
+
 
 # Active text-animation tasks are process-local; file/gate state itself remains in MongoDB.
 _gate_animation_tasks: dict[tuple[int, str], tuple[asyncio.Task, int | None]] = {}
+_gate_animation_stop_events: dict[tuple[int, str], asyncio.Event] = {}
+_forcejoin_locks: dict[tuple[int, str], asyncio.Lock] = {}
 
 
 async def _cancel_gate_animation(bot, user_id: int, payload: str,
-                               delete_separate: bool = True) -> int | None:
-    entry = _gate_animation_tasks.pop((user_id, payload), None)
+                                 delete_separate: bool = True) -> int | None:
+    key = (user_id, payload)
+    entry = _gate_animation_tasks.pop(key, None)
+    stop_event = _gate_animation_stop_events.get(key)
     if not entry:
+        if stop_event:
+            stop_event.set()
         return None
     task, separate_message_id = entry
-    task.cancel()
+    if stop_event:
+        stop_event.set()
     try:
-        await task
+        await asyncio.wait_for(task, timeout=5.0)
+    except asyncio.TimeoutError:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     except asyncio.CancelledError:
         pass
+    finally:
+        _gate_animation_stop_events.pop(key, None)
     if separate_message_id and delete_separate:
         try:
             await bot.delete_message(user_id, separate_message_id)
@@ -162,7 +187,8 @@ async def _cancel_gate_animation(bot, user_id: int, payload: str,
 
 async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                         base_text: str, markup: InlineKeyboardMarkup, cfg: dict,
-                        separate_message_id: int | None, animation_only: bool = False):
+                        separate_message_id: int | None, animation_only: bool = False,
+                        stop_event: asyncio.Event | None = None):
     frames = cfg.get("frames")
     if not isinstance(frames, list) or len(frames) != 3:
         frames = [".", "..", "..."]
@@ -176,9 +202,16 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     speed = min(1.0, max(0.25, speed))
     mode = cfg.get("mode", "force_join_poster")
     target_id = separate_message_id if mode == "new_message" else gate_message.message_id
-    while True:
-        for frame in frames:
-            animated = animation_frame_text(prefix_value, frame)
+    frame_index = 0  # The first frame is already visible.
+    next_beat = time.monotonic() + speed
+    key = (user_id, payload)
+    try:
+        while True:
+            await asyncio.sleep(max(0.0, next_beat - time.monotonic()))
+            if stop_event and stop_event.is_set() and frame_index == len(frames) - 1:
+                break
+            frame_index = (frame_index + 1) % len(frames)
+            animated = animation_frame_text(prefix_value, frames[frame_index])
             while True:
                 try:
                     if mode == "new_message":
@@ -186,7 +219,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                             chat_id=user_id, message_id=target_id, text=animated, parse_mode="HTML",
                         )
                     else:
-                        content = animated if animation_only else f"{base_text}\n\n{animated}"
+                        content = animated if animation_only else f"{base_text}\\n\\n{animated}"
                         if gate_message.photo or gate_message.animation or gate_message.document:
                             await bot.edit_message_caption(
                                 chat_id=user_id, message_id=target_id, caption=content,
@@ -198,20 +231,23 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                                 parse_mode="HTML", reply_markup=markup,
                             )
                 except TelegramRetryAfter as exc:
-                    # At the lowest configured speed, Telegram may still throttle edits.
-                    # Wait the requested interval and retry this same frame.
                     await asyncio.sleep(max(speed, float(exc.retry_after)))
+                    next_beat = time.monotonic()
                     continue
                 except TelegramBadRequest as exc:
                     if "message is not modified" not in str(exc).lower():
                         log.debug("Force Join animation edit rejected", exc_info=True)
                         return
-                    # Same frame already visible: count it as a successful tick.
                 except TelegramAPIError:
                     log.debug("Force Join animation stopped because its message could not be edited", exc_info=True)
                     return
                 break
-            await asyncio.sleep(speed)
+            # Deadline-based pacing avoids adding API-call duration to every beat.
+            next_beat += speed
+    finally:
+        if _gate_animation_stop_events.get(key) is stop_event:
+            _gate_animation_stop_events.pop(key, None)
+
 
 async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: Message,
                                 base_text: str, markup: InlineKeyboardMarkup, cfg: dict,
@@ -225,17 +261,26 @@ async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: M
         prefix_value = str(cfg.get("prefix") or "Checking")
         if prefix_value == "Checking..":
             prefix_value = "Checking"
-        first = animation_frame_text(prefix_value, (cfg.get("frames") or [".", "..", "..."])[0])
+        frames = cfg.get("frames")
+        if not isinstance(frames, list) or len(frames) != 3:
+            frames = [".", "..", "..."]
+        first = animation_frame_text(prefix_value, frames[0])
         try:
             animation_message = await bot.send_message(user_id, first, parse_mode="HTML")
             separate_id = animation_message.message_id
         except TelegramAPIError:
             log.warning("Could not send separate Force Join animation", exc_info=True)
             return
+    stop_event = asyncio.Event()
     task = asyncio.create_task(
-        _animate_gate(bot, user_id, payload, gate_message, base_text, markup, cfg, separate_id, animation_only)
+        _animate_gate(
+            bot, user_id, payload, gate_message, base_text, markup, cfg,
+            separate_id, animation_only, stop_event,
+        )
     )
-    _gate_animation_tasks[(user_id, payload)] = (task, separate_id)
+    key = (user_id, payload)
+    _gate_animation_stop_events[key] = stop_event
+    _gate_animation_tasks[key] = (task, separate_id)
 
 
 async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->bool:
@@ -280,17 +325,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
                 animation_post = None
 
     missing = await join_status(bot, user.id, channels, database.db)
-    if animation_enabled:
-        # Let at least one complete frame cycle become visible even when Telegram
-        # answers membership checks very quickly.
-        frames_for_wait = animation_cfg.get("frames")
-        if not isinstance(frames_for_wait, list) or len(frames_for_wait) != 3:
-            frames_for_wait = [".", "..", "..."]
-        try:
-            frame_speed = min(1.0, max(0.25, float(animation_cfg.get("speed", 0.25))))
-        except (TypeError, ValueError):
-            frame_speed = 0.25
-        await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
+    # The stop helper below lets the current visible cycle finish.
     if not missing:
         await _cancel_gate_animation(bot, user.id, payload)
         if animation_post:
@@ -521,7 +556,25 @@ async def _edit_force_join_post(message: Message, text: str, markup: InlineKeybo
         return False
 
 @router.callback_query(F.data.startswith("forcejoin:check:"))
-async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
+async def forcejoin_check(query: CallbackQuery, settings: Settings, database, bot):
+    if not query.from_user:
+        await query.answer()
+        return
+    payload = query.data.split(":", 2)[2]
+    key = (query.from_user.id, payload)
+    lock = _forcejoin_locks.setdefault(key, asyncio.Lock())
+    if lock.locked():
+        await query.answer("Verification is already running.", show_alert=False)
+        return
+    async with lock:
+        try:
+            await _forcejoin_check_impl(query, settings, database, bot)
+        finally:
+            if _forcejoin_locks.get(key) is lock:
+                _forcejoin_locks.pop(key, None)
+
+
+async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, database, bot):
     await query.answer()
     payload=query.data.split(":",2)[2]
     if not query.from_user or await FileRepository(database.db).is_banned(query.from_user.id):
@@ -541,11 +594,13 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     animation_mode = animation_cfg.get("mode", "force_join_poster")
     animation_post = None
 
-    # Start the selected animation before checking memberships so it remains visible
-    # while Telegram membership checks are in progress.
+    # Reuse the current Force Join post in poster mode when Telegram allows it.
     if old_post and animation_enabled:
         if animation_mode == "new_message":
-            await _start_gate_animation(bot, user_id, payload, old_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg)
+            await _start_gate_animation(
+                bot, user_id, payload, old_post, "",
+                InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg,
+            )
         else:
             frames = animation_cfg.get("frames")
             if not isinstance(frames, list) or len(frames) != 3:
@@ -554,36 +609,40 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
             if prefix_value == "Checking..":
                 prefix_value = "Checking"
             first = animation_frame_text(prefix_value, frames[0])
-            try:
-                if force_cfg.get("poster_file_id"):
-                    animation_post = await bot.send_animation(user_id, force_cfg["poster_file_id"], caption=first, parse_mode="HTML")
-                elif force_cfg.get("poster_photo_id"):
-                    animation_post = await bot.send_photo(user_id, force_cfg["poster_photo_id"], caption=first, parse_mode="HTML")
-                else:
-                    animation_post = await bot.send_message(user_id, first, parse_mode="HTML")
-                await _start_gate_animation(bot, user_id, payload, animation_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, animation_only=True)
-                # New poster is live now; remove the previous Force Join post at once.
-                if animation_mode == "force_join_poster" and old_post:
+            empty_markup = InlineKeyboardMarkup(inline_keyboard=[])
+            if await _edit_force_join_post(old_post, first, empty_markup):
+                animation_post = old_post
+                await _start_gate_animation(
+                    bot, user_id, payload, animation_post, "", empty_markup,
+                    animation_cfg, animation_only=True,
+                )
+            else:
+                try:
+                    if force_cfg.get("poster_file_id"):
+                        animation_post = await bot.send_animation(
+                            user_id, force_cfg["poster_file_id"], caption=first, parse_mode="HTML"
+                        )
+                    elif force_cfg.get("poster_photo_id"):
+                        animation_post = await bot.send_photo(
+                            user_id, force_cfg["poster_photo_id"], caption=first, parse_mode="HTML"
+                        )
+                    else:
+                        animation_post = await bot.send_message(user_id, first, parse_mode="HTML")
+                    await _start_gate_animation(
+                        bot, user_id, payload, animation_post, "", empty_markup,
+                        animation_cfg, animation_only=True,
+                    )
                     try:
                         await old_post.delete()
                     except TelegramAPIError:
                         pass
-            except TelegramAPIError:
-                log.warning("Could not create Force Join animation poster", exc_info=True)
-                animation_post = None
+                except TelegramAPIError:
+                    log.warning("Could not create Force Join animation poster", exc_info=True)
+                    animation_post = None
 
-    missing=[] if await is_owner_or_moderator(database.db, user_id, settings) else await join_status(bot,user_id,channels,database.db)
-    if animation_enabled:
-        # Keep the verification animation alive for a visible frame cycle before
-        # stopping it and publishing the updated remaining-channel post.
-        frames_for_wait = animation_cfg.get("frames")
-        if not isinstance(frames_for_wait, list) or len(frames_for_wait) != 3:
-            frames_for_wait = [".", "..", "..."]
-        try:
-            frame_speed = min(1.0, max(0.25, float(animation_cfg.get("speed", 0.25))))
-        except (TypeError, ValueError):
-            frame_speed = 0.25
-        await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
+    missing = [] if await is_owner_or_moderator(database.db, user_id, settings) else await join_status(
+        bot, user_id, channels, database.db
+    )
     if missing:
         join_buttons = []
         for index, channel in enumerate(missing):
@@ -624,6 +683,15 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
             separate_animation_id = await _cancel_gate_animation(bot, user_id, payload)
         if animation_enabled and animation_mode == "force_join_poster" and animation_post:
             if await _edit_force_join_post(animation_post, rendered, markup):
+                return
+
+        if animation_enabled and animation_mode == "new_message" and old_post:
+            if await _edit_force_join_post(old_post, rendered, markup):
+                if separate_animation_id:
+                    try:
+                        await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+                    except TelegramAPIError:
+                        pass
                 return
 
         new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
