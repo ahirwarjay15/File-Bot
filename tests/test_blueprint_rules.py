@@ -407,7 +407,7 @@ def test_animation_legacy_defaults_are_migrated_and_frames_are_bold():
     assert cfg["speed"] == 0.10
     assert cfg["mode"] == "new_message"
     assert cfg["enabled"] is True
-    assert animation_frame_text(cfg["prefix"], cfg["frames"][0]) == "Checking <b>.</b>"
+    assert animation_frame_text(cfg["prefix"], cfg["frames"][0]) == "Checking<b>.</b>"
 
 
 def test_animation_speed_is_clamped_for_both_modes_without_overriding_custom_speed():
@@ -419,7 +419,17 @@ def test_animation_speed_is_clamped_for_both_modes_without_overriding_custom_spe
     })
     fast = normalize_animation_config({
         "prefix": "Checking", "frames": [".", "..", "..."],
-        "speed": 0.85, "mode": "new_message",
+        "speed": 2.25, "mode": "new_message",
     })
-    assert slow["speed"] == 0.10
-    assert fast["speed"] == 0.85
+    assert slow["speed"] == 1.0
+    assert fast["speed"] == 2.25
+
+
+def test_animation_speed_never_exceeds_supported_range():
+    from app.handlers.start import normalize_animation_config
+
+    cfg = normalize_animation_config({
+        "prefix": "Checking", "frames": [".", "..", "..."],
+        "speed": 3.5, "mode": "force_join_poster",
+    })
+    assert cfg["speed"] == 3.0
