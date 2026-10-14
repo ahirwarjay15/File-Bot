@@ -61,7 +61,7 @@ DEFAULT_START_TEXT = "<b>Hey {user_mention}✨</b>\n\n<i>Welcome to the fastest 
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
 DEFAULT_AFTER_BUTTON = "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ"
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
-DEFAULT_FORCE_JOIN_MESSAGE = "Hey {mention}!\\nPlease join my {remaining_count} channel(s) to use me."
+DEFAULT_FORCE_JOIN_MESSAGE = "Hey {mention}!\nPlease join my {remaining_count} channel(s) to use me."
 
 
 def formatted_input_text(message, fallback):
@@ -305,7 +305,7 @@ async def render_forcejoin(query, db, settings):
     await edit_page(query, text, markup)
 
 async def render_forcejoin_message(query):
-    await edit_page(query, "FORCE JOIN MESSAGE\\nCustomize the message shown to users who still need to join required channels.", kb([
+    await edit_page(query, "FORCE JOIN MESSAGE\nCustomize the message shown to users who still need to join required channels.", kb([
         [("EDIT", "settings:forcejoin_message_edit"), ("SEE", "settings:forcejoin_message_see")],
         [("DEFAULT", "settings:forcejoin_message_default")],
         [("《 BACK", "settings:forcejoin")],
@@ -313,7 +313,7 @@ async def render_forcejoin_message(query):
 
 
 async def render_invalid_text(query):
-    await edit_page(query, "INVALID POST TEXT\\nCustomize the reply shown when users send messages instead of a valid file link.", kb([
+    await edit_page(query, "INVALID POST TEXT\nCustomize the reply shown when users send messages instead of a valid file link.", kb([
         [("EDIT", "settings:invalid_text_edit"), ("SEE", "settings:invalid_text_see")],
         [("DEFAULT", "settings:invalid_text_default")],
         [("《 BACK", "settings:invalid")],
@@ -717,7 +717,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "forcejoin_message": await render_forcejoin_message(query)
     elif action == "forcejoin_message_edit":
         await show_input_prompt(query, state, "forcejoin_message",
-            "Send the Force Join message. Telegram bold, italic, quotes and monospace formatting will be preserved.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — owner link\\n<code>{hindi_anime}</code> — Lexi Anime Hindi link\\n<code>{remaining_count}</code> — remaining channels count",
+            "Send the Force Join message. Telegram bold, italic, quotes and monospace formatting will be preserved.\n\n<code>{bot_mention}</code> — mention your bot\n<code>{mention}</code> — mention the user\n<code>{owner}</code> — owner link\n<code>{hindi_anime}</code> — Lexi Anime Hindi link\n<code>{remaining_count}</code> — remaining channels count",
             "forcejoin")
     elif action == "forcejoin_message_see":
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
@@ -737,7 +737,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         me = await query.bot.get_me()
         preview = DEFAULT_FORCE_JOIN_MESSAGE.replace("{mention}", query.from_user.full_name if query.from_user else "User").replace("{remaining_count}", "3")
         preview = preview.replace("{bot_mention}", me.full_name or me.username or "Bot")
-        await query.answer("✅ Force Join message restored to the recommended default.\\n\\n" + plain_preview(preview)[:130], show_alert=True)
+        await query.answer("✅ Force Join message restored to the recommended default.\n\n" + plain_preview(preview)[:130], show_alert=True)
         await render_forcejoin_message(query)
         return
     elif action == "forcejoin_media":
@@ -822,7 +822,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "start_text_default":
         await patch(db, "start_message", {"text": DEFAULT_START_TEXT}, {"enabled": True})
         preview = plain_preview(DEFAULT_START_TEXT).replace("{user_mention}", query.from_user.full_name if query.from_user else "User")
-        await query.answer("✅ Start message restored to the recommended default.\\n\\n" + preview[:130], show_alert=True)
+        await query.answer("✅ Start message restored to the recommended default.\n\n" + preview[:130], show_alert=True)
         await render_start_text(query)
         return
     elif action == "start_button":
@@ -935,7 +935,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "invalid_text": await render_invalid_text(query)
     elif action == "invalid_text_edit":
         await show_input_prompt(query, state, "invalid_text",
-            "Send the new Invalid Message text. Telegram bold, italic, quotes and monospace formatting will be preserved.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — owner link\\n<code>{hindi_anime}</code> — Lexi Anime Hindi link",
+            "Send the new Invalid Message text. Telegram bold, italic, quotes and monospace formatting will be preserved.\n\n<code>{bot_mention}</code> — mention your bot\n<code>{mention}</code> — mention the user\n<code>{owner}</code> — owner link\n<code>{hindi_anime}</code> — Lexi Anime Hindi link",
             "invalid")
     elif action == "invalid_text_see":
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
@@ -955,7 +955,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         me = await query.bot.get_me()
         preview = DEFAULT_INVALID.replace("{mention}", query.from_user.full_name if query.from_user else "User")
         preview = preview.replace("{bot_mention}", me.full_name or me.username or "Bot")
-        await query.answer("✅ Invalid-message text restored to the recommended default.\\n\\n" + plain_preview(preview)[:130], show_alert=True)
+        await query.answer("✅ Invalid-message text restored to the recommended default.\n\n" + plain_preview(preview)[:130], show_alert=True)
         await render_invalid_text(query)
         return
     elif action == "invalid_button":
