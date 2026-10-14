@@ -1102,13 +1102,35 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         except TelegramAPIError:
             pass
         if panel_chat_id and panel_message_id:
+            panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
             try:
-                panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
-                await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id,
-                    text=format_settings_page(panel_text), parse_mode="HTML", reply_markup=panel_markup,
-                    link_preview_options={"is_disabled": True})
+                # The Add page is the existing settings panel: turn it back into
+                # the Force Join page so the newly added chat appears immediately.
+                await message.bot.edit_message_text(
+                    chat_id=panel_chat_id,
+                    message_id=panel_message_id,
+                    text=format_settings_page(panel_text),
+                    parse_mode="HTML",
+                    reply_markup=panel_markup,
+                    link_preview_options={"is_disabled": True},
+                )
             except TelegramAPIError:
-                pass
+                # If Telegram refuses the edit, replace the Add page rather than
+                # leaving the user stranded on it.
+                try:
+                    replacement = await message.bot.send_message(
+                        chat_id=panel_chat_id,
+                        text=format_settings_page(panel_text),
+                        parse_mode="HTML",
+                        reply_markup=panel_markup,
+                        link_preview_options={"is_disabled": True},
+                    )
+                    try:
+                        await message.bot.delete_message(chat_id=panel_chat_id, message_id=panel_message_id)
+                    except TelegramAPIError:
+                        pass
+                except TelegramAPIError:
+                    pass
         return
 
     if field == "forcejoin_wait_chat":
