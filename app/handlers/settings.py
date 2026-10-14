@@ -214,24 +214,19 @@ async def finish_input_panel(message, state, title, back_action):
 
 
 async def edit_page(query, text, keyboard):
+    """Update the current settings panel in place; never spawn duplicate panels."""
     if not query.message:
         return
     text = format_settings_page(text)
     try:
         await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
     except TelegramBadRequest as exc:
-        if "message is not modified" in str(exc).lower():
-            return
-        # If Telegram refuses to edit this message, provide a fresh working panel.
-        try:
-            await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
-        except TelegramAPIError:
+        if "message is not modified" not in str(exc).lower():
+            # A failed edit must not create a second panel on the next page.
             pass
     except TelegramAPIError:
-        try:
-            await query.message.answer(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
-        except TelegramAPIError:
-            pass
+        # Keep the current panel rather than creating a duplicate message.
+        pass
 
 async def render_home(query):
     me = await query.bot.get_me()
@@ -553,7 +548,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             [("《 BACK", "settings:forcejoin")],
         ]))
         if query.message:
-            picker_prompt = await tracked_answer(query.message, state, 
+            await tracked_answer(query.message, state,
                 "Choose the type of chat to add. The bot must already be an administrator.",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
@@ -563,7 +558,6 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
                     ], resize_keyboard=True, one_time_keyboard=True,
                 ),
             )
-            await track_temporary_prompt(state, picker_prompt)
         await state.set_state(SettingInput.waiting)
         await state.update_data(field="forcejoin_wait_chat")
     elif action == "forcejoin_other":
@@ -1087,7 +1081,12 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await message.delete()
         except TelegramAPIError:
             pass
-        await tracked_answer(message, state, "Force Join channel selection cancelled.", reply_markup=ReplyKeyboardRemove())
+        # Remove the reply keyboard without leaving a cancellation prompt behind.
+        try:
+            keyboard_removal = await message.answer(" ", reply_markup=ReplyKeyboardRemove())
+            await keyboard_removal.delete()
+        except TelegramAPIError:
+            pass
         if panel_chat_id and panel_message_id:
             try:
                 panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
@@ -1103,6 +1102,12 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if not shared:
             await tracked_answer(message, state, "Please use the Group or Channel buttons to select a chat, or tap Cancel.")
             return
+        # Telegram's chat-shared update appears as a user-side message; remove it
+        # immediately so the “You shared … with …” line does not remain in chat.
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            pass
         if shared.request_id not in (5101, 5102):
             await tracked_answer(message, state, "That chat selection expired. Open /settings → Force Join → Add again.")
             await clear_state_preserving_prompts(state)
