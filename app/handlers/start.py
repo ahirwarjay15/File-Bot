@@ -632,7 +632,8 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
     animation_mode = animation_cfg.get("mode", "force_join_poster")
     animation_post = None
 
-    # Reuse the current Force Join post in poster mode when Telegram allows it.
+    # In poster mode, the configured Force Join media must remain visible during
+    # verification. Editing a text-only old post would otherwise silently skip it.
     if old_post and animation_enabled:
         if animation_mode == "new_message":
             await _start_gate_animation(
@@ -648,35 +649,33 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
                 prefix_value = "Checking"
             first = animation_frame_text(prefix_value, frames[0])
             empty_markup = InlineKeyboardMarkup(inline_keyboard=[])
-            if await _edit_force_join_post(old_post, first, empty_markup):
-                animation_post = old_post
+            try:
+                if force_cfg.get("poster_file_id"):
+                    animation_post = await bot.send_animation(
+                        user_id, force_cfg["poster_file_id"], caption=first, parse_mode="HTML"
+                    )
+                elif force_cfg.get("poster_photo_id"):
+                    animation_post = await bot.send_photo(
+                        user_id, force_cfg["poster_photo_id"], caption=first, parse_mode="HTML"
+                    )
+                else:
+                    # No configured poster: retain the existing post and animate its text.
+                    if await _edit_force_join_post(old_post, first, empty_markup):
+                        animation_post = old_post
+                    else:
+                        animation_post = await bot.send_message(user_id, first, parse_mode="HTML")
                 await _start_gate_animation(
                     bot, user_id, payload, animation_post, "", empty_markup,
                     animation_cfg, animation_only=True,
                 )
-            else:
-                try:
-                    if force_cfg.get("poster_file_id"):
-                        animation_post = await bot.send_animation(
-                            user_id, force_cfg["poster_file_id"], caption=first, parse_mode="HTML"
-                        )
-                    elif force_cfg.get("poster_photo_id"):
-                        animation_post = await bot.send_photo(
-                            user_id, force_cfg["poster_photo_id"], caption=first, parse_mode="HTML"
-                        )
-                    else:
-                        animation_post = await bot.send_message(user_id, first, parse_mode="HTML")
-                    await _start_gate_animation(
-                        bot, user_id, payload, animation_post, "", empty_markup,
-                        animation_cfg, animation_only=True,
-                    )
+                if animation_post.message_id != old_post.message_id:
                     try:
                         await old_post.delete()
                     except TelegramAPIError:
                         pass
-                except TelegramAPIError:
-                    log.warning("Could not create Force Join animation poster", exc_info=True)
-                    animation_post = None
+            except TelegramAPIError:
+                log.warning("Could not create Force Join animation poster", exc_info=True)
+                animation_post = None
 
     missing = [] if await is_owner_or_moderator(database.db, user_id, settings) else await join_status(
         bot, user_id, channels, database.db
