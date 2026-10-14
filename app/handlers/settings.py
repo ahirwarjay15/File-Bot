@@ -378,6 +378,8 @@ async def render_animation(query, db):
     except (TypeError, ValueError):
         speed = 1.0
     speed = min(3.0, max(1.0, speed))
+    if speed != cfg.get("speed"):
+        await db.settings.update_one({"key": "animation"}, {"$set": {"speed": speed}}, upsert=True)
     await edit_page(query, f"ANIMATION\n\nAdd a custom animation for the verification process.\n\nPrefix: {prefix}\nFrames: {frames_text}\nSpeed: {speed:.2f}s per frame\nMode: {mode_label}\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
         [("PREFIX", "settings:animation_prefix"), ("FRAMES", "settings:animation_frames")],
         [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:animation_toggle"), ("SPEED", "settings:animation_speed")],
@@ -909,7 +911,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         if query.message: await tracked_answer(query.message, state, "Send the first frame for the loop animation.")
     elif action == "animation_toggle":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
-        await patch(db, "animation", {"enabled": not cfg.get("enabled", False)}, {"prefix": "Checking", "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
+        await patch(db, "animation", {"enabled": not cfg.get("enabled", False)}, {"prefix": "Checking", "frames": [".", "..", "..."], "speed": 1.0, "mode": "force_join_poster"})
         await render_animation(query, db)
     elif action == "animation_speed":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
@@ -1253,7 +1255,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await clear_state_preserving_prompts(state)
         return
     if field == "animation_prefix":
-        await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [".", "..", "..."], "speed": 0.10, "mode": "force_join_poster"})
+        await patch(db, "animation", {"prefix": value}, {"enabled": False, "frames": [".", "..", "..."], "speed": 1.0, "mode": "force_join_poster"})
         await clear_state_preserving_prompts(state)
         await tracked_answer(message, state, "✨ Animation prefix updated successfully.")
         return
@@ -1269,7 +1271,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             prompt = "Now send the middle frame." if len(frames) == 1 else "Send the last frame."
             await tracked_answer(message, state, prompt)
             return
-        await patch(db, "animation", {"frames": frames}, {"enabled": False, "prefix": "Checking", "speed": 0.10, "mode": "force_join_poster"})
+        await patch(db, "animation", {"frames": frames}, {"enabled": False, "prefix": "Checking", "speed": 1.0, "mode": "force_join_poster"})
         await clear_state_preserving_prompts(state)
         await tracked_answer(message, state, "✨ Animation frames updated successfully.")
         return
