@@ -390,3 +390,36 @@ def test_stats_alert_only_contains_total_and_banned_users():
     assert 'get_me()' not in stats_block
     assert 'USERS:' not in stats_block
     assert 'BLOCKED:' not in stats_block
+
+
+def test_animation_legacy_defaults_are_migrated_and_frames_are_bold():
+    from app.handlers.start import animation_frame_text, normalize_animation_config
+
+    cfg = normalize_animation_config({
+        "enabled": True,
+        "prefix": "Checking..",
+        "frames": ["OLD", "VALUES", "HERE"],
+        "speed": 0.75,
+        "mode": "new_message",
+    })
+    assert cfg["prefix"] == "Checking"
+    assert cfg["frames"] == [".", "..", "..."]
+    assert cfg["speed"] == 0.10
+    assert cfg["mode"] == "new_message"
+    assert cfg["enabled"] is True
+    assert animation_frame_text(cfg["prefix"], cfg["frames"][0]) == "Checking <b>.</b>"
+
+
+def test_animation_speed_is_clamped_for_both_modes_without_overriding_custom_speed():
+    from app.handlers.start import normalize_animation_config
+
+    slow = normalize_animation_config({
+        "prefix": "Checking", "frames": [".", "..", "..."],
+        "speed": 0.05, "mode": "force_join_poster",
+    })
+    fast = normalize_animation_config({
+        "prefix": "Checking", "frames": [".", "..", "..."],
+        "speed": 0.85, "mode": "new_message",
+    })
+    assert slow["speed"] == 0.10
+    assert fast["speed"] == 0.85
