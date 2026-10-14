@@ -399,6 +399,16 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             await animation_post.delete()
         except TelegramAPIError:
             pass
+    if animation_enabled and animation_mode == "new_message" and (cfg.get("poster_file_id") or cfg.get("poster_photo_id")):
+        # Text animation messages cannot be converted into media posts. Keep the
+        # configured Force Join poster visible in the final verification prompt.
+        await _send_force_join_post(bot, user.id, cfg, rendered, markup)
+        if separate_animation_id:
+            try:
+                await bot.delete_message(chat_id=user.id, message_id=separate_animation_id)
+            except TelegramAPIError:
+                pass
+        return True
     if animation_enabled and animation_mode == "new_message" and separate_animation_id:
         # Reuse the exact message that showed the animation as the Force Join post.
         try:
