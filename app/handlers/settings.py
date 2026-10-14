@@ -714,9 +714,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             await patch(db, "force_join", {"channels": channels})
             await db.settings.delete_one({"key": "force_join_channel", "channel": channel})
         await render_forcejoin(query, db, settings)
-    elif action == "forcejoin_message":
+    elif action == "forcejoin_message": await render_forcejoin_message(query)
+    elif action == "forcejoin_message_edit":
         await show_input_prompt(query, state, "forcejoin_message",
-            "Send the Force Join message.\n\n<code>{bot_mention}</code> — mention your bot\n<code>{mention}</code> — mention the user\n<code>{owner}</code> — owner link\n<code>{hindi_anime}</code> — Lexi Anime Hindi link\n<code>{remaining_count}</code> — remaining channels count",
+            "Send the Force Join message. Telegram bold, italic, quotes and monospace formatting will be preserved.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — owner link\\n<code>{hindi_anime}</code> — Lexi Anime Hindi link\\n<code>{remaining_count}</code> — remaining channels count",
             "forcejoin")
     elif action == "forcejoin_media":
         await edit_page(query, "FORCE JOIN MEDIA\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
@@ -909,9 +910,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
         await patch(db, "invalid_post", {"enabled": not cfg.get("enabled", False)}, {"text": DEFAULT_INVALID, "about_enabled": False})
         await render_invalid(query, db)
-    elif action == "invalid_text":
+    elif action == "invalid_text": await render_invalid_text(query)
+    elif action == "invalid_text_edit":
         await show_input_prompt(query, state, "invalid_text",
-            "Send the new Invalid Message text.\n\n<code>{bot_mention}</code> — mention your bot\n<code>{mention}</code> — mention the user\n<code>{owner}</code> — link to the owner\n<code>{hindi_anime}</code> — link to Lexi Anime Hindi",
+            "Send the new Invalid Message text. Telegram bold, italic, quotes and monospace formatting will be preserved.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — owner link\\n<code>{hindi_anime}</code> — Lexi Anime Hindi link",
             "invalid")
     elif action == "invalid_button":
         await state.update_data(button_panel_kind="invalid")
