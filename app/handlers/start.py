@@ -531,11 +531,6 @@ async def start_about(query: CallbackQuery, database):
     me = await query.bot.get_me()
     about_text = cfg.get("about_text") or "<b>✦ About {bot_mention}</b>\n\n<blockquote>A simple and reliable way to access files. 📂</blockquote>\n\n<b>⚡ Features</b>\n<blockquote>• Fast file delivery • One-tap access • Easy to use</blockquote>\n\n<b>✦ Made by: {owner}</b>"
     rendered = render_common_variables(about_text, query.from_user, me).replace("{bot_name}", render_common_variables("{bot_mention}", query.from_user, me))
-    # Replace the longer phrase first via a placeholder so the "Lexi" link
-    # cannot be nested inside the "Lexi Anime" anchor.
-    rendered = rendered.replace("Lexi Anime", "__LEXI_ANIME_LINK__")
-    rendered = rendered.replace("Lexi", '<a href="https://t.me/lexxiowner">Lexi</a>')
-    rendered = rendered.replace("__LEXI_ANIME_LINK__", '<a href="https://t.me/lexiAnime">Lexi Anime</a>')
     back_markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="《 BACK", callback_data="start:about_back")]])
     try:
         if query.message.photo or query.message.animation:
