@@ -512,6 +512,11 @@ async def settings_command(message: Message, settings: Settings, database):
         [("MODERATORS", "settings:mods"), ("STATS", "settings:stats")],
         [("CUSTOM BUTTON", "settings:custom_button")],
     ]))
+    # Keep the user's /settings command out of the visible panel history.
+    try:
+        await message.delete()
+    except TelegramAPIError:
+        pass
 
 @router.callback_query(F.data.startswith("settings:"))
 async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: Settings, database):
@@ -521,6 +526,13 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     action = query.data.split(":", 1)[1]
     db = database.db
     pending = await state.get_data()
+    # Leaving the chat-picker page must also dismiss its reply keyboard.
+    if pending.get("field") == "forcejoin_wait_chat" and query.message:
+        try:
+            keyboard_removal = await query.message.answer(" ", reply_markup=ReplyKeyboardRemove())
+            await keyboard_removal.delete()
+        except TelegramAPIError:
+            pass
     # Any inline navigation/control action supersedes the previous text-input
     # wait. Keep FSM data (some multi-step flows need it), but disarm the old
     # state before this callback optionally starts a new input flow.
