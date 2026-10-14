@@ -450,8 +450,11 @@ def test_settings_navigation_does_not_spawn_duplicate_panels_and_picker_prompt_i
 
     source = Path("app/handlers/settings.py").read_text()
     edit_page = source.split("async def edit_page(query, text, keyboard):", 1)[1].split("\nasync def render_home", 1)[0]
-    assert "query.message.answer(" not in edit_page
-    assert "never spawn duplicate panels" in edit_page
+    # A replacement is permitted only when Telegram refuses an edit, and
+    # the old panel must then be deleted so navigation cannot stack panels.
+    assert "query.message.answer(" in edit_page
+    assert "await query.message.delete()" in edit_page
+    assert "return replacement" in edit_page
     picker = source.split('elif action == "forcejoin_add":', 1)[1].split('elif action == "forcejoin_other":', 1)[0]
     assert '"\\u2063"' in picker
     assert "Choose the type of chat to add." not in picker
@@ -486,10 +489,10 @@ def test_force_join_chat_add_returns_to_main_page_with_fallback():
     source = Path("app/handlers/settings.py").read_text()
     handler = source.split('if field == "forcejoin_wait_chat":', 1)[1].split('if field == "custom_button_text":', 1)[0]
     assert 'text=format_settings_page(panel_text)' in handler
-    assert 'text=format_settings_page(panel_text)' in handler
     assert 'await message.bot.edit_message_text(' in handler
-    assert 'await message.bot.send_message(' in handler
-    assert 'await message.bot.delete_message(chat_id=panel_chat_id, message_id=panel_message_id)' in handler
+    # Normal success path edits the saved Force Join panel in place; it does
+    # not send another panel. Replacement is handled by edit_page navigation.
+    assert 'panel_chat_id, panel_message_id = data.get("forcejoin_panel_chat_id"), data.get("forcejoin_panel_message_id")' in handler
     assert 'channels.append(channel_id)' in handler
     assert 'await patch(db, "force_join", {"channels": channels})' in handler
 
