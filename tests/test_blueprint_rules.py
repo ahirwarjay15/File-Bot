@@ -627,3 +627,25 @@ async def test_force_join_uses_environment_channels_when_database_list_is_empty(
 
     database = SimpleNamespace(db=SimpleNamespace(settings=Collection()))
     assert await effective_force_join_channels(database, SimpleNamespace(force_join_channels=["@envchannel"])) == ["@envchannel"]
+
+
+def test_invalid_post_router_runs_before_file_and_batch_message_handlers():
+    from pathlib import Path
+
+    source = Path("main.py").read_text()
+    router_order = source.split("for r in (", 1)[1].split("):dp.include_router(r)", 1)[0]
+    assert router_order.index("misc_router") < router_order.index("file_router")
+    assert router_order.index("misc_router") < router_order.index("batch_router")
+
+
+def test_invalid_post_does_not_delete_submitted_message_when_response_fails():
+    from pathlib import Path
+
+    source = Path("app/handlers/misc.py").read_text()
+    handler = source.split("@router.message()\\nasync def invalid_post", 1)[1].split(
+        "\\n\\n@router.callback_query(F.data == \\"invalid:about\\")", 1
+    )[0]
+    assert "if response is not None:" in handler
+    assert handler.index("if response is not None:") < handler.index("await message.delete()")
+    assert "if response is None:" not in handler
+    assert "keeping the submitted message" in handler
