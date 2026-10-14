@@ -548,8 +548,10 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             [("《 BACK", "settings:forcejoin")],
         ]))
         if query.message:
+            # Telegram requires a message to display a request-chat keyboard;
+            # keep that carrier visually empty instead of adding another prompt.
             await tracked_answer(query.message, state,
-                "Choose the type of chat to add. The bot must already be an administrator.",
+                "\u2063",
                 reply_markup=ReplyKeyboardMarkup(
                     keyboard=[
                         [KeyboardButton(text="Group", request_chat=KeyboardButtonRequestChat(request_id=5101, chat_is_channel=False, request_title=True, request_username=True)),
