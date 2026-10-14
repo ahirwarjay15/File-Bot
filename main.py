@@ -5,7 +5,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 from app.config import get_settings
 from app.database.connection import Database
-from app.handlers.start import router as start_router
+from app.handlers.start import router as start_router, run_pending_join_request_cleanup_worker
 from app.handlers.file import router as file_router
 from app.handlers.batch import router as batch_router, run_batch_session_worker
 from app.handlers.admin import router as admin_router
@@ -34,7 +34,7 @@ async def main():
     logging.basicConfig(level=getattr(logging,settings.log_level.upper(),logging.INFO),format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",stream=sys.stdout)
     # Do not set a global parse mode: custom messages may contain arbitrary user text.
     bot=Bot(token=settings.bot_token.get_secret_value(),default=DefaultBotProperties(link_preview_is_disabled=True))
-    database=Database(settings);worker=None;batch_worker=None;broadcast_worker=None;delivery_worker=None
+    database=Database(settings);worker=None;batch_worker=None;broadcast_worker=None;delivery_worker=None;join_request_cleanup_worker=None
     try:
         await database.connect()
         dp=Dispatcher(storage=MemoryStorage());dp["settings"]=settings;dp["database"]=database
@@ -45,10 +45,11 @@ async def main():
         batch_worker=asyncio.create_task(supervise_worker(run_batch_session_worker, bot, database.db, name="batch-session-worker"),name="batch-session-worker")
         delivery_worker=asyncio.create_task(supervise_worker(run_batch_delivery_worker, bot, database.db, name="batch-delivery-worker"),name="batch-delivery-worker")
         broadcast_worker=asyncio.create_task(supervise_worker(run_broadcast_worker, bot, database.db, name="broadcast-worker"),name="broadcast-worker")
+        join_request_cleanup_worker=asyncio.create_task(supervise_worker(run_pending_join_request_cleanup_worker, database.db, name="pending-join-request-cleanup-worker"),name="pending-join-request-cleanup-worker")
         logging.getLogger(__name__).info("Polling started")
         await dp.start_polling(bot,allowed_updates=dp.resolve_used_update_types())
     finally:
-        for task in (worker, batch_worker, broadcast_worker, delivery_worker):
+        for task in (worker, batch_worker, broadcast_worker, delivery_worker, join_request_cleanup_worker):
             if task:
                 task.cancel()
                 try:
