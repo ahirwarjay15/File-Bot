@@ -258,10 +258,10 @@ async def build_forcejoin_page(bot, db, settings):
     rows = [channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)]
     if len(channels) < 10:
         rows.append([("✚ ADD", "settings:forcejoin_add")])
-    rows.append([("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")])
     rows.extend([
         [("FORCE JOIN MESSAGE", "settings:forcejoin_message"), ("FORCE JOIN MEDIA", "settings:forcejoin_media")],
-        [("VERIFY", "settings:forcejoin_verify_text")],
+        [("VERIFY", "settings:forcejoin_verify_text"),
+         ("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")],
         [("《 BACK", "settings:home")],
     ])
     text = ("FORCE JOIN\n\n"
