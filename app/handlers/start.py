@@ -163,18 +163,18 @@ async def _cancel_gate_animation(bot, user_id: int, payload: str,
     if not entry:
         return None
     task, separate_message_id = entry
-    # Cancel the animation task and confirm cancellation before changing the
-    # same Telegram message. This prevents an in-flight frame edit from racing
-    # with the final Force Join post or file delivery; cancellation does not
-    # wait for the animation cycle to finish.
+    # Wake the animation immediately if it is sleeping. If a Telegram edit is
+    # already in flight, let that one request finish before the final message
+    # edit/delete so an old animation frame cannot overwrite the final state.
+    if stop_event:
+        stop_event.set()
     if not task.done():
-        task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
         except Exception:
-            log.debug("Force Join animation task ended during cancellation", exc_info=True)
+            log.debug("Force Join animation task ended during shutdown", exc_info=True)
     if separate_message_id and delete_separate:
         async def cleanup_animation_message():
             try:
@@ -207,7 +207,23 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     key = (user_id, payload)
     try:
         while True:
-            await asyncio.sleep(max(0.0, next_beat - time.monotonic()))
+            if stop_event and stop_event.is_set():
+                break
+            delay = max(0.0, next_beat - time.monotonic())
+            if stop_event:
+                # Event-driven wait means shutdown never waits for a frame beat.
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=delay)
+                except asyncio.TimeoutError:
+                    pass
+                if stop_event.is_set():
+                    break
+            else:
+                await asyncio.sleep(delay)
+            # Re-check immediately before issuing an edit. Verification may
+            # have completed while the timer was waking up.
+            if stop_event and stop_event.is_set():
+                break
             frame_index = (frame_index + 1) % len(frames)
             animated = animation_frame_text(prefix_value, frames[frame_index])
             while True:
