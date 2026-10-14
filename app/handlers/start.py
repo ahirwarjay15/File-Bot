@@ -168,8 +168,6 @@ async def join_status(bot, user_id: int, channels: list[str], db=None) -> list[s
             if not verified and _is_private_chat(chat) and mode == "join_request" and db is not None:
                 pending = await db.pending_join_requests.find_one({"chat_id": chat.id, "user_id": user_id})
                 verified = _pending_request_is_recent(pending)
-                if pending and not verified:
-                    await db.pending_join_requests.delete_one({"chat_id": chat.id, "user_id": user_id})
             return None if verified else channel
         except TelegramAPIError:
             return channel
