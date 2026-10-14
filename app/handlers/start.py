@@ -549,7 +549,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
             prefix_value = str(animation_cfg.get("prefix") or "Checking")
             if prefix_value == "Checking..":
                 prefix_value = "Checking"
-            first = f"{html.escape(prefix_value)} <b>{html.escape(str(frames[0]))}</b>"
+            first = animation_frame_text(prefix_value, frames[0])
             try:
                 if force_cfg.get("poster_file_id"):
                     animation_post = await bot.send_animation(user_id, force_cfg["poster_file_id"], caption=first, parse_mode="HTML")
