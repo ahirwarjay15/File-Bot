@@ -576,7 +576,7 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
         if not isinstance(frames_for_wait, list) or len(frames_for_wait) != 3:
             frames_for_wait = [".", "..", "..."]
         try:
-            frame_speed = min(3.0, max(1.0, float(animation_cfg.get("speed", 1.0)))
+            frame_speed = min(3.0, max(1.0, float(animation_cfg.get("speed", 1.0))))
         except (TypeError, ValueError):
             frame_speed = 1.0
         await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
