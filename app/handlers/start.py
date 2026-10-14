@@ -219,7 +219,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                             chat_id=user_id, message_id=target_id, text=animated, parse_mode="HTML",
                         )
                     else:
-                        content = animated if animation_only else f"{base_text}\\n\\n{animated}"
+                        content = animated if animation_only else f"{base_text}\n\n{animated}"
                         if gate_message.photo or gate_message.animation or gate_message.document:
                             await bot.edit_message_caption(
                                 chat_id=user_id, message_id=target_id, caption=content,
@@ -242,8 +242,11 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                     log.debug("Force Join animation stopped because its message could not be edited", exc_info=True)
                     return
                 break
-            # Deadline-based pacing avoids adding API-call duration to every beat.
+            # Keep a fixed beat when requests are fast; avoid catch-up bursts when
+            # Telegram takes longer than one configured interval.
             next_beat += speed
+            if next_beat <= time.monotonic():
+                next_beat = time.monotonic() + speed
     finally:
         if _gate_animation_stop_events.get(key) is stop_event:
             _gate_animation_stop_events.pop(key, None)
