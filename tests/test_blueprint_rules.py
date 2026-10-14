@@ -512,3 +512,13 @@ def test_edit_page_replaces_uneditable_panel_and_deletes_old_panel():
     assert "await query.message.edit_text(" in edit_page
     assert "await query.message.answer(" in edit_page
     assert "await query.message.delete()" in edit_page
+
+
+def test_force_join_add_tracks_the_panel_message_returned_by_edit_page():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    assert "return replacement" in source.split("async def edit_page", 1)[1].split("async def render_home", 1)[0]
+    add_flow = source.split('elif action == "forcejoin_add":', 1)[1].split('elif action == "forcejoin_other":', 1)[0]
+    assert "panel_message = await edit_page(query" in add_flow
+    assert "forcejoin_panel_message_id=panel_message.message_id" in add_flow
