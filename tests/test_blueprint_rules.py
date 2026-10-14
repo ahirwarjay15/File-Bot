@@ -478,3 +478,17 @@ def test_settings_command_message_is_deleted_and_picker_keyboard_is_removed_on_n
     callbacks = source.split('async def settings_callbacks', 1)[1].split('\nasync def ', 1)[0]
     assert 'pending.get("field") == "forcejoin_wait_chat"' in callbacks
     assert 'reply_markup=ReplyKeyboardRemove()' in callbacks
+
+
+def test_force_join_chat_add_returns_to_main_page_with_fallback():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    handler = source.split('if field == "forcejoin_wait_chat":', 1)[1].split('if field == "custom_button_text":', 1)[0]
+    assert 'text=format_settings_page(panel_text)' in handler
+    assert 'text=format_settings_page(panel_text)' in handler
+    assert 'await message.bot.edit_message_text(' in handler
+    assert 'await message.bot.send_message(' in handler
+    assert 'await message.bot.delete_message(chat_id=panel_chat_id, message_id=panel_message_id)' in handler
+    assert 'channels.append(channel_id)' in handler
+    assert 'await patch(db, "force_join", {"channels": channels})' in handler
