@@ -57,6 +57,40 @@ async def effective_force_join_channels(database, settings) -> list[str]:
             channels.append(channel)
     return channels
 
+def normalize_animation_config(cfg: dict | None) -> dict:
+    """Normalize legacy defaults and clamp the timer for both animation modes."""
+    normalized = dict(cfg or {})
+    legacy_default = not normalized.get("prefix") or normalized.get("prefix") == "Checking.."
+    if legacy_default:
+        normalized["prefix"] = "Checking"
+        normalized["frames"] = [".", "..", "..."]
+        normalized["speed"] = 0.10
+    frames = normalized.get("frames")
+    if not isinstance(frames, list) or len(frames) != 3:
+        normalized["frames"] = [".", "..", "..."]
+    try:
+        speed = float(normalized.get("speed", 0.10))
+    except (TypeError, ValueError):
+        speed = 0.10
+    normalized["speed"] = min(1.0, max(0.10, speed))
+    if normalized.get("mode") not in ("force_join_poster", "new_message"):
+        normalized["mode"] = "force_join_poster"
+    return normalized
+
+
+async def load_animation_config(db) -> dict:
+    """Load and persist the corrected legacy defaults once, so old saved values do not flash."""
+    raw = await db.settings.find_one({"key": "animation"}) or {}
+    normalized = normalize_animation_config(raw)
+    if any(raw.get(key) != normalized.get(key) for key in ("prefix", "frames", "speed", "mode")):
+        await db.settings.update_one(
+            {"key": "animation"},
+            {"$set": {key: normalized[key] for key in ("prefix", "frames", "speed", "mode")}},
+            upsert=True,
+        )
+    return normalized
+
+
 def _join_signature(channels: list[str]) -> str:
     return hashlib.sha256(",".join(sorted(c.strip() for c in channels if c.strip())).encode()).hexdigest()
 
@@ -208,7 +242,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     if not channels:
         return False
 
-    animation_cfg = await database.db.settings.find_one({"key": "animation"}) or {}
+    animation_cfg = await load_animation_config(database.db)
     animation_enabled = bool(animation_cfg.get("enabled"))
     animation_mode = animation_cfg.get("mode", "force_join_poster")
     animation_post = None
@@ -230,9 +264,9 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
                 if cfg.get("poster_file_id"):
                     animation_post = await bot.send_animation(user.id, cfg["poster_file_id"], caption=first, parse_mode="HTML")
                 elif cfg.get("poster_photo_id"):
-                    animation_post = await bot.send_photo(user.id, cfg["poster_photo_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
+                    animation_post = await bot.send_photo(user.id, cfg["poster_photo_id"], caption=first, parse_mode="HTML")
                 else:
-                    animation_post = await bot.send_message(user.id, f"<i>{first}</i>", parse_mode="HTML")
+                    animation_post = await bot.send_message(user.id, first, parse_mode="HTML")
                 await _start_gate_animation(bot, user.id, payload, animation_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, animation_only=True)
             except TelegramAPIError:
                 log.warning("Could not create Force Join animation poster during deeplink check", exc_info=True)
@@ -511,11 +545,11 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
             first = f"{html.escape(prefix_value)} <b>{html.escape(str(frames[0]))}</b>"
             try:
                 if force_cfg.get("poster_file_id"):
-                    animation_post = await bot.send_animation(user_id, force_cfg["poster_file_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
+                    animation_post = await bot.send_animation(user_id, force_cfg["poster_file_id"], caption=first, parse_mode="HTML")
                 elif force_cfg.get("poster_photo_id"):
-                    animation_post = await bot.send_photo(user_id, force_cfg["poster_photo_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
+                    animation_post = await bot.send_photo(user_id, force_cfg["poster_photo_id"], caption=first, parse_mode="HTML")
                 else:
-                    animation_post = await bot.send_message(user_id, f"<i>{first}</i>", parse_mode="HTML")
+                    animation_post = await bot.send_message(user_id, first, parse_mode="HTML")
                 await _start_gate_animation(bot, user_id, payload, animation_post, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, animation_only=True)
                 # New poster is live now; remove the previous Force Join post at once.
                 if animation_mode == "force_join_poster" and old_post:
@@ -571,16 +605,13 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
 
         # Stop the animation, then edit its poster in place with the current
         # remaining-channel buttons and configured Force Join message.
-        await _cancel_gate_animation(bot, user_id, payload)
+        separate_animation_id = await _cancel_gate_animation(
+            bot, user_id, payload, delete_separate=(animation_mode != "new_message")
+        )
         if animation_enabled and animation_mode == "force_join_poster" and animation_post:
             if await _edit_force_join_post(animation_post, rendered, markup):
                 return
 
-        separate_animation_id = None
-        if animation_enabled and animation_mode == "new_message":
-            separate_animation_id = await _cancel_gate_animation(
-                bot, user_id, payload, delete_separate=False
-            )
         new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
         if animation_post and animation_post.message_id != new_post.message_id:
             try:
