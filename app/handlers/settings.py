@@ -1311,15 +1311,45 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         except TelegramAPIError:
             pass
         # Delete the selected-chat message too; all picker prompts are removed above.
-        # Refresh the original panel in place so the user lands on the Force Join main page.
+        # Refresh the original Add panel in place. If Telegram rejects the edit,
+        # send the main panel as a fallback and remove the stale Add panel.
         if panel_chat_id and panel_message_id:
+            panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
             try:
-                panel_text, panel_markup = await build_forcejoin_page(message.bot, db, settings)
-                await message.bot.edit_message_text(chat_id=panel_chat_id, message_id=panel_message_id,
-                    text=format_settings_page(panel_text), parse_mode="HTML", reply_markup=panel_markup,
-                    link_preview_options={"is_disabled": True})
+                await message.bot.edit_message_text(
+                    chat_id=panel_chat_id, message_id=panel_message_id,
+                    text=format_settings_page(panel_text), parse_mode="HTML",
+                    reply_markup=panel_markup, link_preview_options={"is_disabled": True},
+                )
+            except TelegramBadRequest as exc:
+                if "message is not modified" not in str(exc).lower():
+                    try:
+                        replacement = await message.bot.send_message(
+                            chat_id=panel_chat_id, text=format_settings_page(panel_text),
+                            parse_mode="HTML", reply_markup=panel_markup,
+                            link_preview_options={"is_disabled": True},
+                        )
+                    except TelegramAPIError:
+                        replacement = None
+                    if replacement:
+                        try:
+                            await message.bot.delete_message(chat_id=panel_chat_id, message_id=panel_message_id)
+                        except TelegramAPIError:
+                            pass
             except TelegramAPIError:
-                pass
+                try:
+                    replacement = await message.bot.send_message(
+                        chat_id=panel_chat_id, text=format_settings_page(panel_text),
+                        parse_mode="HTML", reply_markup=panel_markup,
+                        link_preview_options={"is_disabled": True},
+                    )
+                except TelegramAPIError:
+                    replacement = None
+                if replacement:
+                    try:
+                        await message.bot.delete_message(chat_id=panel_chat_id, message_id=panel_message_id)
+                    except TelegramAPIError:
+                        pass
         return
 
     if field == "custom_button_text":
