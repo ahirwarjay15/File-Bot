@@ -610,9 +610,12 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
 
         # Stop the animation, then edit its poster in place with the current
         # remaining-channel buttons and configured Force Join message.
-        separate_animation_id = await _cancel_gate_animation(
-            bot, user_id, payload, delete_separate=(animation_mode != "new_message")
-        )
+        if animation_mode == "new_message":
+            separate_animation_id = await _cancel_gate_animation(
+                bot, user_id, payload, delete_separate=False
+            )
+        else:
+            separate_animation_id = await _cancel_gate_animation(bot, user_id, payload)
         if animation_enabled and animation_mode == "force_join_poster" and animation_post:
             if await _edit_force_join_post(animation_post, rendered, markup):
                 return
