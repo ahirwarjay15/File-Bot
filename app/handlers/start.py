@@ -166,8 +166,6 @@ async def _cancel_gate_animation(bot, user_id: int, payload: str,
     # Wake the animation immediately if it is sleeping. If a Telegram edit is
     # already in flight, let that one request finish before the final message
     # edit/delete so an old animation frame cannot overwrite the final state.
-    if stop_event:
-        stop_event.set()
     if not task.done():
         try:
             await task
@@ -245,7 +243,16 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                                 parse_mode="HTML", reply_markup=markup,
                             )
                 except TelegramRetryAfter as exc:
-                    await asyncio.sleep(max(speed, float(exc.retry_after)))
+                    retry_delay = max(speed, float(exc.retry_after))
+                    if stop_event:
+                        try:
+                            await asyncio.wait_for(stop_event.wait(), timeout=retry_delay)
+                        except asyncio.TimeoutError:
+                            pass
+                        if stop_event.is_set():
+                            return
+                    else:
+                        await asyncio.sleep(retry_delay)
                     next_beat = time.monotonic()
                     continue
                 except TelegramBadRequest as exc:
