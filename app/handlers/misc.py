@@ -134,6 +134,7 @@ async def invalid_post(message: Message, settings: Settings, database):
             try:
                 response = await message.answer(text, parse_mode="HTML", reply_markup=markup)
             except TelegramAPIError:
+                # If both sends fail, keeping the submitted message is intentional.
                 log.exception("Invalid-post text response failed to send")
                 return
 
