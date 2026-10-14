@@ -276,14 +276,14 @@ async def build_forcejoin_page(bot, db, settings):
     channel_buttons = []
     for i, channel in enumerate(channels[:10]):
         channel_cfg = await db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        label = channel_cfg.get("channel_title")
-        if not label:
-            try:
-                chat = await bot.get_chat(int(channel) if str(channel).lstrip("-").isdigit() else channel)
-                label = chat.title or chat.full_name or chat.username
-            except (TelegramAPIError, ValueError):
-                label = channel_cfg.get("button_text") or channel.lstrip("@")
-        channel_buttons.append(((label or channel_cfg.get("button_text") or channel.lstrip("@"))[:64], f"settings:forcejoin_channel:{i}"))
+        # The admin's Added Channels list always shows the channel/group name,
+        # never the user-facing custom verification button text.
+        try:
+            chat = await bot.get_chat(int(channel) if str(channel).lstrip("-").isdigit() else channel)
+            label = chat.title or chat.full_name or channel_cfg.get("channel_title") or chat.username
+        except (TelegramAPIError, ValueError):
+            label = channel_cfg.get("channel_title") or channel.lstrip("@")
+        channel_buttons.append(((label or channel.lstrip("@"))[:64], f"settings:forcejoin_channel:{i}"))
     rows = [channel_buttons[i:i+2] for i in range(0, len(channel_buttons), 2)]
     if len(channels) < 10:
         rows.append([("✚ ADD", "settings:forcejoin_add")])
