@@ -5,7 +5,7 @@ import html
 import asyncio
 import time
 from urllib.parse import urlparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from aiogram import Router,F
 from aiogram.filters import CommandStart
 from aiogram.filters.command import CommandObject
@@ -596,7 +596,7 @@ async def start_about_back(query: CallbackQuery, settings: Settings, database):
 async def cleanup_expired_pending_join_requests(db, now=None, max_age_days: int = 15):
     """Delete pending-request records only after their 15-day expiry."""
     now = now or datetime.now(timezone.utc)
-    cutoff = now - __import__("datetime").timedelta(days=max_age_days)
+    cutoff = now - timedelta(days=max_age_days)
     result = await db.pending_join_requests.delete_many({"requested_at": {"$lte": cutoff}})
     return getattr(result, "deleted_count", 0)
 
