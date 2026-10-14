@@ -646,9 +646,7 @@ def test_invalid_post_does_not_delete_submitted_message_when_response_fails():
     from pathlib import Path
 
     source = Path("app/handlers/misc.py").read_text()
-    handler = source.split("@router.message()\\nasync def invalid_post", 1)[1].split(
-        "\\n\\n@router.callback_query(F.data == \\"invalid:about\\")", 1
-    )[0]
+    handler = source.split("async def invalid_post", 1)[1].split("@router.callback_query", 1)[0]
     assert "if response is not None:" in handler
     assert handler.index("if response is not None:") < handler.index("await message.delete()")
     assert "if response is None:" not in handler
