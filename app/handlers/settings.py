@@ -304,6 +304,22 @@ async def render_forcejoin(query, db, settings):
     text, markup = await build_forcejoin_page(query.bot, db, settings)
     await edit_page(query, text, markup)
 
+async def render_forcejoin_message(query):
+    await edit_page(query, "FORCE JOIN MESSAGE\\nCustomize the message shown to users who still need to join required channels.", kb([
+        [("EDIT", "settings:forcejoin_message_edit"), ("SEE", "settings:forcejoin_message_see")],
+        [("DEFAULT", "settings:forcejoin_message_default")],
+        [("《 BACK", "settings:forcejoin")],
+    ]))
+
+
+async def render_invalid_text(query):
+    await edit_page(query, "INVALID POST TEXT\\nCustomize the reply shown when users send messages instead of a valid file link.", kb([
+        [("EDIT", "settings:invalid_text_edit"), ("SEE", "settings:invalid_text_see")],
+        [("DEFAULT", "settings:invalid_text_default")],
+        [("《 BACK", "settings:invalid")],
+    ]))
+
+
 async def render_start(query, db):
     cfg = await db.settings.find_one({"key": "start_message"}) or {}
     about_enabled = bool(cfg.get("about_enabled", True))
