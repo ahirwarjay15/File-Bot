@@ -492,3 +492,23 @@ def test_force_join_chat_add_returns_to_main_page_with_fallback():
     assert 'await message.bot.delete_message(chat_id=panel_chat_id, message_id=panel_message_id)' in handler
     assert 'channels.append(channel_id)' in handler
     assert 'await patch(db, "force_join", {"channels": channels})' in handler
+
+
+def test_force_join_disable_button_is_next_to_verify():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    page = source.split("async def build_forcejoin_page", 1)[1].split("async def render_forcejoin", 1)[0]
+    assert '[("VERIFY", "settings:forcejoin_verify_text"),' in page
+    assert '("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")' in page
+    assert 'rows.append([("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:forcejoin_toggle")])' not in page
+
+
+def test_edit_page_replaces_uneditable_panel_and_deletes_old_panel():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    edit_page = source.split("async def edit_page", 1)[1].split("async def render_home", 1)[0]
+    assert "await query.message.edit_text(" in edit_page
+    assert "await query.message.answer(" in edit_page
+    assert "await query.message.delete()" in edit_page
