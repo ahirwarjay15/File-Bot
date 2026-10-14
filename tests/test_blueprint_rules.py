@@ -165,6 +165,9 @@ async def test_pending_join_request_only_verifies_join_request_mode():
         async def find_one(self, query):
             return self.doc
 
+        async def delete_one(self, query):
+            self.doc = None
+
     class FakeDB:
         def __init__(self, mode):
             from datetime import datetime, timezone
