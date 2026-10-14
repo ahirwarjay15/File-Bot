@@ -719,6 +719,27 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await show_input_prompt(query, state, "forcejoin_message",
             "Send the Force Join message. Telegram bold, italic, quotes and monospace formatting will be preserved.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — owner link\\n<code>{hindi_anime}</code> — Lexi Anime Hindi link\\n<code>{remaining_count}</code> — remaining channels count",
             "forcejoin")
+    elif action == "forcejoin_message_see":
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        me = await query.bot.get_me()
+        preview = str(cfg.get("message") or DEFAULT_FORCE_JOIN_MESSAGE)
+        user_label = query.from_user.full_name if query.from_user else "User"
+        for token, replacement in {
+            "{bot_mention}": me.full_name or me.username or "Bot",
+            "{mention}": user_label, "{user_mention}": user_label, "{user}": user_label,
+            "{owner}": "Lexi", "{hindi_anime}": "Lexi Anime Hindi", "{remaining_count}": "3",
+        }.items():
+            preview = preview.replace(token, replacement)
+        await query.answer(plain_preview(preview)[:190], show_alert=True)
+        return
+    elif action == "forcejoin_message_default":
+        await patch(db, "force_join", {"message": DEFAULT_FORCE_JOIN_MESSAGE}, {"enabled": False, "channels": [], "other_links": []})
+        me = await query.bot.get_me()
+        preview = DEFAULT_FORCE_JOIN_MESSAGE.replace("{mention}", query.from_user.full_name if query.from_user else "User").replace("{remaining_count}", "3")
+        preview = preview.replace("{bot_mention}", me.full_name or me.username or "Bot")
+        await query.answer("✅ Force Join message restored to the recommended default.\\n\\n" + plain_preview(preview)[:130], show_alert=True)
+        await render_forcejoin_message(query)
+        return
     elif action == "forcejoin_media":
         await edit_page(query, "FORCE JOIN MEDIA\n\nAdd or remove the image/GIF shown with the Force Join message.", kb([
             [("✚ ADD", "settings:forcejoin_media_add"), ("REMOVE", "settings:forcejoin_media_remove")],
@@ -915,6 +936,27 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await show_input_prompt(query, state, "invalid_text",
             "Send the new Invalid Message text. Telegram bold, italic, quotes and monospace formatting will be preserved.\\n\\n<code>{bot_mention}</code> — mention your bot\\n<code>{mention}</code> — mention the user\\n<code>{owner}</code> — owner link\\n<code>{hindi_anime}</code> — Lexi Anime Hindi link",
             "invalid")
+    elif action == "invalid_text_see":
+        cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
+        me = await query.bot.get_me()
+        preview = str(cfg.get("text") or DEFAULT_INVALID)
+        user_label = query.from_user.full_name if query.from_user else "User"
+        for token, replacement in {
+            "{bot_mention}": me.full_name or me.username or "Bot",
+            "{mention}": user_label, "{user_mention}": user_label, "{user}": user_label,
+            "{owner}": "Lexi", "{hindi_anime}": "Lexi Anime Hindi",
+        }.items():
+            preview = preview.replace(token, replacement)
+        await query.answer(plain_preview(preview)[:190], show_alert=True)
+        return
+    elif action == "invalid_text_default":
+        await patch(db, "invalid_post", {"text": DEFAULT_INVALID}, {"enabled": False, "about_enabled": False})
+        me = await query.bot.get_me()
+        preview = DEFAULT_INVALID.replace("{mention}", query.from_user.full_name if query.from_user else "User")
+        preview = preview.replace("{bot_mention}", me.full_name or me.username or "Bot")
+        await query.answer("✅ Invalid-message text restored to the recommended default.\\n\\n" + plain_preview(preview)[:130], show_alert=True)
+        await render_invalid_text(query)
+        return
     elif action == "invalid_button":
         await state.update_data(button_panel_kind="invalid")
         panel = await render_invalid_button(query, db)
