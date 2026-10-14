@@ -916,7 +916,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "animation_speed":
         cfg = await db.settings.find_one({"key": "animation"}) or {}
         speed = float(cfg.get("speed", 1.0))
-        speed = min(3.0, max(1.0, speed))
+        speed = min(1.0, max(0.25, speed))
         next_speed = round(0.25 + ((round((speed - 0.25) / 0.05) + 1) % 16) * 0.05, 2)
         await patch(db, "animation", {"speed": next_speed}, {"enabled": False, "prefix": "Checking", "frames": [".", "..", "..."], "mode": "force_join_poster"})
         await render_animation(query, db)
