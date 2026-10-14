@@ -530,9 +530,13 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
     user_id = query.from_user.id
     old_post = query.message
     await _cancel_gate_animation(bot, user_id, payload)
-    force_cfg = await database.db.settings.find_one({"key": "force_join"}) or {}
+    # Load independent settings concurrently so the Verify animation can start sooner.
+    force_cfg_result, animation_cfg = await asyncio.gather(
+        database.db.settings.find_one({"key": "force_join"}),
+        load_animation_config(database.db),
+    )
+    force_cfg = force_cfg_result or {}
     channels = await effective_force_join_channels(database, settings) if force_cfg.get("enabled", False) else []
-    animation_cfg = await load_animation_config(database.db)
     animation_enabled = bool(animation_cfg.get("enabled"))
     animation_mode = animation_cfg.get("mode", "force_join_poster")
     animation_post = None
