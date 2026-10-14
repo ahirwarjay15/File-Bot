@@ -525,3 +525,43 @@ def test_force_join_add_tracks_the_panel_message_returned_by_edit_page():
     add_flow = source.split('elif action == "forcejoin_add":', 1)[1].split('elif action == "forcejoin_other":', 1)[0]
     assert "panel_message = await edit_page(query" in add_flow
     assert "forcejoin_panel_message_id=panel_message.message_id" in add_flow
+
+
+def test_rich_text_settings_preserve_telegram_entities_and_html_success_prompt():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    assert "html_text = getattr(message, \"html_text\", None)" in source
+    assert 'value = formatted_input_text(message, value)' in source
+    assert 'parse_mode="HTML")' in source.split("async def finish_input_panel", 1)[1].split("async def edit_page", 1)[0]
+    assert 'await patch(db, "force_join", {"message": value})' in source
+    assert 'await patch(db, "invalid_post", {"text": value}' in source
+    assert 'await patch(db, "after_delete", {"text": value}' in source
+
+
+def test_message_see_and_default_popups_are_available_for_all_requested_settings():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    for action in (
+        "start_text_see", "start_text_default",
+        "forcejoin_message_see", "forcejoin_message_default",
+        "auto_message_see", "auto_message_default",
+        "invalid_text_see", "invalid_text_default",
+    ):
+        assert f'action == "{action}"' in source
+    assert "def plain_preview(value)" in source
+    assert "restored to the recommended default" in source
+
+
+def test_force_join_chat_add_has_a_main_panel_fallback_and_poster_is_kept_for_verify():
+    from pathlib import Path
+
+    settings_source = Path("app/handlers/settings.py").read_text()
+    start_source = Path("app/handlers/start.py").read_text()
+    handler = settings_source.split('if field == "forcejoin_wait_chat":', 1)[1].split('if field == "custom_button_text":', 1)[0]
+    assert "build_forcejoin_page(message.bot, db, settings)" in handler
+    assert "replacement = await message.bot.send_message(" in handler
+    assert "await message.bot.delete_message(chat_id=panel_chat_id, message_id=panel_message_id)" in handler
+    assert 'force_cfg.get("poster_file_id") or force_cfg.get("poster_photo_id")' in start_source
+    assert 'cfg.get("poster_file_id") or cfg.get("poster_photo_id")' in start_source
