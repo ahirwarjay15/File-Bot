@@ -121,9 +121,10 @@ def force_join_button_label(channel_cfg: dict, position: int) -> str:
     return (custom or f"Join {position}")[:64]
 
 
-def _is_private_channel(chat) -> bool:
-    """Return true only for channel chats without a public username."""
-    return getattr(chat, "type", None) == "channel" and not getattr(chat, "username", None)
+def _is_private_chat(chat) -> bool:
+    """Return true for private channels and groups without a public username."""
+    chat_type = getattr(chat, "type", None)
+    return chat_type in ("channel", "group", "supergroup") and not getattr(chat, "username", None)
 
 
 def _is_member_status(member) -> bool:
@@ -605,7 +606,7 @@ async def remember_pending_join_request(event, database):
 @router.chat_member()
 async def clear_accepted_private_join_request(event, database):
     """Drop a saved request only when a private-channel request becomes membership."""
-    if not _is_private_channel(event.chat):
+    if not _is_private_chat(event.chat):
         return
     if _is_member_status(event.old_chat_member) or not _is_member_status(event.new_chat_member):
         return
