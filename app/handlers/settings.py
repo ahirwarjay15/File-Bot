@@ -61,6 +61,22 @@ DEFAULT_START_TEXT = "<b>Hey {user_mention}✨</b>\n\n<i>Welcome to the fastest 
 DEFAULT_AFTER_TEXT = "Yᴏᴜʀ Vɪᴅᴇᴏ / Fɪʟᴇ Iꜱ Sᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ Dᴇʟᴇᴛᴇᴅ ✅"
 DEFAULT_AFTER_BUTTON = "Gᴇᴛ ʏᴏᴜʀ ꜰɪʟᴇꜱ ᴀɢᴀɪɴ"
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
+DEFAULT_FORCE_JOIN_MESSAGE = "Hey {mention}!\\nPlease join my {remaining_count} channel(s) to use me."
+
+
+def formatted_input_text(message, fallback):
+    """Preserve Telegram formatting entities as HTML for HTML-rendered bot messages."""
+    html_text = getattr(message, "html_text", None)
+    if html_text:
+        return html_text.strip()
+    return normalize_telegram_text(fallback).strip()
+
+
+def plain_preview(value):
+    """Convert saved HTML-formatted text to readable plain text for alert popups."""
+    import re
+    from html import unescape
+    return unescape(re.sub(r"</?[^>]+>", "", str(value or ""))).strip()
 
 class SettingInput(StatesGroup):
     waiting = State()
