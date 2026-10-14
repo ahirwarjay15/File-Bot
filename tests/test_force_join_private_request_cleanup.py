@@ -1,8 +1,15 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 
-from app.handlers.start import _is_private_chat, clear_accepted_private_join_request
+from app.handlers.start import (
+    _is_private_chat,
+    _pending_request_is_recent,
+    cleanup_expired_pending_join_requests,
+    clear_accepted_private_join_request,
+    join_status,
+)
 
 
 @pytest.mark.parametrize(
@@ -72,3 +79,56 @@ async def test_membership_loss_does_not_count_as_request_acceptance():
     await clear_accepted_private_join_request(event, database)
 
     assert pending.deleted == []
+
+
+
+def test_pending_request_expires_after_15_days():
+    now = datetime.now(timezone.utc)
+    assert _pending_request_is_recent({"requested_at": now - timedelta(days=14, hours=23)}, now=now)
+    assert not _pending_request_is_recent({"requested_at": now - timedelta(days=15, seconds=1)}, now=now)
+
+
+class FakePendingRequestCollection:
+    def __init__(self):
+        self.query = None
+
+    async def delete_many(self, query):
+        self.query = query
+        return SimpleNamespace(deleted_count=3)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_worker_query_only_targets_requests_older_than_15_days():
+    pending = FakePendingRequestCollection()
+    db = SimpleNamespace(pending_join_requests=pending)
+    now = datetime.now(timezone.utc)
+
+    deleted = await cleanup_expired_pending_join_requests(db, now=now)
+
+    assert deleted == 3
+    assert pending.query == {"requested_at": {"$lte": now - timedelta(days=15)}}
+
+
+@pytest.mark.asyncio
+async def test_public_chat_never_passes_from_pending_request_record():
+    class FakeBot:
+        async def get_chat(self, channel):
+            return SimpleNamespace(id=-100123, type="channel", username="public_channel")
+
+        async def get_chat_member(self, chat_id, user_id):
+            return SimpleNamespace(status="left", is_member=False)
+
+    class FakeSettings:
+        async def find_one(self, query):
+            return {"mode": "join_request"}
+
+    class FakePending:
+        async def find_one(self, query):
+            return {"chat_id": -100123, "user_id": 42, "requested_at": datetime.now(timezone.utc)}
+
+        async def delete_one(self, query):
+            raise AssertionError("Public chat verification must not inspect or delete pending records")
+
+    db = SimpleNamespace(settings=FakeSettings(), pending_join_requests=FakePending())
+
+    assert await join_status(FakeBot(), 42, ["@public_channel"], db) == ["@public_channel"]
