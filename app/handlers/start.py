@@ -127,7 +127,10 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     frames = cfg.get("frames")
     if not isinstance(frames, list) or len(frames) != 3:
         frames = [".", "..", "..."]
-    prefix = html.escape(str(cfg.get("prefix") or "Checking.."))
+    prefix_value = str(cfg.get("prefix") or "Checking")
+    if prefix_value == "Checking..":
+        prefix_value = "Checking"
+    prefix = html.escape(prefix_value)
     try:
         speed = float(cfg.get("speed", 0.10))
     except (TypeError, ValueError):
@@ -137,14 +140,14 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     target_id = separate_message_id if mode == "new_message" else gate_message.message_id
     while True:
         for frame in frames:
-            animated = f"{prefix} {html.escape(str(frame))}"
+            animated = f"{prefix} <b>{html.escape(str(frame))}</b>"
             try:
                 if mode == "new_message":
                     await bot.edit_message_text(
-                        chat_id=user_id, message_id=target_id, text=animated,
+                        chat_id=user_id, message_id=target_id, text=animated, parse_mode="HTML",
                     )
                 else:
-                    content = f"<i>{animated}</i>" if animation_only else f"{base_text}\n\n<i>{animated}</i>"
+                    content = animated if animation_only else f"{base_text}\n\n{animated}"
                     if gate_message.photo or gate_message.animation or gate_message.document:
                         await bot.edit_message_caption(
                             chat_id=user_id, message_id=target_id, caption=content,
@@ -178,9 +181,12 @@ async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: M
     mode = cfg.get("mode", "force_join_poster")
     separate_id = None
     if mode == "new_message":
-        first = f"{html.escape(str(cfg.get('prefix') or 'Checking..'))} {html.escape(str((cfg.get('frames') or ['.', '..', '...'])[0]))}"
+        prefix_value = str(cfg.get("prefix") or "Checking")
+        if prefix_value == "Checking..":
+            prefix_value = "Checking"
+        first = f"{html.escape(prefix_value)} <b>{html.escape(str((cfg.get('frames') or ['.', '..', '...'])[0]))}</b>"
         try:
-            animation_message = await bot.send_message(user_id, first)
+            animation_message = await bot.send_message(user_id, first, parse_mode="HTML")
             separate_id = animation_message.message_id
         except TelegramAPIError:
             log.warning("Could not send separate Force Join animation", exc_info=True)
@@ -222,7 +228,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             first = f"{html.escape(prefix_value)} <b>{html.escape(str(frames[0]))}</b>"
             try:
                 if cfg.get("poster_file_id"):
-                    animation_post = await bot.send_animation(user.id, cfg["poster_file_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
+                    animation_post = await bot.send_animation(user.id, cfg["poster_file_id"], caption=first, parse_mode="HTML")
                 elif cfg.get("poster_photo_id"):
                     animation_post = await bot.send_photo(user.id, cfg["poster_photo_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
                 else:
@@ -499,7 +505,10 @@ async def forcejoin_check(query:CallbackQuery,settings:Settings,database,bot):
             frames = animation_cfg.get("frames")
             if not isinstance(frames, list) or len(frames) != 3:
                 frames = [".", "..", "..."]
-            first = f"{html.escape(str(animation_cfg.get('prefix') or 'Checking..'))} {html.escape(str(frames[0]))}"
+            prefix_value = str(animation_cfg.get("prefix") or "Checking")
+            if prefix_value == "Checking..":
+                prefix_value = "Checking"
+            first = f"{html.escape(prefix_value)} <b>{html.escape(str(frames[0]))}</b>"
             try:
                 if force_cfg.get("poster_file_id"):
                     animation_post = await bot.send_animation(user_id, force_cfg["poster_file_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
