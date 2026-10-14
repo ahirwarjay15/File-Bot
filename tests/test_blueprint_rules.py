@@ -569,3 +569,20 @@ def test_force_join_chat_add_has_a_main_panel_fallback_and_poster_is_kept_for_ve
     assert "await message.bot.delete_message(chat_id=panel_chat_id, message_id=panel_message_id)" in handler
     assert 'force_cfg.get("poster_file_id") or force_cfg.get("poster_photo_id")' in start_source
     assert 'cfg.get("poster_file_id") or cfg.get("poster_photo_id")' in start_source
+
+
+def test_invalid_post_deletes_submitted_text_media_only_after_response_succeeds():
+    from pathlib import Path
+
+    source = Path("app/handlers/misc.py").read_text()
+    handler = source.split("@router.message()\\nasync def invalid_post", 1)[1].split(
+        "\\n\\n@router.callback_query(F.data == \"invalid:about\")", 1
+    )[0]
+    assert "response = await message.answer_animation(" in handler
+    assert "response = await message.answer_photo(" in handler
+    assert "response = await message.answer(text, parse_mode=\"HTML\", reply_markup=markup)" in handler
+    assert "if response is not None:" in handler
+    assert "await message.delete()" in handler
+    assert handler.index("if response is not None:") < handler.index("await message.delete()")
+    assert "keeping the submitted message" in handler
+    assert "except TelegramAPIError:" in handler
