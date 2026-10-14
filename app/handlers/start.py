@@ -216,7 +216,10 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             frames = animation_cfg.get("frames")
             if not isinstance(frames, list) or len(frames) != 3:
                 frames = [".", "..", "..."]
-            first = f"{html.escape(str(animation_cfg.get('prefix') or 'Checking..'))} {html.escape(str(frames[0]))}"
+            prefix_value = str(animation_cfg.get("prefix") or "Checking")
+            if prefix_value == "Checking..":
+                prefix_value = "Checking"
+            first = f"{html.escape(prefix_value)} <b>{html.escape(str(frames[0]))}</b>"
             try:
                 if cfg.get("poster_file_id"):
                     animation_post = await bot.send_animation(user.id, cfg["poster_file_id"], caption=f"<i>{first}</i>", parse_mode="HTML")
