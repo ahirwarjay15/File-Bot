@@ -358,6 +358,16 @@ def test_force_join_verification_resolves_public_chat_username_for_join_button()
     assert source.count('target = f"https://t.me/{chat.username}"') >= 2
     assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
 
+def test_new_message_animation_is_reused_as_force_join_post_for_verify_and_deeplink():
+    from pathlib import Path
+
+    source = Path("app/handlers/start.py").read_text()
+    assert 'message_id=separate_animation_id,' in source
+    assert 'text=rendered,' in source
+    assert 'Could not convert deeplink animation message into Force Join post' in source
+    assert 'Could not convert Verify animation message into Force Join post' in source
+    assert 'if old_post and old_post.message_id != separate_animation_id:' in source
+
 def test_settings_flow_messages_are_tracked_for_page_navigation_cleanup():
     from pathlib import Path
 
