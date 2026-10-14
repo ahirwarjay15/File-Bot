@@ -122,6 +122,19 @@ def force_join_button_label(channel_cfg: dict, position: int) -> str:
     return (custom or channel_title or f"Join {position}")[:64]
 
 
+def _is_private_channel(chat) -> bool:
+    """Return true only for channel chats without a public username."""
+    return getattr(chat, "type", None) == "channel" and not getattr(chat, "username", None)
+
+
+def _is_member_status(member) -> bool:
+    """Normalize membership checks for Telegram ChatMember objects."""
+    status = getattr(member, "status", member)
+    return status in ("creator", "administrator", "member") or (
+        status == "restricted" and getattr(member, "is_member", False)
+    )
+
+
 def _pending_request_is_recent(pending: dict | None, now=None, max_age_seconds: int = 86400) -> bool:
     """Only honor a join request recorded recently; legacy records without a timestamp expire."""
     requested_at = (pending or {}).get("requested_at")
@@ -589,6 +602,18 @@ async def remember_pending_join_request(event, database):
                   "requested_at": datetime.now(timezone.utc)}},
         upsert=True,
     )
+
+@router.chat_member()
+async def clear_accepted_private_join_request(event, database):
+    """Drop a saved request only when a private-channel request becomes membership."""
+    if not _is_private_channel(event.chat):
+        return
+    if _is_member_status(event.old_chat_member) or not _is_member_status(event.new_chat_member):
+        return
+    await database.db.pending_join_requests.delete_one(
+        {"chat_id": event.chat.id, "user_id": event.new_chat_member.user.id}
+    )
+
 
 async def _send_force_join_post(bot, user_id: int, cfg: dict, text: str, markup: InlineKeyboardMarkup):
     """Send a replacement Force Join post before removing the previous one."""
