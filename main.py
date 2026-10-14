@@ -38,7 +38,8 @@ async def main():
     try:
         await database.connect()
         dp=Dispatcher(storage=MemoryStorage());dp["settings"]=settings;dp["database"]=database
-        for r in (start_router,misc_router,file_router,batch_router,admin_router,settings_router,broadcast_router,shortener_router):dp.include_router(r)
+        # Keep the catch-all invalid-post handler last so file, batch, and settings handlers can process their own messages first.
+        for r in (start_router,file_router,batch_router,admin_router,settings_router,broadcast_router,shortener_router,misc_router):dp.include_router(r)
         await bot.delete_webhook(drop_pending_updates=False)
         worker=asyncio.create_task(supervise_worker(run_task_worker, bot, database.db, name="delivery-task-worker"),name="delivery-task-worker")
         batch_worker=asyncio.create_task(supervise_worker(run_batch_session_worker, bot, database.db, name="batch-session-worker"),name="batch-session-worker")
