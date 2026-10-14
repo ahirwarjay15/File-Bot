@@ -69,15 +69,15 @@ def normalize_animation_config(cfg: dict | None) -> dict:
     if legacy_default:
         normalized["prefix"] = "Checking"
         normalized["frames"] = [".", "..", "..."]
-        normalized["speed"] = 1.0
+        normalized["speed"] = 0.25
     frames = normalized.get("frames")
     if not isinstance(frames, list) or len(frames) != 3:
         normalized["frames"] = [".", "..", "..."]
     try:
-        speed = float(normalized.get("speed", 1.0))
+        speed = float(normalized.get("speed", 0.25))
     except (TypeError, ValueError):
         speed = 1.0
-    normalized["speed"] = min(3.0, max(1.0, speed))
+    normalized["speed"] = min(1.0, max(0.25, speed))
     if normalized.get("mode") not in ("force_join_poster", "new_message"):
         normalized["mode"] = "force_join_poster"
     return normalized
@@ -170,10 +170,10 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     if prefix_value == "Checking..":
         prefix_value = "Checking"
     try:
-        speed = float(cfg.get("speed", 1.0))
+        speed = float(cfg.get("speed", 0.25))
     except (TypeError, ValueError):
         speed = 1.0
-    speed = min(3.0, max(1.0, speed))
+    speed = min(1.0, max(0.25, speed))
     mode = cfg.get("mode", "force_join_poster")
     target_id = separate_message_id if mode == "new_message" else gate_message.message_id
     while True:
@@ -287,9 +287,9 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
         if not isinstance(frames_for_wait, list) or len(frames_for_wait) != 3:
             frames_for_wait = [".", "..", "..."]
         try:
-            frame_speed = min(3.0, max(1.0, float(animation_cfg.get("speed", 1.0))))
+            frame_speed = min(1.0, max(0.25, float(animation_cfg.get("speed", 0.25))))
         except (TypeError, ValueError):
-            frame_speed = 1.0
+            frame_speed = 0.25
         await asyncio.sleep(max(0.8, frame_speed * len(frames_for_wait)))
     if not missing:
         await _cancel_gate_animation(bot, user.id, payload)
