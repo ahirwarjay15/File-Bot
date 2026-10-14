@@ -88,47 +88,63 @@ async def _edit_same_post(message, text, markup):
 @router.message()
 async def invalid_post(message: Message, settings: Settings, database):
     user = message.from_user
-    if not user or (message.text and message.text.startswith("/")):
+    if not user:
+        log.debug("Invalid-post skipped: update has no sender")
         return
-    await FileRepository(database.db).save_user(user)
-    # Invalid-post is for ordinary non-command messages from any user, including
-    # the owner/moderators when they are testing it. Settings/FSM handlers run first.
-    if await is_banned(database.db, user.id):
+    if message.text and message.text.startswith("/"):
+        log.debug("Invalid-post skipped: command update")
         return
-    cfg = await database.db.settings.find_one({"key": "invalid_post"}) or {}
-    if not cfg.get("enabled", False):
-        return
-    if not cfg:
-        return
-    me = await message.bot.get_me()
-    text = _render_user_text(cfg.get("text") or DEFAULT_INVALID, user, me)
-    markup = _invalid_markup(cfg)
-    response = None
+
+    log.info(
+        "Invalid-post received normal message: chat_type=%s content_type=%s",
+        message.chat.type, message.content_type,
+    )
     try:
-        if cfg.get("poster_file_id"):
-            response = await message.answer_animation(
-                cfg["poster_file_id"], caption=text, parse_mode="HTML", reply_markup=markup
-            )
-        elif cfg.get("poster_photo_id"):
-            response = await message.answer_photo(
-                cfg["poster_photo_id"], caption=text, parse_mode="HTML", reply_markup=markup
-            )
-        else:
-            response = await message.answer(text, parse_mode="HTML", reply_markup=markup)
-    except TelegramAPIError:
-        # A stale optional poster should not block the configured invalid-post text.
-        try:
-            response = await message.answer(text, parse_mode="HTML", reply_markup=markup)
-        except TelegramAPIError:
-            log.warning("Could not send invalid-post response; keeping the submitted message", exc_info=True)
+        await FileRepository(database.db).save_user(user)
+        if await is_banned(database.db, user.id):
+            log.info("Invalid-post skipped: sender is banned")
+            return
+        if await is_owner_or_moderator(database.db, user.id, settings):
+            log.debug("Invalid-post skipped: sender is owner/moderator")
             return
 
-    # Delete submitted text/media/files only after Telegram confirms the response was sent.
-    if response is not None:
+        cfg = await database.db.settings.find_one({"key": "invalid_post"}) or {}
+        if not cfg.get("enabled", False):
+            log.info("Invalid-post skipped: setting disabled or missing")
+            return
+
+        me = await message.bot.get_me()
+        text = _render_user_text(cfg.get("text") or DEFAULT_INVALID, user, me)
+        markup = _invalid_markup(cfg)
+        response = None
         try:
-            await message.delete()
+            if cfg.get("poster_file_id"):
+                response = await message.answer_animation(
+                    cfg["poster_file_id"], caption=text, parse_mode="HTML", reply_markup=markup
+                )
+            elif cfg.get("poster_photo_id"):
+                response = await message.answer_photo(
+                    cfg["poster_photo_id"], caption=text, parse_mode="HTML", reply_markup=markup
+                )
+            else:
+                response = await message.answer(text, parse_mode="HTML", reply_markup=markup)
         except TelegramAPIError:
-            log.warning("Could not delete the submitted message after invalid-post response", exc_info=True)
+            # A stale optional poster should not block the configured invalid-post text.
+            log.warning("Invalid-post poster send failed; retrying as text", exc_info=True)
+            try:
+                response = await message.answer(text, parse_mode="HTML", reply_markup=markup)
+            except TelegramAPIError:
+                log.exception("Invalid-post text response failed to send")
+                return
+
+        if response is not None:
+            log.info("Invalid-post response sent successfully")
+            try:
+                await message.delete()
+            except TelegramAPIError:
+                log.warning("Could not delete submitted message after invalid-post response", exc_info=True)
+    except Exception:
+        log.exception("Invalid-post handler failed before completing");
 
 
 @router.callback_query(F.data == "invalid:about")
