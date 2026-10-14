@@ -1,4 +1,5 @@
 """Invalid-post response and in-place About view for ordinary user messages."""
+import logging
 from html import escape
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -8,6 +9,7 @@ from app.services.permissions import is_owner_or_moderator, is_banned
 from app.database.files import FileRepository
 
 router = Router(name="misc")
+log = logging.getLogger(__name__)
 DEFAULT_INVALID = "Hi {mention}, this bot is used to deliver files. Please use a valid file link."
 DEFAULT_ABOUT = (
     "✨ ᴀʙᴏᴜᴛ ᴍᴇ\n\n"
@@ -97,19 +99,32 @@ async def invalid_post(message: Message, settings: Settings, database):
     me = await message.bot.get_me()
     text = _render_user_text(cfg.get("text") or DEFAULT_INVALID, user, me)
     markup = _invalid_markup(cfg)
+    response = None
     try:
         if cfg.get("poster_file_id"):
-            await message.answer_animation(cfg["poster_file_id"], caption=text, parse_mode="HTML", reply_markup=markup)
+            response = await message.answer_animation(
+                cfg["poster_file_id"], caption=text, parse_mode="HTML", reply_markup=markup
+            )
         elif cfg.get("poster_photo_id"):
-            await message.answer_photo(cfg["poster_photo_id"], caption=text, parse_mode="HTML", reply_markup=markup)
+            response = await message.answer_photo(
+                cfg["poster_photo_id"], caption=text, parse_mode="HTML", reply_markup=markup
+            )
         else:
-            await message.answer(text, parse_mode="HTML", reply_markup=markup)
+            response = await message.answer(text, parse_mode="HTML", reply_markup=markup)
     except TelegramAPIError:
-        # A stale optional poster should not disable the invalid-post response.
+        # A stale optional poster should not block the configured invalid-post text.
         try:
-            await message.answer(text, parse_mode="HTML", reply_markup=markup)
+            response = await message.answer(text, parse_mode="HTML", reply_markup=markup)
         except TelegramAPIError:
+            log.warning("Could not send invalid-post response; keeping the submitted message", exc_info=True)
             return
+
+    # Delete submitted text/media/files only after Telegram confirms the response was sent.
+    if response is not None:
+        try:
+            await message.delete()
+        except TelegramAPIError:
+            log.warning("Could not delete the submitted message after invalid-post response", exc_info=True)
 
 
 @router.callback_query(F.data == "invalid:about")
