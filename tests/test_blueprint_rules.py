@@ -130,6 +130,7 @@ def test_common_variables_render_bot_and_channel_links_in_start_and_invalid_text
 def test_force_join_default_button_numbers_and_custom_slot():
     from app.handlers.start import force_join_button_label
 
+    assert force_join_button_label({"channel_title": "Official Channel"}, 1) == "Official Channel"
     labels = [
         force_join_button_label({}, 1),
         force_join_button_label({}, 2),
@@ -166,8 +167,11 @@ async def test_pending_join_request_only_verifies_join_request_mode():
 
     class FakeDB:
         def __init__(self, mode):
+            from datetime import datetime, timezone
             self.settings = Collection({"mode": mode})
-            self.pending_join_requests = Collection({"chat_id": -100123, "user_id": 42})
+            self.pending_join_requests = Collection({
+                "chat_id": -100123, "user_id": 42, "requested_at": datetime.now(timezone.utc)
+            })
 
     class FakeBot:
         async def get_chat(self, chat_id):
@@ -600,3 +604,26 @@ def test_invalid_post_deletes_submitted_text_media_only_after_response_succeeds(
     assert handler.index("if response is not None:") < handler.index("await message.delete()")
     assert "keeping the submitted message" in handler
     assert "except TelegramAPIError:" in handler
+
+
+def test_pending_join_request_expires_and_requires_timestamp():
+    from datetime import datetime, timedelta, timezone
+    from app.handlers.start import _pending_request_is_recent
+
+    now = datetime.now(timezone.utc)
+    assert _pending_request_is_recent({"requested_at": now - timedelta(minutes=5)}, now=now)
+    assert not _pending_request_is_recent({"requested_at": now - timedelta(days=2)}, now=now)
+    assert not _pending_request_is_recent({"user_id": 42}, now=now)
+
+
+@pytest.mark.asyncio
+async def test_force_join_uses_environment_channels_when_database_list_is_empty():
+    from types import SimpleNamespace
+    from app.handlers.start import effective_force_join_channels
+
+    class Collection:
+        async def find_one(self, query):
+            return {"key": "force_join", "channels": []}
+
+    database = SimpleNamespace(db=SimpleNamespace(settings=Collection()))
+    assert await effective_force_join_channels(database, SimpleNamespace(force_join_channels=["@envchannel"])) == ["@envchannel"]
