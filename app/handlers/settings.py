@@ -214,31 +214,32 @@ async def finish_input_panel(message, state, title, back_action):
 
 
 async def edit_page(query, text, keyboard):
-    """Edit the current settings panel; if Telegram refuses, replace it cleanly."""
+    """Edit the current settings panel, returning the message that now owns it."""
     if not query.message:
-        return
+        return None
     text = format_settings_page(text)
     try:
         await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
-        return
+        return query.message
     except TelegramBadRequest as exc:
         if "message is not modified" in str(exc).lower():
-            return
+            return query.message
     except TelegramAPIError:
         pass
-    # Some Telegram message types cannot be edited as text. Replace the panel
-    # and remove the previous one so navigation never leaves stacked panels.
+    # If Telegram refuses the edit, replace the panel and remove the previous
+    # message. Return the replacement so multi-step flows store the correct ID.
     try:
         replacement = await query.message.answer(
             text, reply_markup=keyboard, parse_mode="HTML",
             link_preview_options={"is_disabled": True},
         )
     except TelegramAPIError:
-        return
+        return query.message
     try:
         await query.message.delete()
     except TelegramAPIError:
         pass
+    return replacement
 
 async def render_home(query):
     me = await query.bot.get_me()
@@ -566,11 +567,11 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await patch(db, "force_join", {"enabled": not cfg.get("enabled", False)}, {"channels": [], "other_links": [], "message": "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"})
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_add":
-        if query.message:
-            await state.update_data(forcejoin_panel_chat_id=query.message.chat.id, forcejoin_panel_message_id=query.message.message_id)
-        await edit_page(query, "ADD FORCE JOIN\n\nChoose Group or Channel from the keyboard below. Public chats use Normal Mode automatically; private chats use Join Request Mode automatically.", kb([
+        panel_message = await edit_page(query, "ADD FORCE JOIN\n\nChoose Group or Channel from the keyboard below. Public chats use Normal Mode automatically; private chats use Join Request Mode automatically.", kb([
             [("《 BACK", "settings:forcejoin")],
         ]))
+        if panel_message:
+            await state.update_data(forcejoin_panel_chat_id=panel_message.chat.id, forcejoin_panel_message_id=panel_message.message_id)
         if query.message:
             # Telegram requires a message to display a request-chat keyboard;
             # keep that carrier visually empty instead of adding another prompt.
