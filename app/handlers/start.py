@@ -57,6 +57,11 @@ async def effective_force_join_channels(database, settings) -> list[str]:
             channels.append(channel)
     return channels
 
+def animation_frame_text(prefix: str, frame: str) -> str:
+    """Render a normal-weight prefix followed by one bold frame."""
+    return f"{html.escape(str(prefix))} <b>{html.escape(str(frame))}</b>"
+
+
 def normalize_animation_config(cfg: dict | None) -> dict:
     """Normalize legacy defaults and clamp the timer for both animation modes."""
     normalized = dict(cfg or {})
@@ -174,7 +179,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     target_id = separate_message_id if mode == "new_message" else gate_message.message_id
     while True:
         for frame in frames:
-            animated = f"{prefix} <b>{html.escape(str(frame))}</b>"
+            animated = animation_frame_text(prefix, frame)
             try:
                 if mode == "new_message":
                     await bot.edit_message_text(
@@ -218,7 +223,7 @@ async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: M
         prefix_value = str(cfg.get("prefix") or "Checking")
         if prefix_value == "Checking..":
             prefix_value = "Checking"
-        first = f"{html.escape(prefix_value)} <b>{html.escape(str((cfg.get('frames') or ['.', '..', '...'])[0]))}</b>"
+        first = animation_frame_text(prefix_value, (cfg.get("frames") or [".", "..", "..."])[0])
         try:
             animation_message = await bot.send_message(user_id, first, parse_mode="HTML")
             separate_id = animation_message.message_id
@@ -259,7 +264,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             prefix_value = str(animation_cfg.get("prefix") or "Checking")
             if prefix_value == "Checking..":
                 prefix_value = "Checking"
-            first = f"{html.escape(prefix_value)} <b>{html.escape(str(frames[0]))}</b>"
+            first = animation_frame_text(prefix_value, frames[0])
             try:
                 if cfg.get("poster_file_id"):
                     animation_post = await bot.send_animation(user.id, cfg["poster_file_id"], caption=first, parse_mode="HTML")
