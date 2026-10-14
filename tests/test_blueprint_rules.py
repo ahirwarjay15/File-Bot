@@ -443,3 +443,27 @@ def test_animation_speed_never_exceeds_supported_range():
         "speed": 3.5, "mode": "force_join_poster",
     })
     assert cfg["speed"] == 1.0
+
+
+def test_settings_navigation_does_not_spawn_duplicate_panels_and_picker_prompt_is_hidden():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    edit_page = source.split("async def edit_page(query, text, keyboard):", 1)[1].split("\nasync def render_home", 1)[0]
+    assert "query.message.answer(" not in edit_page
+    assert "never spawn duplicate panels" in edit_page
+    picker = source.split('elif action == "forcejoin_add":', 1)[1].split('elif action == "forcejoin_other":', 1)[0]
+    assert '"\\u2063"' in picker
+    assert "Choose the type of chat to add." not in picker
+
+
+def test_force_join_chat_shared_message_and_cancel_keyboard_are_cleaned_up():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    input_handler = source.split("async def receive_setting_input", 1)[1]
+    shared_block = input_handler.split('if field == "forcejoin_wait_chat":', 1)[1]
+    assert "await message.delete()" in shared_block
+    cancel_block = input_handler.split('if field in {"forcejoin_wait_chat", "forcejoin_wait_mode"}', 1)[1].split('if field == "forcejoin_wait_chat":', 1)[0]
+    assert "Force Join channel selection cancelled." not in cancel_block
+    assert "keyboard_removal.delete()" in cancel_block
