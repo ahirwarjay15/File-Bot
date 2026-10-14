@@ -116,10 +116,9 @@ async def _mark_verified(db, user_id: int, channels: list[str]):
     )
 
 def force_join_button_label(channel_cfg: dict, position: int) -> str:
-    """Prefer a custom label, then the resolved channel title, then a numbered fallback."""
+    """Use a custom verification label when set; otherwise number the visible missing-channel list."""
     custom = str(channel_cfg.get("button_text") or "").strip()
-    channel_title = str(channel_cfg.get("channel_title") or "").strip()
-    return (custom or channel_title or f"Join {position}")[:64]
+    return (custom or f"Join {position}")[:64]
 
 
 def _is_private_channel(chat) -> bool:
