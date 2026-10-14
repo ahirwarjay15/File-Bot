@@ -64,8 +64,8 @@ def test_settings_buttons_use_small_caps_with_required_exceptions():
 def test_invalid_post_about_defaults_to_multiline_standard_about():
     from app.handlers.misc import DEFAULT_ABOUT
 
-    assert "\n" not in DEFAULT_ABOUT
     assert "\n" in DEFAULT_ABOUT
+    assert "\\n" not in DEFAULT_ABOUT
     assert "{bot_name}" in DEFAULT_ABOUT
 
 
@@ -318,13 +318,27 @@ def test_shortener_accepts_command_urls_and_plain_domains():
     assert extract_target("/batch") is None
 
 
-def test_force_join_settings_page_uses_real_line_breaks():
+@pytest.mark.asyncio
+async def test_force_join_settings_page_uses_real_line_breaks():
+    from types import SimpleNamespace
     from app.handlers.settings import build_forcejoin_page
 
-    import inspect
-    source = inspect.getsource(build_forcejoin_page)
-    assert r"FORCE JOIN\n\n" not in source
-    assert r"FORCE JOIN\n\n" in source
+    class SettingsCollection:
+        async def find_one(self, query):
+            if query.get("key") == "force_join":
+                return {"enabled": True, "channels": []}
+            return None
+
+    class FakeBot:
+        async def get_chat(self, chat_id):
+            raise AssertionError("No channels should need resolving")
+
+    class Database:
+        settings = SettingsCollection()
+
+    text, _ = await build_forcejoin_page(FakeBot(), Database(), SimpleNamespace(force_join_channels=[]))
+    assert "FORCE JOIN\n\n" in text
+    assert r"FORCE JOIN\n\n" not in text
 
 
 def test_new_message_animation_is_deleted_only_after_replacement_post():
