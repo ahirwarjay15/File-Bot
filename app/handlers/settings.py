@@ -815,13 +815,14 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         }
         for token, replacement in values.items():
             preview = preview.replace(token, replacement)
-        preview = unescape(re.sub(r"</?[^>]+>", "", preview))
+        preview = plain_preview(preview)
         preview = re.sub(r"[*_`]", "", preview)
         await query.answer(preview[:190], show_alert=True)
         return
     elif action == "start_text_default":
         await patch(db, "start_message", {"text": DEFAULT_START_TEXT}, {"enabled": True})
-        await query.answer("✅ Default Start Message set.", show_alert=True)
+        preview = plain_preview(DEFAULT_START_TEXT).replace("{user_mention}", query.from_user.full_name if query.from_user else "User")
+        await query.answer("✅ Start message restored to the recommended default.\\n\\n" + preview[:130], show_alert=True)
         await render_start_text(query)
         return
     elif action == "start_button":
