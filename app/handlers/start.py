@@ -167,12 +167,15 @@ async def _cancel_gate_animation(bot, user_id: int, payload: str,
     # wait for a frame sleep or a slow Telegram edit request to finish.
     if not task.done():
         task.cancel()
-    await asyncio.gather(task, return_exceptions=True)
+    # Do not await animation shutdown or message cleanup: verification result
+    # must be handled immediately, regardless of the current animation frame.
     if separate_message_id and delete_separate:
-        try:
-            await bot.delete_message(user_id, separate_message_id)
-        except TelegramAPIError:
-            pass
+        async def cleanup_animation_message():
+            try:
+                await bot.delete_message(user_id, separate_message_id)
+            except TelegramAPIError:
+                pass
+        asyncio.create_task(cleanup_animation_message())
     return separate_message_id
 
 
@@ -576,7 +579,8 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
 
     user_id = query.from_user.id
     old_post = query.message
-    await _cancel_gate_animation(bot, user_id, payload)
+    # Stop animation without waiting for its frame/request to finish.
+    await _cancel_gate_animation(bot, user_id, payload, delete_separate=False)
     # Load independent settings concurrently so the Verify animation can start sooner.
     force_cfg_result, animation_cfg = await asyncio.gather(
         database.db.settings.find_one({"key": "force_join"}),
@@ -706,9 +710,11 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
                 pass
         return
 
-    # Verification succeeded: remove both the old Force Join post and any temporary
-    # animation/poster before delivering the requested file or batch.
-    await _cancel_gate_animation(bot, user_id, payload)
+    # Verification succeeded: stop animation immediately; never wait for its
+    # cycle or message cleanup before delivering the requested file or batch.
+    separate_animation_id = await _cancel_gate_animation(
+        bot, user_id, payload, delete_separate=False
+    )
     if animation_post and animation_post.message_id != (old_post.message_id if old_post else None):
         try:
             await animation_post.delete()
@@ -732,6 +738,13 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
     if old_post:
         try: await old_post.delete()
         except TelegramAPIError: pass
+    if separate_animation_id:
+        async def cleanup_finished_animation():
+            try:
+                await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+            except TelegramAPIError:
+                pass
+        asyncio.create_task(cleanup_finished_animation())
     success = False
     try:
         result=await deliver_payload(bot,database,settings,user_id,payload,record,request_key=request_key)
