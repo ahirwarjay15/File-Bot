@@ -15,6 +15,20 @@ from app.handlers.shortener import router as shortener_router
 from app.handlers.misc import router as misc_router
 from app.services.delivery import run_task_worker, run_batch_delivery_worker
 
+async def supervise_worker(worker, *args, name: str, restart_delay: float = 5.0):
+    """Restart a background worker after an unexpected exception."""
+    log = logging.getLogger(__name__)
+    while True:
+        try:
+            await worker(*args)
+            log.error("Background worker %s exited unexpectedly; restarting", name)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Background worker %s crashed; restarting in %.1f seconds", name, restart_delay)
+        await asyncio.sleep(restart_delay)
+
+
 async def main():
     settings=get_settings()
     logging.basicConfig(level=getattr(logging,settings.log_level.upper(),logging.INFO),format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",stream=sys.stdout)
@@ -26,10 +40,10 @@ async def main():
         dp=Dispatcher(storage=MemoryStorage());dp["settings"]=settings;dp["database"]=database
         for r in (start_router,file_router,batch_router,admin_router,settings_router,broadcast_router,shortener_router,misc_router):dp.include_router(r)
         await bot.delete_webhook(drop_pending_updates=False)
-        worker=asyncio.create_task(run_task_worker(bot,database.db),name="delivery-task-worker")
-        batch_worker=asyncio.create_task(run_batch_session_worker(bot,database.db),name="batch-session-worker")
-        delivery_worker=asyncio.create_task(run_batch_delivery_worker(bot,database.db),name="batch-delivery-worker")
-        broadcast_worker=asyncio.create_task(run_broadcast_worker(bot,database.db),name="broadcast-worker")
+        worker=asyncio.create_task(supervise_worker(run_task_worker, bot, database.db, name="delivery-task-worker"),name="delivery-task-worker")
+        batch_worker=asyncio.create_task(supervise_worker(run_batch_session_worker, bot, database.db, name="batch-session-worker"),name="batch-session-worker")
+        delivery_worker=asyncio.create_task(supervise_worker(run_batch_delivery_worker, bot, database.db, name="batch-delivery-worker"),name="batch-delivery-worker")
+        broadcast_worker=asyncio.create_task(supervise_worker(run_broadcast_worker, bot, database.db, name="broadcast-worker"),name="broadcast-worker")
         logging.getLogger(__name__).info("Polling started")
         await dp.start_polling(bot,allowed_updates=dp.resolve_used_update_types())
     finally:
