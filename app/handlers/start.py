@@ -135,8 +135,8 @@ def _is_member_status(member) -> bool:
     )
 
 
-def _pending_request_is_recent(pending: dict | None, now=None, max_age_seconds: int = 86400) -> bool:
-    """Only honor a join request recorded recently; legacy records without a timestamp expire."""
+def _pending_request_is_recent(pending: dict | None, now=None, max_age_seconds: int = 15 * 24 * 60 * 60) -> bool:
+    """Only honor a private join request for up to 15 days; legacy records are invalid."""
     requested_at = (pending or {}).get("requested_at")
     if not isinstance(requested_at, datetime):
         return False
@@ -165,7 +165,7 @@ async def join_status(bot, user_id: int, channels: list[str], db=None) -> list[s
                 if db is not None else None
             )
             mode = (channel_cfg or {}).get("mode", "join_request")
-            if not verified and mode == "join_request" and db is not None:
+            if not verified and _is_private_chat(chat) and mode == "join_request" and db is not None:
                 pending = await db.pending_join_requests.find_one({"chat_id": chat.id, "user_id": user_id})
                 verified = _pending_request_is_recent(pending)
                 if pending and not verified:
@@ -592,6 +592,21 @@ async def start_about_back(query: CallbackQuery, settings: Settings, database):
             await msg.edit_text(rendered, parse_mode="HTML", reply_markup=markup)
     except TelegramAPIError:
         pass
+
+async def cleanup_expired_pending_join_requests(db, now=None, max_age_days: int = 15):
+    """Delete pending-request records only after their 15-day expiry."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - __import__("datetime").timedelta(days=max_age_days)
+    result = await db.pending_join_requests.delete_many({"requested_at": {"$lte": cutoff}})
+    return getattr(result, "deleted_count", 0)
+
+
+async def run_pending_join_request_cleanup_worker(db, interval_seconds: int = 3600):
+    """Periodically remove expired pending join requests, independent of verification."""
+    while True:
+        await cleanup_expired_pending_join_requests(db)
+        await asyncio.sleep(interval_seconds)
+
 
 @router.chat_join_request()
 async def remember_pending_join_request(event, database):
