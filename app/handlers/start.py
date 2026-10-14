@@ -169,7 +169,6 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     prefix_value = str(cfg.get("prefix") or "Checking")
     if prefix_value == "Checking..":
         prefix_value = "Checking"
-    prefix = prefix_value
     try:
         speed = float(cfg.get("speed", 0.10))
     except (TypeError, ValueError):
@@ -179,37 +178,40 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     target_id = separate_message_id if mode == "new_message" else gate_message.message_id
     while True:
         for frame in frames:
-            animated = animation_frame_text(prefix, frame)
-            try:
-                if mode == "new_message":
-                    await bot.edit_message_text(
-                        chat_id=user_id, message_id=target_id, text=animated, parse_mode="HTML",
-                    )
-                else:
-                    content = animated if animation_only else f"{base_text}\n\n{animated}"
-                    if gate_message.photo or gate_message.animation or gate_message.document:
-                        await bot.edit_message_caption(
-                            chat_id=user_id, message_id=target_id, caption=content,
-                            parse_mode="HTML", reply_markup=markup,
+            animated = animation_frame_text(prefix_value, frame)
+            while True:
+                try:
+                    if mode == "new_message":
+                        await bot.edit_message_text(
+                            chat_id=user_id, message_id=target_id, text=animated, parse_mode="HTML",
                         )
                     else:
-                        await bot.edit_message_text(
-                            chat_id=user_id, message_id=target_id, text=content,
-                            parse_mode="HTML", reply_markup=markup,
-                        )
-            except TelegramBadRequest as exc:
-                # Telegram reports an unchanged edit when a frame repeats; keep the loop alive.
-                if "message is not modified" not in str(exc).lower():
-                    log.debug("Force Join animation edit rejected", exc_info=True)
+                        content = animated if animation_only else f"{base_text}\n\n{animated}"
+                        if gate_message.photo or gate_message.animation or gate_message.document:
+                            await bot.edit_message_caption(
+                                chat_id=user_id, message_id=target_id, caption=content,
+                                parse_mode="HTML", reply_markup=markup,
+                            )
+                        else:
+                            await bot.edit_message_text(
+                                chat_id=user_id, message_id=target_id, text=content,
+                                parse_mode="HTML", reply_markup=markup,
+                            )
+                except TelegramRetryAfter as exc:
+                    # At the lowest configured speed, Telegram may still throttle edits.
+                    # Wait the requested interval and retry this same frame.
+                    await asyncio.sleep(max(speed, float(exc.retry_after)))
+                    continue
+                except TelegramBadRequest as exc:
+                    if "message is not modified" not in str(exc).lower():
+                        log.debug("Force Join animation edit rejected", exc_info=True)
+                        return
+                    # Same frame already visible: count it as a successful tick.
+                except TelegramAPIError:
+                    log.debug("Force Join animation stopped because its message could not be edited", exc_info=True)
                     return
-            except TelegramRetryAfter as exc:
-                await asyncio.sleep(max(speed, float(exc.retry_after)))
-                continue
-            except TelegramAPIError:
-                log.debug("Force Join animation stopped because its message could not be edited", exc_info=True)
-                return
+                break
             await asyncio.sleep(speed)
-
 
 async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: Message,
                                 base_text: str, markup: InlineKeyboardMarkup, cfg: dict,
