@@ -732,6 +732,21 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
             if await _edit_force_join_post(animation_post, rendered, markup):
                 return
 
+        if animation_enabled and animation_mode == "new_message" and (force_cfg.get("poster_file_id") or force_cfg.get("poster_photo_id")):
+            # Text animation cannot be converted into a media post. Use the
+            # configured Force Join poster for the final verification prompt.
+            new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
+            if separate_animation_id:
+                try:
+                    await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+                except TelegramAPIError:
+                    pass
+            if old_post and old_post.message_id != new_post.message_id:
+                try:
+                    await old_post.delete()
+                except TelegramAPIError:
+                    pass
+            return
         if animation_enabled and animation_mode == "new_message" and separate_animation_id:
             # The animated message itself becomes the updated Force Join prompt.
             try:
