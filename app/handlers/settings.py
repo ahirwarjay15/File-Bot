@@ -1073,7 +1073,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
 @router.message(StateFilter(None), F.text, ~F.text.startswith("/"))
 async def handle_button_settings_reply_keyboard(message: Message, state: FSMContext, settings: Settings, database):
     if not message.from_user or not await is_owner_or_moderator(database.db, message.from_user.id, settings):
-        return
+        raise SkipHandler
     value = (message.text or "").strip()
     data = await state.get_data()
     kind = data.get("button_panel_kind")
@@ -1100,7 +1100,7 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
             pass
         return
     if kind not in ("start", "invalid"):
-        return
+        raise SkipHandler
     db = database.db
     is_start = kind == "start"
     cfg_key = "start_message" if is_start else "invalid_post"
