@@ -399,6 +399,19 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             await animation_post.delete()
         except TelegramAPIError:
             pass
+    if animation_enabled and animation_mode == "new_message" and separate_animation_id:
+        # Reuse the exact message that showed the animation as the Force Join post.
+        try:
+            await bot.edit_message_text(
+                chat_id=user.id,
+                message_id=separate_animation_id,
+                text=rendered,
+                reply_markup=markup,
+                parse_mode="HTML",
+            )
+            return True
+        except TelegramAPIError:
+            log.warning("Could not convert deeplink animation message into Force Join post", exc_info=True)
     new_post = await _send_force_join_post(bot, user.id, cfg, rendered, markup)
     if separate_animation_id:
         try:
@@ -710,14 +723,24 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
             if await _edit_force_join_post(animation_post, rendered, markup):
                 return
 
-        if animation_enabled and animation_mode == "new_message" and old_post:
-            if await _edit_force_join_post(old_post, rendered, markup):
-                if separate_animation_id:
+        if animation_enabled and animation_mode == "new_message" and separate_animation_id:
+            # The animated message itself becomes the updated Force Join prompt.
+            try:
+                await bot.edit_message_text(
+                    chat_id=user_id,
+                    message_id=separate_animation_id,
+                    text=rendered,
+                    reply_markup=markup,
+                    parse_mode="HTML",
+                )
+                if old_post and old_post.message_id != separate_animation_id:
                     try:
-                        await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+                        await old_post.delete()
                     except TelegramAPIError:
                         pass
                 return
+            except TelegramAPIError:
+                log.warning("Could not convert Verify animation message into Force Join post", exc_info=True)
 
         new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
         if animation_post and animation_post.message_id != new_post.message_id:
