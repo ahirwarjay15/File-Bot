@@ -629,13 +629,14 @@ async def test_force_join_uses_environment_channels_when_database_list_is_empty(
     assert await effective_force_join_channels(database, SimpleNamespace(force_join_channels=["@envchannel"])) == ["@envchannel"]
 
 
-def test_invalid_post_router_runs_before_file_and_batch_message_handlers():
+def test_invalid_post_router_runs_after_file_and_batch_message_handlers():
     from pathlib import Path
 
     source = Path("main.py").read_text()
     router_order = source.split("for r in (", 1)[1].split("):dp.include_router(r)", 1)[0]
-    assert router_order.index("misc_router") < router_order.index("file_router")
-    assert router_order.index("misc_router") < router_order.index("batch_router")
+    assert router_order.index("file_router") < router_order.index("misc_router")
+    assert router_order.index("batch_router") < router_order.index("misc_router")
+    assert router_order.index("settings_router") < router_order.index("misc_router")
 
 
 def test_invalid_post_does_not_delete_submitted_message_when_response_fails():
