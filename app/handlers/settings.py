@@ -214,18 +214,30 @@ async def finish_input_panel(message, state, title, back_action):
 
 
 async def edit_page(query, text, keyboard):
-    """Update the current settings panel in place; never spawn duplicate panels."""
+    """Edit the current settings panel; if Telegram refuses, replace it cleanly."""
     if not query.message:
         return
     text = format_settings_page(text)
     try:
         await query.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML", link_preview_options={"is_disabled": True})
+        return
     except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            # A failed edit must not create a second panel on the next page.
-            pass
+        if "message is not modified" in str(exc).lower():
+            return
     except TelegramAPIError:
-        # Keep the current panel rather than creating a duplicate message.
+        pass
+    # Some Telegram message types cannot be edited as text. Replace the panel
+    # and remove the previous one so navigation never leaves stacked panels.
+    try:
+        replacement = await query.message.answer(
+            text, reply_markup=keyboard, parse_mode="HTML",
+            link_preview_options={"is_disabled": True},
+        )
+    except TelegramAPIError:
+        return
+    try:
+        await query.message.delete()
+    except TelegramAPIError:
         pass
 
 async def render_home(query):
