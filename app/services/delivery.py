@@ -365,16 +365,24 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
             if not claimed.modified_count:
                 continue
             try:
-                auto = await db.settings.find_one({"key": "auto_delete", "enabled": True})
-                if not auto:
-                    await db.tasks.update_one({"_id": task["_id"], "status": "processing"}, {"$set": {"status": "cancelled", "cancelled_at": _now()}})
-                    continue
+                # Expiry tasks represent deliveries already scheduled while Auto Delete
+                # was enabled. Turning the setting off affects future deliveries only;
+                # it must not silently cancel existing expiries.
                 if not task.get("messages_deleted", False):
+                    deletion_failed = False
                     for mid in task.get("message_ids", []):
                         try:
                             await bot.delete_message(task["user_id"], mid)
+                        except TelegramBadRequest as exc:
+                            if "message to delete not found" in str(exc).lower():
+                                continue  # Already gone; the desired state is reached.
+                            deletion_failed = True
+                            log.warning("Delete attempt rejected for delivered message %s (user %s): %s", mid, task["user_id"], exc)
                         except TelegramAPIError:
-                            log.info("Could not delete delivered message %s for user %s", mid, task["user_id"])
+                            deletion_failed = True
+                            log.warning("Could not delete delivered message %s for user %s; task will retry", mid, task["user_id"], exc_info=True)
+                    if deletion_failed:
+                        raise RuntimeError("One or more delivered messages could not be deleted; retrying expiry task")
                     await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"messages_deleted": True}})
                 after = await db.settings.find_one({"key": "after_delete", "enabled": True})
                 notice_id = task.get("notice_message_id")
