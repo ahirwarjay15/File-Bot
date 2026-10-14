@@ -163,12 +163,18 @@ async def _cancel_gate_animation(bot, user_id: int, payload: str,
     if not entry:
         return None
     task, separate_message_id = entry
-    # Animation is best-effort UI only: never make Force Join or file delivery
-    # wait for a frame sleep or a slow Telegram edit request to finish.
+    # Cancel the animation task and confirm cancellation before changing the
+    # same Telegram message. This prevents an in-flight frame edit from racing
+    # with the final Force Join post or file delivery; cancellation does not
+    # wait for the animation cycle to finish.
     if not task.done():
         task.cancel()
-    # Do not await animation shutdown or message cleanup: verification result
-    # must be handled immediately, regardless of the current animation frame.
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.debug("Force Join animation task ended during cancellation", exc_info=True)
     if separate_message_id and delete_separate:
         async def cleanup_animation_message():
             try:
@@ -202,8 +208,6 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     try:
         while True:
             await asyncio.sleep(max(0.0, next_beat - time.monotonic()))
-            if stop_event and stop_event.is_set() and frame_index == len(frames) - 1:
-                break
             frame_index = (frame_index + 1) % len(frames)
             animated = animation_frame_text(prefix_value, frames[frame_index])
             while True:
