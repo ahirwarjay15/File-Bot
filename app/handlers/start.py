@@ -169,7 +169,7 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
     prefix_value = str(cfg.get("prefix") or "Checking")
     if prefix_value == "Checking..":
         prefix_value = "Checking"
-    prefix = html.escape(prefix_value)
+    prefix = prefix_value
     try:
         speed = float(cfg.get("speed", 0.10))
     except (TypeError, ValueError):
