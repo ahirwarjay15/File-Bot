@@ -135,6 +135,7 @@ async def invalid_post(message: Message, settings: Settings, database):
                 response = await message.answer(text, parse_mode="HTML", reply_markup=markup)
             except TelegramAPIError:
                 log.exception("Invalid-post text response failed to send")
+                log.warning("Invalid-post response failed; keeping the submitted message")
                 return
 
         if response is not None:
@@ -143,6 +144,8 @@ async def invalid_post(message: Message, settings: Settings, database):
                 await message.delete()
             except TelegramAPIError:
                 log.warning("Could not delete submitted message after invalid-post response", exc_info=True)
+        else:
+            log.warning("Invalid-post response was not confirmed; keeping the submitted message")
     except Exception:
         log.exception("Invalid-post handler failed before completing");
 

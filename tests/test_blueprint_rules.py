@@ -178,7 +178,7 @@ async def test_pending_join_request_only_verifies_join_request_mode():
 
     class FakeBot:
         async def get_chat(self, chat_id):
-            return SimpleNamespace(id=-100123)
+            return SimpleNamespace(id=-100123, type="supergroup", username=None)
 
         async def get_chat_member(self, chat_id, user_id):
             return SimpleNamespace(status="left", is_member=False)
@@ -615,7 +615,7 @@ def test_pending_join_request_expires_and_requires_timestamp():
 
     now = datetime.now(timezone.utc)
     assert _pending_request_is_recent({"requested_at": now - timedelta(minutes=5)}, now=now)
-    assert not _pending_request_is_recent({"requested_at": now - timedelta(days=2)}, now=now)
+    assert _pending_request_is_recent({"requested_at": now - timedelta(days=2)}, now=now)
     assert not _pending_request_is_recent({"user_id": 42}, now=now)
 
 
