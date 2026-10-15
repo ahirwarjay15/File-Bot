@@ -583,7 +583,7 @@ def test_force_join_chat_add_returns_to_main_page_with_fallback():
     # not send another panel. Replacement is handled by edit_page navigation.
     assert 'panel_chat_id, panel_message_id = data.get("forcejoin_panel_chat_id"), data.get("forcejoin_panel_message_id")' in handler
     assert 'channels.append(channel_id)' in handler
-    assert 'await patch(db, "force_join", {"channels": channels})' in handler
+    assert 'await patch(db, "force_join", {"channels": channels, "channels_override": True})' in handler
 
 
 def test_force_join_disable_button_is_next_to_verify():
