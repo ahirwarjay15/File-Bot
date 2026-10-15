@@ -143,7 +143,11 @@ async def resolve_force_join_button_target(bot, db, channel: str, channel_cfg: d
             "button_url": target, "channel_title": chat.title or str(chat.id),
             "chat_type": chat.type, "mode": "normal",
         }
-        if any(channel_cfg.get(key) != value for key, value in values.items()):
+        if any(
+            channel_cfg.get(key) != value
+            for key, value in values.items()
+            if key not in {"key", "channel"}
+        ):
             await db.settings.update_one(
                 {"key": "force_join_channel", "channel": channel},
                 {"$set": values},
