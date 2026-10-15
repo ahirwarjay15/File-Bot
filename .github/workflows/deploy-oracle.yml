@@ -1,7 +1,8 @@
 name: Oracle Auto Deploy
 
 on:
-  # Deploy only by an explicit operator action; draft pushes must never auto-deploy.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -39,7 +40,7 @@ jobs:
   deploy:
     name: Deploy to Oracle Cloud
     needs: test
-    if: ${{ vars.ORACLE_DEPLOY_ENABLED == 'true' }}
+    if: ${{ github.ref == 'refs/heads/main' && vars.ORACLE_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
