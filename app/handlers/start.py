@@ -730,11 +730,6 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
                     bot, user_id, payload, animation_post, "", empty_markup,
                     animation_cfg, animation_only=True,
                 )
-                if animation_post.message_id != old_post.message_id:
-                    try:
-                        await old_post.delete()
-                    except TelegramAPIError:
-                        pass
             except TelegramAPIError:
                 log.warning("Could not create Force Join animation poster", exc_info=True)
                 animation_post = None
@@ -782,6 +777,13 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
             separate_animation_id = await _cancel_gate_animation(bot, user_id, payload)
         if animation_enabled and animation_mode == "force_join_poster" and animation_post:
             if await _edit_force_join_post(animation_post, rendered, markup):
+                # Keep the previous verification post until animation has stopped
+                # and its replacement contains the latest remaining-channel list.
+                if old_post and old_post.message_id != animation_post.message_id:
+                    try:
+                        await old_post.delete()
+                    except TelegramAPIError:
+                        pass
                 return
 
         if animation_enabled and animation_mode == "new_message" and (force_cfg.get("poster_file_id") or force_cfg.get("poster_photo_id")):

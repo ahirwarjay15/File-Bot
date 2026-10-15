@@ -665,3 +665,16 @@ def test_invalid_post_ignores_commands_banned_users_owner_and_moderators():
     assert 'if not cfg.get("enabled", False):' in handler
     assert 'log.info("Invalid-post skipped: setting disabled or missing")' in handler
     assert 'log.exception("Invalid-post handler failed before completing")' in handler
+
+
+
+def test_force_join_poster_keeps_old_post_until_replacement_is_ready():
+    from pathlib import Path
+
+    source = Path("app/handlers/start.py").read_text()
+    impl_start = source.index("async def _forcejoin_check_impl")
+    missing_check = source.index("missing = [] if await is_owner_or_moderator", impl_start)
+    old_post_delete = source.index("await old_post.delete()", impl_start)
+    replacement_edit = source.index("if await _edit_force_join_post(animation_post, rendered, markup):", impl_start)
+
+    assert missing_check < replacement_edit < old_post_delete
