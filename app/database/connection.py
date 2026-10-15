@@ -17,7 +17,22 @@ class Database:
             self.db=self.client[self.settings.mongodb_db_name]
             await self.db.users.create_index([("user_id",ASCENDING)],unique=True)
             await self.db.files.create_index([("file_key",ASCENDING)],unique=True)
-            await self.db.settings.create_index([("key",ASCENDING)],unique=True)
+            # Most settings are singleton documents keyed by "key", but Force Join
+            # stores one document per channel using the same key. The old unique
+            # key-only index silently prevented a second channel from being added.
+            settings_indexes = await self.db.settings.index_information()
+            await self.db.settings.create_index(
+                [("key", ASCENDING), ("channel", ASCENDING)],
+                unique=True,
+                name="key_channel_unique",
+            )
+            for index_name, index_info in settings_indexes.items():
+                if (
+                    index_name != "_id_"
+                    and index_info.get("key") == [("key", ASCENDING)]
+                    and index_info.get("unique")
+                ):
+                    await self.db.settings.drop_index(index_name)
             await self.db.moderators.create_index([("user_id",ASCENDING)],unique=True)
             await self.db.tasks.create_index([("status",ASCENDING),("deadline",ASCENDING)])
             await self.db.tasks.create_index([("request_key",ASCENDING)],unique=True,sparse=True)
