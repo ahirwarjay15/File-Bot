@@ -18,6 +18,7 @@ router = Router(name="batch")
 log = logging.getLogger(__name__)
 SESSION_TTL = 200
 AUTO_GENERATE_SETTLE_SECONDS = 4
+PANEL_SETTLE_SECONDS = 1
 
 class BatchState(StatesGroup):
     collecting = State()
@@ -82,38 +83,37 @@ async def _expire_session(db, user_id: int):
         {"$set": {"status": "expired", "finished_at": _now()}},
     )
 
-async def _render_status(message: Message, count: int, session=None, database=None):
-    session = session or (await _session(database.db, message.from_user.id) if database and message.from_user else None)
-    old_id = session.get("status_message_id") if session else None
-    status_chat_id = session.get("status_chat_id", message.chat.id) if session else message.chat.id
-    if count >= 100:
-        # Exactly 100 files are auto-generated after a short quiet window; no panel is shown.
-        if session and database:
-            await database.db.batch_sessions.update_one(
-                {"_id": session["_id"]},
-                {"$unset": {"status_message_id": "", "status_chat_id": ""}},
-            )
-        if old_id:
-            try:
-                await message.bot.delete_message(status_chat_id, old_id)
-            except TelegramAPIError:
-                pass
+async def _render_session_panel(bot, db, session):
+    """Render one fresh panel after a burst of file messages has settled."""
+    count = len(session.get("items", []))
+    if count < 2 or count >= 100 or session.get("panel_count") == count:
         return
     text = (
-        f"BATCH STORAGE\n\nFiles collected: {count}/100\n\n"
-        "Send 2–100 files forwarded directly from the configured Database channel.\n"
+        f"BATCH STORAGE\\n\\nFiles collected: {count}/100\\n\\n"
+        "Send 2–100 files forwarded directly from the configured Database channel.\\n"
         "Files are delivered in Database-channel order. You can add more before generating."
     )
-    # Replace, rather than edit, the previous panel when the count changes.
-    sent = await message.answer(text, reply_markup=menu())
-    if session and database:
-        await database.db.batch_sessions.update_one(
-            {"_id": session["_id"]},
-            {"$set": {"status_message_id": sent.message_id, "status_chat_id": message.chat.id}},
-        )
+    chat_id = session.get("status_chat_id", session["admin_id"])
+    old_id = session.get("status_message_id")
+    sent = await bot.send_message(chat_id, text, reply_markup=menu())
+    updated = await db.batch_sessions.update_one(
+        {"_id": session["_id"], "status": "collecting",
+         "last_activity_ts": session.get("last_activity_ts")},
+        {"$set": {
+            "status_message_id": sent.message_id,
+            "status_chat_id": chat_id,
+            "panel_count": count,
+        }},
+    )
+    if not updated.modified_count:
+        try:
+            await bot.delete_message(chat_id, sent.message_id)
+        except TelegramAPIError:
+            pass
+        return
     if old_id and old_id != sent.message_id:
         try:
-            await message.bot.delete_message(status_chat_id, old_id)
+            await bot.delete_message(chat_id, old_id)
         except TelegramAPIError:
             log.debug("Could not delete replaced batch panel", exc_info=True)
 
@@ -152,9 +152,7 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
         await state.set_state(BatchState.collecting)
         await state.set_data({"admin_id": uid})
         count = len(existing.get("items", []))
-        if count:
-            await _render_status(message, count, existing, database)
-        else:
+        if not count:
             await message.answer("Send a minimum of 2 and a maximum of 100 files, directly forwarded from the configured Database channel. Use /cancel to stop.")
         return
     if existing:
@@ -250,8 +248,7 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
     if not result.modified_count:
         await message.answer("Batch session changed. Use /batch to resume or start again.")
         return True
-    latest = await _session(database.db, uid)
-    await _render_status(message, len(latest.get("items", [])) if latest else len(items) + 1, latest, database)
+    # The background worker debounces a burst of updates into one panel.
     return True
 
 @router.message(BatchState.collecting)
@@ -341,6 +338,18 @@ async def run_batch_session_worker(bot, db, poll_seconds: int = 2):
     """Auto-generate exactly-100 batches after a quiet window and expire idle sessions."""
     import asyncio
     while True:
+        panel_cutoff = time.time() - PANEL_SETTLE_SECONDS
+        async for panel_session in db.batch_sessions.find({
+            "status": "collecting", "last_activity_ts": {"$lte": panel_cutoff},
+            "$expr": {"$and": [
+                {"$gte": [{"$size": "$items"}, 2]},
+                {"$lt": [{"$size": "$items"}, 100]},
+            ]},
+        }).limit(50):
+            try:
+                await _render_session_panel(bot, db, panel_session)
+            except TelegramAPIError:
+                log.exception("Could not render batch panel for session %s", panel_session.get("_id"))
         auto_cutoff = time.time() - AUTO_GENERATE_SETTLE_SECONDS
         async for full_session in db.batch_sessions.find({
             "status": "collecting", "last_activity_ts": {"$lte": auto_cutoff},
