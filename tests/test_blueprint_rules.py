@@ -69,6 +69,48 @@ def test_invalid_post_about_defaults_to_multiline_standard_about():
     assert "{bot_name}" in DEFAULT_ABOUT
 
 
+@pytest.mark.asyncio
+async def test_start_and_invalid_posts_share_one_saved_about_template():
+    from app.handlers.misc import DEFAULT_ABOUT, load_shared_about_text
+
+    class SettingsCollection:
+        def __init__(self, doc=None):
+            self.doc = doc
+            self.updates = []
+
+        async def find_one(self, query):
+            return self.doc if self.doc and self.doc.get("key") == query.get("key") else None
+
+        async def update_one(self, query, update, upsert=False):
+            self.updates.append((query, update, upsert))
+            if self.doc is None:
+                self.doc = dict(update["$set"])
+            else:
+                self.doc.update(update["$set"])
+
+    class FakeDB:
+        def __init__(self, doc=None):
+            self.settings = SettingsCollection(doc)
+
+    saved = "<b>Shared About</b>\\n{bot_name}"
+    db = FakeDB({"key": "invalid_post", "about_text": saved})
+    assert await load_shared_about_text(db) == saved
+    assert db.settings.updates == []
+
+    empty_db = FakeDB({"key": "invalid_post"})
+    assert await load_shared_about_text(empty_db) == DEFAULT_ABOUT
+    assert empty_db.settings.doc["about_text"] == DEFAULT_ABOUT
+
+
+def test_about_text_has_no_settings_text_editor():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    assert 'elif action == "invalid_about_text"' not in source
+    assert 'elif field == "invalid_about_text"' not in source
+    assert '("ABOUT BUTTON", "settings:invalid_about")' in source
+
+
 def test_invalid_post_template_replaces_user_variables_safely():
     from types import SimpleNamespace
     from app.handlers.misc import _render_user_text
