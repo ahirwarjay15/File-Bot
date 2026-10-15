@@ -759,6 +759,24 @@ def test_stats_blocked_count_does_not_treat_any_delivery_error_as_blocked():
     assert 'last_delivery_error' not in stats_handler
 
 
+def test_force_join_channel_button_is_not_omitted_when_invite_resolution_fails():
+    from app.handlers.start import build_force_join_channel_button
+
+    button = build_force_join_channel_button({"button_text": "Test"}, 2, None)
+    assert button.text == "Test"
+    assert button.callback_data == "forcejoin:link_unavailable"
+    assert button.url is None
+
+
+def test_force_join_channel_button_uses_resolved_url_when_available():
+    from app.handlers.start import build_force_join_channel_button
+
+    button = build_force_join_channel_button({"button_text": "Tst"}, 1, "https://t.me/channel")
+    assert button.text == "Tst"
+    assert button.url == "https://t.me/channel"
+    assert button.callback_data is None
+
+
 def test_force_join_channel_custom_labels_are_limited_to_telegram_button_length():
     from pathlib import Path
 
