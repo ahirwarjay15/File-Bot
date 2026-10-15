@@ -124,6 +124,14 @@ def force_join_button_label(channel_cfg: dict, position: int) -> str:
     return (custom or f"Join {position}")[:64]
 
 
+def build_force_join_channel_button(channel_cfg: dict, position: int, target: str | None):
+    """Never silently omit a required channel when Telegram cannot resolve its invite."""
+    label = force_join_button_label(channel_cfg, position)
+    if target:
+        return InlineKeyboardButton(text=label, url=target)
+    return InlineKeyboardButton(text=label, callback_data="forcejoin:link_unavailable")
+
+
 async def resolve_force_join_button_target(bot, db, channel: str, channel_cfg: dict) -> str | None:
     """Resolve a valid join URL and repair missing per-channel metadata when possible."""
     target = channel_cfg.get("button_url")
@@ -731,6 +739,14 @@ async def _edit_force_join_post(message: Message, text: str, markup: InlineKeybo
         log.warning("Could not edit animation poster into Force Join prompt", exc_info=True)
         return False
 
+@router.callback_query(F.data == "forcejoin:link_unavailable")
+async def forcejoin_link_unavailable(query: CallbackQuery):
+    await query.answer(
+        "This channel's join link is temporarily unavailable. Please contact the bot owner.",
+        show_alert=True,
+    )
+
+
 @router.callback_query(F.data.startswith("forcejoin:check:"))
 async def forcejoin_check(query: CallbackQuery, settings: Settings, database, bot):
     if not query.from_user:
@@ -821,9 +837,9 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
             target = await resolve_force_join_button_target(
                 bot, database.db, channel, channel_cfg
             )
-            if target:
-                label = force_join_button_label(channel_cfg, index + 1)
-                join_buttons.append(InlineKeyboardButton(text=label, url=target))
+            # Keep every missing channel visible even when Telegram refuses to
+            # resolve or create its invite URL; never silently drop its button.
+            join_buttons.append(build_force_join_channel_button(channel_cfg, index + 1, target))
         rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
         rows.append([InlineKeyboardButton(text=force_cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
         me = await bot.get_me()
