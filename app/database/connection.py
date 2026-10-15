@@ -1,8 +1,40 @@
 import logging
-from pymongo import ASCENDING, AsyncMongoClient
+from pymongo import ASCENDING, AsyncMongoClient, UpdateOne
 from app.config import Settings
 
 logger=logging.getLogger(__name__)
+
+
+async def _backfill_code_collection(source, target, field: str, kind: str, batch_size: int = 500):
+    operations = []
+    async for record in source.find({field: {"$type": "string"}}, {field: 1}):
+        code = record[field]
+        operations.append(UpdateOne(
+            {"code": code},
+            {"$setOnInsert": {"code": code, "kind": kind}},
+            upsert=True,
+        ))
+        if len(operations) >= batch_size:
+            await target.bulk_write(operations, ordered=False)
+            operations = []
+    if operations:
+        await target.bulk_write(operations, ordered=False)
+
+
+async def backfill_deeplink_codes(db, batch_size: int = 500) -> bool:
+    """Run the legacy-code backfill once, in bulk, instead of N round trips on every boot."""
+    migration_id = "deeplink_code_backfill_v1"
+    if await db.system_migrations.find_one({"_id": migration_id}):
+        return False
+    await _backfill_code_collection(db.files, db.deeplink_codes, "file_key", "legacy-file", batch_size)
+    await _backfill_code_collection(db.batches, db.deeplink_codes, "batch_id", "legacy-batch", batch_size)
+    await db.system_migrations.update_one(
+        {"_id": migration_id},
+        {"$setOnInsert": {"completed": True}},
+        upsert=True,
+    )
+    return True
+
 
 class Database:
     def __init__(self,settings:Settings):
@@ -40,20 +72,9 @@ class Database:
             await self.db.delivery_requests.create_index([("status",ASCENDING),("updated_at",ASCENDING)])
             await self.db.batches.create_index([("batch_id",ASCENDING)],unique=True,sparse=True)
             await self.db.deeplink_codes.create_index([("code",ASCENDING)],unique=True)
-            # Backfill every currently known code so deleted/old records cannot
-            # accidentally make an already-issued code reusable after upgrades.
-            async for old_file in self.db.files.find({"file_key": {"$type": "string"}}, {"file_key": 1}):
-                await self.db.deeplink_codes.update_one(
-                    {"code": old_file["file_key"]},
-                    {"$setOnInsert": {"code": old_file["file_key"], "kind": "legacy-file"}},
-                    upsert=True,
-                )
-            async for old_batch in self.db.batches.find({"batch_id": {"$type": "string"}}, {"batch_id": 1}):
-                await self.db.deeplink_codes.update_one(
-                    {"code": old_batch["batch_id"]},
-                    {"$setOnInsert": {"code": old_batch["batch_id"], "kind": "legacy-batch"}},
-                    upsert=True,
-                )
+            # Preserve every legacy code, but do the scan once and use bulk writes
+            # so startup cost does not grow by one network round trip per stored file.
+            await backfill_deeplink_codes(self.db)
             await self.db.broadcast_drafts.create_index([("admin_id",ASCENDING)],unique=True)
             await self.db.broadcast_jobs.create_index([("draft_id",ASCENDING)],unique=True)
             await self.db.broadcast_jobs.create_index([("status",ASCENDING),("created_at",ASCENDING)])
