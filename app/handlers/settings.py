@@ -1510,6 +1510,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         ]))
         return
     if field == "forcejoin_other_label":
+        if not value or len(value) > 64:
+            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
+            return
         prev = await state.get_data()
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
         channels = await effective_force_join_channels(database, settings)
@@ -1530,6 +1533,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await tracked_answer(message, state, f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
         return
     if field == "forcejoin_existing_other_label":
+        if not value or len(value) > 64:
+            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
+            return
         prev = await state.get_data()
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
         links = cfg.get("other_links", [])
@@ -1543,6 +1549,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await clear_state_preserving_prompts(state)
         return
     if field == "forcejoin_label":
+        if not value or len(value) > 64:
+            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
+            return
         prev = await state.get_data()
         channel = prev.get("channel")
         if not channel:

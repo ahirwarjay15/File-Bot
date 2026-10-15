@@ -780,3 +780,13 @@ def test_stats_blocked_count_does_not_treat_any_delivery_error_as_blocked():
     )[0]
     assert 'count_documents({"blocked": True})' in stats_handler
     assert 'last_delivery_error' not in stats_handler
+
+
+def test_force_join_custom_labels_are_limited_to_telegram_button_length():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    for field in ("forcejoin_other_label", "forcejoin_existing_other_label", "forcejoin_label"):
+        block = source.split(f'if field == "{field}":', 1)[1].split("\n    if field ==", 1)[0]
+        assert "len(value) > 64" in block
+        assert "Button text must be between 1 and 64 characters." in block
