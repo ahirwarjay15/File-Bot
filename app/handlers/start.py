@@ -312,7 +312,8 @@ async def _cancel_gate_animation(bot, user_id: int, payload: str,
 async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
                         base_text: str, markup: InlineKeyboardMarkup, cfg: dict,
                         separate_message_id: int | None, animation_only: bool = False,
-                        stop_event: asyncio.Event | None = None):
+                        stop_event: asyncio.Event | None = None,
+                        separate_has_media: bool = False):
     frames = cfg.get("frames")
     if not isinstance(frames, list) or len(frames) != 3:
         frames = [".", "..", "..."]
@@ -353,9 +354,14 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
             while True:
                 try:
                     if mode == "new_message":
-                        await bot.edit_message_text(
-                            chat_id=user_id, message_id=target_id, text=animated, parse_mode="HTML",
-                        )
+                        if separate_has_media:
+                            await bot.edit_message_caption(
+                                chat_id=user_id, message_id=target_id, caption=animated, parse_mode="HTML",
+                            )
+                        else:
+                            await bot.edit_message_text(
+                                chat_id=user_id, message_id=target_id, text=animated, parse_mode="HTML",
+                            )
                     else:
                         content = animated if animation_only else f"{base_text}\n\n{animated}"
                         if gate_message.photo or gate_message.animation or gate_message.document:
@@ -401,12 +407,14 @@ async def _animate_gate(bot, user_id: int, payload: str, gate_message: Message,
 
 async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: Message,
                                 base_text: str, markup: InlineKeyboardMarkup, cfg: dict,
-                                animation_only: bool = False):
+                                animation_only: bool = False, poster_cfg: dict | None = None):
     if not cfg.get("enabled"):
         return
     await _cancel_gate_animation(bot, user_id, payload)
     mode = cfg.get("mode", "force_join_poster")
     separate_id = None
+    animation_message = None
+    separate_has_media = False
     if mode == "new_message":
         prefix_value = str(cfg.get("prefix") or "Checking")
         if prefix_value == "Checking..":
@@ -416,21 +424,34 @@ async def _start_gate_animation(bot, user_id: int, payload: str, gate_message: M
             frames = [".", "..", "..."]
         first = animation_frame_text(prefix_value, frames[0])
         try:
-            animation_message = await bot.send_message(user_id, first, parse_mode="HTML")
+            poster_cfg = poster_cfg or {}
+            if poster_cfg.get("poster_file_id"):
+                animation_message = await bot.send_animation(
+                    user_id, poster_cfg["poster_file_id"], caption=first, parse_mode="HTML"
+                )
+                separate_has_media = True
+            elif poster_cfg.get("poster_photo_id"):
+                animation_message = await bot.send_photo(
+                    user_id, poster_cfg["poster_photo_id"], caption=first, parse_mode="HTML"
+                )
+                separate_has_media = True
+            else:
+                animation_message = await bot.send_message(user_id, first, parse_mode="HTML")
             separate_id = animation_message.message_id
         except TelegramAPIError:
             log.warning("Could not send separate Force Join animation", exc_info=True)
-            return
+            return None
     stop_event = asyncio.Event()
     task = asyncio.create_task(
         _animate_gate(
             bot, user_id, payload, gate_message, base_text, markup, cfg,
-            separate_id, animation_only, stop_event,
+            separate_id, animation_only, stop_event, separate_has_media,
         )
     )
     key = (user_id, payload)
     _gate_animation_stop_events[key] = stop_event
     _gate_animation_tasks[key] = (task, separate_id)
+    return animation_message
 
 
 async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->bool:
@@ -453,7 +474,10 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     # animation during that check rather than only after the user taps Verify.
     if animation_enabled:
         if animation_mode == "new_message":
-            await _start_gate_animation(bot, user.id, payload, message, "", InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg)
+            animation_post = await _start_gate_animation(
+                bot, user.id, payload, message, "", InlineKeyboardMarkup(inline_keyboard=[]),
+                animation_cfg, poster_cfg=cfg,
+            )
         else:
             frames = animation_cfg.get("frames")
             if not isinstance(frames, list) or len(frames) != 3:
@@ -513,9 +537,11 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
             await animation_post.delete()
         except TelegramAPIError:
             pass
-    if animation_enabled and animation_mode == "new_message" and (cfg.get("poster_file_id") or cfg.get("poster_photo_id")):
-        # Text animation messages cannot be converted into media posts. Keep the
-        # configured Force Join poster visible in the final verification prompt.
+    if animation_enabled and animation_mode == "new_message" and animation_post:
+        # The animation message is created with the configured poster, so its
+        # caption/text can become the Force Join prompt in place.
+        if await _edit_force_join_post(animation_post, rendered, markup):
+            return True
         await _send_force_join_post(bot, user.id, cfg, rendered, markup)
         if separate_animation_id:
             try:
@@ -810,9 +836,9 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
     # verification. Editing a text-only old post would otherwise silently skip it.
     if old_post and animation_enabled:
         if animation_mode == "new_message":
-            await _start_gate_animation(
+            animation_post = await _start_gate_animation(
                 bot, user_id, payload, old_post, "",
-                InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg,
+                InlineKeyboardMarkup(inline_keyboard=[]), animation_cfg, poster_cfg=force_cfg,
             )
         else:
             frames = animation_cfg.get("frames")
@@ -885,20 +911,26 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
                         pass
                 return
 
-        if animation_enabled and animation_mode == "new_message" and (force_cfg.get("poster_file_id") or force_cfg.get("poster_photo_id")):
-            # Text animation cannot be converted into a media post. Use the
-            # configured Force Join poster for the final verification prompt.
+        if animation_enabled and animation_mode == "new_message" and separate_animation_id and animation_post:
+            # Reuse the poster-backed animation message as the Force Join prompt.
+            if await _edit_force_join_post(animation_post, rendered, markup):
+                # Delete the old Force Join post immediately after conversion.
+                if old_post and old_post.message_id != animation_post.message_id:
+                    try:
+                        await old_post.delete()
+                    except TelegramAPIError:
+                        pass
+                return
             new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
-            if separate_animation_id:
-                try:
-                    await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
-                except TelegramAPIError:
-                    pass
             if old_post and old_post.message_id != new_post.message_id:
                 try:
                     await old_post.delete()
                 except TelegramAPIError:
                     pass
+            try:
+                await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+            except TelegramAPIError:
+                pass
             return
         if animation_enabled and animation_mode == "new_message" and separate_animation_id:
             # The animated message itself becomes the updated Force Join prompt.
