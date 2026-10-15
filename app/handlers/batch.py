@@ -17,6 +17,7 @@ from app.services.permissions import is_owner_or_moderator
 router = Router(name="batch")
 log = logging.getLogger(__name__)
 SESSION_TTL = 200
+AUTO_GENERATE_SETTLE_SECONDS = 4
 
 class BatchState(StatesGroup):
     collecting = State()
@@ -40,11 +41,30 @@ def is_batch_file(message: Message) -> bool:
 
 
 def ordered_batch_items(items: list[dict]) -> list[dict]:
-    """Deliver items in the same chronological message-ID order they were submitted."""
+    """Keep the exact order in which messages appear in the Database channel."""
     return sorted(items, key=lambda item: (
-        int(item.get("original_message_id", item.get("source_message_id", 0))),
         int(item.get("source_message_id", 0)),
+        int(item.get("original_message_id", 0)),
     ))
+
+
+def _database_channel_origin(message: Message, source_channel_id: int | str):
+    """Return the original storage-channel message only for a forwarded channel post."""
+    origin = getattr(message, "forward_origin", None)
+    origin_chat = getattr(origin, "chat", None)
+    origin_message_id = getattr(origin, "message_id", None)
+    if not origin_chat or not origin_message_id:
+        return None
+    try:
+        expected_chat_id = int(source_channel_id)
+        actual_chat_id = int(origin_chat.id)
+        original_id = int(origin_message_id)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if actual_chat_id != expected_chat_id:
+        return None
+    return actual_chat_id, original_id
+
 
 async def _session(db, user_id: int):
     return await db.batch_sessions.find_one({"admin_id": user_id, "status": {"$in": ["collecting", "generating"]}})
@@ -63,33 +83,40 @@ async def _expire_session(db, user_id: int):
     )
 
 async def _render_status(message: Message, count: int, session=None, database=None):
-    text = (
-        f"BATCH STORAGE\n\nStored files: {count}/100\n\n"
-        "Send at least 2 files before generating a link.\n"
-        "Multiple files sent together are counted individually and kept in send order."
-    )
     session = session or (await _session(database.db, message.from_user.id) if database and message.from_user else None)
-    if session and session.get("status_message_id"):
-        try:
-            await message.bot.edit_message_text(
-                chat_id=session.get("status_chat_id", message.chat.id),
-                message_id=session["status_message_id"],
-                text=text,
-                reply_markup=menu(),
+    old_id = session.get("status_message_id") if session else None
+    status_chat_id = session.get("status_chat_id", message.chat.id) if session else message.chat.id
+    if count >= 100:
+        # Exactly 100 files are auto-generated after a short quiet window; no panel is shown.
+        if session and database:
+            await database.db.batch_sessions.update_one(
+                {"_id": session["_id"]},
+                {"$unset": {"status_message_id": "", "status_chat_id": ""}},
             )
-            return
-        except TelegramBadRequest as exc:
-            if "message is not modified" in str(exc).lower():
-                return
-        except TelegramAPIError:
-            log.warning("Could not update the existing batch status panel", exc_info=True)
-            return
+        if old_id:
+            try:
+                await message.bot.delete_message(status_chat_id, old_id)
+            except TelegramAPIError:
+                pass
+        return
+    text = (
+        f"BATCH STORAGE\\n\\nFiles collected: {count}/100\\n\\n"
+        "Send 2–100 files forwarded directly from the configured Database channel.\\n"
+        "Files are delivered in Database-channel order. You can add more before generating."
+    )
+    # Replace, rather than edit, the previous panel when the count changes.
     sent = await message.answer(text, reply_markup=menu())
     if session and database:
         await database.db.batch_sessions.update_one(
             {"_id": session["_id"]},
             {"$set": {"status_message_id": sent.message_id, "status_chat_id": message.chat.id}},
         )
+    if old_id and old_id != sent.message_id:
+        try:
+            await message.bot.delete_message(status_chat_id, old_id)
+        except TelegramAPIError:
+            log.debug("Could not delete replaced batch panel", exc_info=True)
+
 
 @router.message(Command("batch"))
 async def batch_start(message: Message, state: FSMContext, settings: Settings, database):
@@ -124,7 +151,11 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
             )
         await state.set_state(BatchState.collecting)
         await state.set_data({"admin_id": uid})
-        await _render_status(message, len(existing.get("items", [])), existing, database)
+        count = len(existing.get("items", []))
+        if count:
+            await _render_status(message, count, existing, database)
+        else:
+            await message.answer("Send a minimum of 2 and a maximum of 100 files, directly forwarded from the configured Database channel. Use /cancel to stop.")
         return
     if existing:
         await _expire_session(database.db, uid)
@@ -139,8 +170,7 @@ async def batch_start(message: Message, state: FSMContext, settings: Settings, d
     )
     await state.set_state(BatchState.collecting)
     await state.set_data({"admin_id": uid})
-    fresh = await _session(database.db, uid)
-    await _render_status(message, 0, fresh, database)
+    await message.answer("Send a minimum of 2 and a maximum of 100 files, directly forwarded from the configured Database channel. Use /cancel to stop.")
 
 @router.message(BatchState.collecting, Command("cancel"))
 async def cancel_command(message: Message, state: FSMContext, settings: Settings, database):
@@ -175,47 +205,56 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
         await message.answer("Please send a file or media item. A minimum of 2 files is required.")
         return True
     items = session.get("items", [])
-    if any(item.get("original_message_id") == message.message_id for item in items):
-        await message.answer("This message is already included in the batch.")
+    origin = _database_channel_origin(message, settings.source_channel_id)
+    if origin is None:
+        await message.answer("Batch only accepts files forwarded directly from the configured Database channel. This file was not added or copied.")
+        return True
+    source_chat_id, source_message_id = origin
+    if any(int(item.get("source_message_id", -1)) == source_message_id for item in items):
+        await message.answer("This Database-channel message is already included in the batch.")
         return True
     if len(items) >= 100:
-        await message.answer("Maximum 100 messages reached. Generate the batch link.")
+        await database.db.batch_sessions.update_one(
+            {"_id": session["_id"], "status": "collecting"},
+            {"$set": {"status": "failed", "finished_at": _now(), "failure_reason": "over_100_files"}},
+        )
+        status_id = session.get("status_message_id")
+        if status_id:
+            try:
+                await message.bot.delete_message(session.get("status_chat_id", message.chat.id), status_id)
+            except TelegramAPIError:
+                pass
+        await message.answer("Batch failed: maximum is 100 files. Start a new batch with /batch.")
+        return "failed"
+    item = {
+        # Reuse the original Database-channel post. /batch never copies external files.
+        "source_chat_id": source_chat_id,
+        "source_message_id": source_message_id,
+        "file_name": message.document.file_name if message.document else None,
+        "source_message_date": message.date.isoformat() if message.date else None,
+        "original_message_id": message.message_id,
+        "reply_markup": (
+            message.reply_markup.model_dump(mode="json", exclude_none=True)
+            if message.reply_markup else None
+        ),
+        **({"original_has_buttons": True} if message.reply_markup and message.reply_markup.inline_keyboard else {}),
+    }
+    # Conditional update prevents adding to a session cancelled or expired concurrently.
+    result = await database.db.batch_sessions.update_one(
+        {"_id": session["_id"], "status": "collecting",
+         "$expr": {"$lt": [{"$size": "$items"}, 100]}},
+        {"$push": {"items": item},
+         "$max": {"last_activity_ts": time.time()},
+         "$currentDate": {"last_activity_at": True}},
+    )
+    if not result.modified_count:
+        await message.answer("Batch session changed. Use /batch to resume or start again.")
         return True
-    try:
-        copied = await message.bot.copy_message(
-            chat_id=settings.source_channel_id,
-            from_chat_id=message.chat.id,
-            message_id=message.message_id,
-        )
-        item = {
-            "source_chat_id": settings.source_channel_id,
-            "source_message_id": copied.message_id,
-            "file_name": message.document.file_name if message.document else None,
-            "source_message_date": message.date.isoformat() if message.date else None,
-            "original_message_id": message.message_id,
-            "reply_markup": (
-                message.reply_markup.model_dump(mode="json", exclude_none=True)
-                if message.reply_markup else None
-            ),
-            **({"original_has_buttons": True} if message.reply_markup and message.reply_markup.inline_keyboard else {}),
-        }
-        # Conditional update prevents adding to a session cancelled or expired concurrently.
-        result = await database.db.batch_sessions.update_one(
-            {"_id": session["_id"], "status": "collecting",
-             "$expr": {"$lt": [{"$size": "$items"}, 100]}},
-            {"$push": {"items": item},
-             "$max": {"last_activity_ts": time.time()},
-             "$currentDate": {"last_activity_at": True}},
-        )
-        if not result.modified_count:
-            await message.answer("Batch session changed. Use /batch to resume or start again.")
-            return True
-        latest = await _session(database.db, uid)
-        await _render_status(message, len(latest.get("items", [])) if latest else len(items) + 1, latest, database)
-    except TelegramAPIError:
-        log.exception("Batch source copy failed")
-        await message.answer("Couldn't save this message. Check source-channel permissions.")
+    latest = await _session(database.db, uid)
+    await _render_status(message, len(latest.get("items", [])) if latest else len(items) + 1, latest, database)
     return True
+
+@router.message(BatchState.collecting)    return True
 
 @router.message(BatchState.collecting)
 async def collect_in_state(message: Message, state: FSMContext, settings: Settings, database):
@@ -224,6 +263,9 @@ async def collect_in_state(message: Message, state: FSMContext, settings: Settin
     if message.text and message.text.startswith("/"):
         raise SkipHandler
     handled = await _collect_message(message, settings, database, message.from_user.id)
+    if handled == "failed":
+        await state.clear()
+        return
     if not handled:
         await state.clear()
         raise SkipHandler
@@ -298,9 +340,46 @@ async def actions(query: CallbackQuery, state: FSMContext, settings: Settings, d
 
 
 async def run_batch_session_worker(bot, db, poll_seconds: int = 2):
-    """Expire idle batch sessions durably and notify the collecting moderator."""
+    """Auto-generate exactly-100 batches after a quiet window and expire idle sessions."""
     import asyncio
     while True:
+        auto_cutoff = time.time() - AUTO_GENERATE_SETTLE_SECONDS
+        async for full_session in db.batch_sessions.find({
+            "status": "collecting", "last_activity_ts": {"$lte": auto_cutoff},
+            "$expr": {"$eq": [{"$size": "$items"}, 100]},
+        }).limit(20):
+            claimed = await db.batch_sessions.update_one(
+                {"_id": full_session["_id"], "status": "collecting",
+                 "last_activity_ts": {"$lte": auto_cutoff},
+                 "$expr": {"$eq": [{"$size": "$items"}, 100]}},
+                {"$set": {"status": "generating", "finished_at": _now()}},
+            )
+            if not claimed.modified_count:
+                continue
+            try:
+                items = ordered_batch_items(full_session.get("items", []))
+                batch = await FileRepository(db).save_batch(items, full_session["admin_id"], batch_id=full_session.get("batch_id"))
+                me = await bot.get_me()
+                link = f"https://t.me/{me.username}?start=batch_{batch['batch_id']}"
+                await db.batch_sessions.update_one(
+                    {"_id": full_session["_id"], "status": "generating"},
+                    {"$set": {"status": "completed", "batch_id": batch["batch_id"], "completed_at": _now()}},
+                )
+                status_id = full_session.get("status_message_id")
+                if status_id:
+                    try:
+                        await bot.delete_message(full_session.get("status_chat_id", full_session["admin_id"]), status_id)
+                    except TelegramAPIError:
+                        pass
+                await bot.send_message(full_session["admin_id"], link, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="ᴄᴏᴘʏ", copy_text=CopyTextButton(text=link))
+                ]]))
+            except Exception:
+                log.exception("Automatic 100-file batch generation failed")
+                await db.batch_sessions.update_one(
+                    {"_id": full_session["_id"], "status": "generating"},
+                    {"$set": {"status": "collecting", "last_error_at": _now()}},
+                )
         cutoff = time.time() - SESSION_TTL
         async for session in db.batch_sessions.find({"status": "collecting", "last_activity_ts": {"$lte": cutoff}}).limit(100):
             result = await db.batch_sessions.update_one(
