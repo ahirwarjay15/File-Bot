@@ -889,17 +889,16 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
             # Text animation cannot be converted into a media post. Use the
             # configured Force Join poster for the final verification prompt.
             new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
-            # Remove the animation and previous Force Join post together so the
-            # old post does not linger after the animation disappears.
-            cleanup = []
             if separate_animation_id:
-                cleanup.append(
-                    bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
-                )
+                try:
+                    await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+                except TelegramAPIError:
+                    pass
             if old_post and old_post.message_id != new_post.message_id:
-                cleanup.append(old_post.delete())
-            if cleanup:
-                await asyncio.gather(*cleanup, return_exceptions=True)
+                try:
+                    await old_post.delete()
+                except TelegramAPIError:
+                    pass
             return
         if animation_enabled and animation_mode == "new_message" and separate_animation_id:
             # The animated message itself becomes the updated Force Join prompt.
@@ -921,19 +920,21 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
                 log.warning("Could not convert Verify animation message into Force Join post", exc_info=True)
 
         new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
-        # Keep the existing Message.delete() path for the old Force Join post,
-        # and start its cleanup alongside the separate animation deletion.
-        cleanup = []
         if animation_post and animation_post.message_id != new_post.message_id:
-            cleanup.append(animation_post.delete())
-        if separate_animation_id and separate_animation_id != new_post.message_id:
-            cleanup.append(
-                bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
-            )
+            try:
+                await animation_post.delete()
+            except TelegramAPIError:
+                pass
+        if separate_animation_id:
+            try:
+                await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
+            except TelegramAPIError:
+                pass
         if old_post and old_post.message_id != new_post.message_id:
-            cleanup.append(old_post.delete())
-        if cleanup:
-            await asyncio.gather(*cleanup, return_exceptions=True)
+            try:
+                await old_post.delete()
+            except TelegramAPIError:
+                pass
         return
 
     # Verification succeeded: stop animation immediately; never wait for its
