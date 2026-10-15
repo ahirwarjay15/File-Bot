@@ -61,3 +61,11 @@ async def test_single_file_uses_durable_delivery_queue(monkeypatch):
         "source_chat_id": -100123, "source_message_id": 77,
         "file_name": "x.mp4", "reply_markup": None,
     }]
+
+
+def test_after_delete_replacement_uses_html_parse_mode():
+    from pathlib import Path
+
+    source = Path("app/services/delivery.py").read_text()
+    assert 'text=text, reply_markup=markup, parse_mode="HTML"' in source
+    assert 'bot.send_message(task["user_id"], text, reply_markup=markup, parse_mode="HTML")' in source

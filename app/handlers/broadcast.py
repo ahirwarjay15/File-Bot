@@ -18,6 +18,17 @@ def now():
     return datetime.now(timezone.utc)
 
 
+def format_broadcast_report(counts: dict[str, int]) -> str:
+    """Report every recipient outcome, including users banned while a job runs."""
+    total = sum(counts.get(status, 0) for status in ("sent", "failed", "blocked", "unknown", "skipped_banned"))
+    return (
+        f"BROADCAST REPORT\nRecipients: {total}\nSent successfully: {counts.get('sent', 0)}\n"
+        f"Failed: {counts.get('failed', 0) + counts.get('unknown', 0)}\n"
+        f"Blocked/unreachable: {counts.get('blocked', 0)}\n"
+        f"Skipped (banned): {counts.get('skipped_banned', 0)}"
+    )
+
+
 def confirmation_keyboard(draft_key: str) -> InlineKeyboardMarkup:
     """Only show the explicit confirm/cancel choices on broadcast confirmation."""
     return InlineKeyboardMarkup(inline_keyboard=[[
@@ -148,11 +159,9 @@ async def run_broadcast_worker(bot, db, poll_seconds: int = 2):
         )
         if not recipient:
             counts = {}
-            for status in ("sent", "failed", "blocked", "unknown"):
+            for status in ("sent", "failed", "blocked", "unknown", "skipped_banned"):
                 counts[status] = await db.broadcast_recipients.count_documents({"job_id": job_id, "status": status})
-            total = sum(counts.values())
-            report = (f"BROADCAST REPORT\nRecipients: {total}\nSent successfully: {counts['sent']}\n"
-                      f"Failed: {counts['failed'] + counts['unknown']}\nBlocked/unreachable: {counts['blocked']}")
+            report = format_broadcast_report(counts)
             try:
                 if job.get("report_message_id"):
                     await bot.edit_message_text(report, chat_id=job["report_chat_id"], message_id=job["report_message_id"])

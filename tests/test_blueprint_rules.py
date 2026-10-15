@@ -742,3 +742,27 @@ def test_force_join_poster_keeps_old_post_until_replacement_is_ready():
     replacement_edit = source.index("if await _edit_force_join_post(animation_post, rendered, markup):", impl_start)
 
     assert missing_check < replacement_edit < old_post_delete
+
+
+def test_broadcast_report_counts_skipped_banned_recipients():
+    from app.handlers.broadcast import format_broadcast_report
+
+    report = format_broadcast_report({
+        "sent": 7, "failed": 1, "blocked": 2, "unknown": 1, "skipped_banned": 3,
+    })
+    assert "Recipients: 14" in report
+    assert "Sent successfully: 7" in report
+    assert "Failed: 2" in report
+    assert "Blocked/unreachable: 2" in report
+    assert "Skipped (banned): 3" in report
+
+
+def test_stats_blocked_count_does_not_treat_any_delivery_error_as_blocked():
+    from pathlib import Path
+
+    source = Path("app/handlers/admin.py").read_text()
+    stats_handler = source.split('@router.message(Command("stats"))', 1)[1].split(
+        '@router.callback_query(F.data == "stats:ok")', 1
+    )[0]
+    assert 'count_documents({"blocked": True})' in stats_handler
+    assert 'last_delivery_error' not in stats_handler
