@@ -406,15 +406,27 @@ async def test_force_join_custom_label_updates_only_selected_channel():
         def __init__(self):
             self.settings = SettingsCollection()
 
+    class FakeBot:
+        async def get_chat(self, chat_id):
+            from types import SimpleNamespace
+            return SimpleNamespace(id=chat_id, title="Second Channel", type="channel", username=None)
+
+        async def create_chat_invite_link(self, **kwargs):
+            from types import SimpleNamespace
+            assert kwargs["chat_id"] == -100222
+            assert kwargs["creates_join_request"] is True
+            return SimpleNamespace(invite_link="https://t.me/+correct_second_invite")
+
     db = Database()
-    await save_force_join_channel_label(db, "-100222", "Premium Channel")
+    await save_force_join_channel_label(FakeBot(), db, "-100222", "Premium Channel")
 
     first, second = db.settings.docs
     assert first["channel"] == "-100111"
     assert first["button_url"] == "https://t.me/first_invite"
     assert first["button_text"] == "Join 1"
     assert second["channel"] == "-100222"
-    assert second["button_url"] == "https://t.me/second_invite"
+    assert second["button_url"] == "https://t.me/+correct_second_invite"
+    assert second["channel_title"] == "Second Channel"
     assert second["button_text"] == "Premium Channel"
 
 def test_new_message_animation_is_reused_as_force_join_post_for_verify_and_deeplink():

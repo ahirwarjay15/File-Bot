@@ -85,13 +85,41 @@ def force_join_mode_for_chat(chat) -> str:
     """Public usernames use the public link; private chats require join approval."""
     return "normal" if getattr(chat, "username", None) else "join_request"
 
-async def save_force_join_channel_label(db, channel: str, label: str):
-    """Update only the selected channel's settings without clobbering another channel."""
-    await db.settings.update_one(
+async def save_force_join_channel_label(bot, db, channel: str, label: str):
+    """Save a label only on its channel and repair that channel's join URL if needed."""
+    values = {"key": "force_join_channel", "channel": channel, "button_text": label}
+    try:
+        chat_arg = int(channel) if str(channel).lstrip("-").isdigit() else channel
+        chat = await bot.get_chat(chat_arg)
+        values.update({
+            "channel_title": chat.title or str(chat.id),
+            "chat_type": chat.type,
+            "mode": force_join_mode_for_chat(chat),
+        })
+        if chat.username:
+            values["button_url"] = f"https://t.me/{chat.username}"
+        else:
+            # Older buggy saves could associate another channel's invite URL
+            # with this ID. Generate a correct invite for the selected private chat.
+            invite = await bot.create_chat_invite_link(
+                chat_id=chat.id, creates_join_request=True, name="FB Force Join - Request"
+            )
+            values["button_url"] = invite.invite_link
+    except TelegramAPIError:
+        # Preserve the label update even if Telegram temporarily cannot resolve
+        # the chat; a later edit can repair its URL.
+        pass
+    result = await db.settings.update_one(
         {"key": "force_join_channel", "channel": channel},
-        {"$set": {"key": "force_join_channel", "channel": channel, "button_text": label}},
-        upsert=True,
+        {"$set": values},
+        upsert=False,
     )
+    if not getattr(result, "matched_count", 0):
+        await db.settings.update_one(
+            {"key": "force_join_channel", "channel": channel},
+            {"$set": values},
+            upsert=True,
+        )
 
 async def allowed(m, settings, database):
     return bool(m.from_user and await is_owner_or_moderator(database.db, m.from_user.id, settings))
@@ -1514,7 +1542,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await tracked_answer(message, state, "Channel setting expired. Please reopen it.")
             await clear_state_preserving_prompts(state)
             return
-        await save_force_join_channel_label(db, channel, value)
+        await save_force_join_channel_label(message.bot, db, channel, value)
         await clear_state_preserving_prompts(state)
         await tracked_answer(message, state, f"✨ Successfully updated button text for {channel} force-join button.")
         return
