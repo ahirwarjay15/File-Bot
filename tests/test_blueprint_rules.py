@@ -832,3 +832,57 @@ async def test_shortener_input_state_does_not_swallow_other_commands():
     with pytest.raises(SkipHandler):
         await waiting_command(None, state)
     assert state.cleared is True
+
+
+def test_batch_order_uses_database_channel_message_order():
+    from app.handlers.batch import ordered_batch_items
+
+    items = [
+        {"source_message_id": 303, "original_message_id": 10},
+        {"source_message_id": 301, "original_message_id": 12},
+        {"source_message_id": 302, "original_message_id": 11},
+    ]
+    assert [item["source_message_id"] for item in ordered_batch_items(items)] == [301, 302, 303]
+
+
+def test_batch_accepts_only_forwarded_posts_from_configured_database_channel():
+    from types import SimpleNamespace
+    from app.handlers.batch import _database_channel_origin
+
+    valid = SimpleNamespace(forward_origin=SimpleNamespace(
+        chat=SimpleNamespace(id=-100123), message_id=77
+    ))
+    external = SimpleNamespace(forward_origin=SimpleNamespace(
+        chat=SimpleNamespace(id=-100999), message_id=77
+    ))
+    not_forwarded = SimpleNamespace(forward_origin=None)
+
+    assert _database_channel_origin(valid, "-100123") == (-100123, 77)
+    assert _database_channel_origin(external, -100123) is None
+    assert _database_channel_origin(not_forwarded, -100123) is None
+
+
+def test_batch_does_not_copy_external_files_and_replaces_panels():
+    from pathlib import Path
+
+    source = Path("app/handlers/batch.py").read_text()
+    collect = source.split("async def _collect_message", 1)[1].split(
+        "@router.message(BatchState.collecting)", 1
+    )[0]
+    status = source.split("async def _render_status", 1)[1].split(
+        '@router.message(Command("batch"))', 1
+    )[0]
+    assert "_database_channel_origin(message, settings.source_channel_id)" in collect
+    assert "message.bot.copy_message(" not in collect
+    assert "This file was not added or copied" in collect
+    assert "await message.answer(text, reply_markup=menu())" in status
+    assert "await message.bot.delete_message(status_chat_id, old_id)" in status
+
+
+def test_batch_starts_with_minimum_and_maximum_file_prompt():
+    from pathlib import Path
+
+    source = Path("app/handlers/batch.py").read_text()
+    assert "Send a minimum of 2 and a maximum of 100 files" in source
+    assert "AUTO_GENERATE_SETTLE_SECONDS = 4" in source
+    assert "maximum is 100 files" in source
