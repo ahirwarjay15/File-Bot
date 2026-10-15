@@ -383,8 +383,7 @@ def test_force_join_verification_resolves_public_chat_username_for_join_button()
     assert source.count('target = f"https://t.me/{chat.username}"') >= 2
     assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
 
-@pytest.mark.asyncio
-async def test_force_join_capacity_counts_external_links_and_channels_together():
+def test_force_join_capacity_counts_external_links_and_channels_together():
     from app.handlers.settings import force_join_capacity_reached
 
     assert not force_join_capacity_reached(["-1001"] * 8, [{"url": "https://example.com"}])
@@ -402,7 +401,8 @@ def test_settings_index_migration_allows_multiple_force_join_channel_documents()
     assert 'await self.db.settings.create_index([("key",ASCENDING)],unique=True)' not in source
 
 
-def test_force_join_custom_label_updates_only_selected_channel():
+@pytest.mark.asyncio
+async def test_force_join_custom_label_updates_only_selected_channel():
     from app.handlers.settings import save_force_join_channel_label
 
     class SettingsCollection:
