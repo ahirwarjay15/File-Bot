@@ -100,8 +100,8 @@ async def _render_status(message: Message, count: int, session=None, database=No
                 pass
         return
     text = (
-        f"BATCH STORAGE\\n\\nFiles collected: {count}/100\\n\\n"
-        "Send 2–100 files forwarded directly from the configured Database channel.\\n"
+        f"BATCH STORAGE\n\nFiles collected: {count}/100\n\n"
+        "Send 2–100 files forwarded directly from the configured Database channel.\n"
         "Files are delivered in Database-channel order. You can add more before generating."
     )
     # Replace, rather than edit, the previous panel when the count changes.
@@ -253,8 +253,6 @@ async def _collect_message(message: Message, settings: Settings, database, uid: 
     latest = await _session(database.db, uid)
     await _render_status(message, len(latest.get("items", [])) if latest else len(items) + 1, latest, database)
     return True
-
-@router.message(BatchState.collecting)    return True
 
 @router.message(BatchState.collecting)
 async def collect_in_state(message: Message, state: FSMContext, settings: Settings, database):
