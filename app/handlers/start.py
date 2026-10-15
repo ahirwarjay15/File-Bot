@@ -116,10 +116,9 @@ async def _mark_verified(db, user_id: int, channels: list[str]):
     )
 
 def force_join_button_label(channel_cfg: dict, position: int) -> str:
-    """Use a custom verification label when set; otherwise number the visible missing-channel list."""
+    """Use a saved custom label or number the visible missing-channel list."""
     custom = str(channel_cfg.get("button_text") or "").strip()
-    channel_title = str(channel_cfg.get("channel_title") or "").strip()
-    return (custom or channel_title or f"Join {position}")[:64]
+    return (custom or f"Join {position}")[:64]
 
 
 def _is_private_chat(chat) -> bool:
@@ -145,7 +144,8 @@ def _pending_request_is_recent(pending: dict | None, now=None, max_age_seconds: 
     if requested_at.tzinfo is None:
         requested_at = requested_at.replace(tzinfo=timezone.utc)
     age = (now - requested_at.astimezone(timezone.utc)).total_seconds()
-    return 0 <= age <= max_age_seconds
+    # At exactly 15 days the request is expired, matching the cleanup worker's cutoff.
+    return 0 <= age < max_age_seconds
 
 
 async def join_status(bot, user_id: int, channels: list[str], db=None) -> list[str]:
@@ -158,9 +158,9 @@ async def join_status(bot, user_id: int, channels: list[str], db=None) -> list[s
             chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
             chat = await bot.get_chat(chat_arg)
             member = await bot.get_chat_member(chat_id=chat.id, user_id=user_id)
-            verified = member.status in ("creator", "administrator", "member") or (
-                member.status == "restricted" and getattr(member, "is_member", False)
-            )
+            # Always trust live membership first, including private channels;
+            # a pending request is only a fallback when the user is not a member.
+            verified = _is_member_status(member)
             channel_cfg = (
                 await db.settings.find_one({"key": "force_join_channel", "channel": channel})
                 if db is not None else None
