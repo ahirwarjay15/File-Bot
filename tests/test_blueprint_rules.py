@@ -130,7 +130,7 @@ def test_common_variables_render_bot_and_channel_links_in_start_and_invalid_text
 def test_force_join_default_button_numbers_and_custom_slot():
     from app.handlers.start import force_join_button_label
 
-    assert force_join_button_label({"channel_title": "Official Channel"}, 1) == "Official Channel"
+    assert force_join_button_label({"channel_title": "Official Channel"}, 1) == "Join 1"
     labels = [
         force_join_button_label({}, 1),
         force_join_button_label({}, 2),
