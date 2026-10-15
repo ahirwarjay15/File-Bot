@@ -348,20 +348,22 @@ async def test_force_join_settings_page_uses_real_line_breaks():
     assert r"FORCE JOIN\n\n" not in text
 
 
-def test_new_message_animation_uses_poster_and_deletes_old_force_join_immediately():
+def test_new_message_animation_is_deleted_only_after_replacement_post():
     from pathlib import Path
 
     source = Path("app/handlers/start.py").read_text()
     assert "delete_separate: bool = True" in source
     assert "delete_separate=False" in source
-    assert "poster_cfg=cfg" in source
-    assert "poster_cfg=force_cfg" in source
-    assert "separate_has_media" in source
-    assert "await bot.edit_message_caption(" in source
-    verify_branch = source.split("if animation_enabled and animation_mode == \"new_message\" and separate_animation_id and animation_post:", 1)[1].split("return", 1)[0]
-    assert "await _edit_force_join_post(animation_post, rendered, markup)" in verify_branch
-    assert verify_branch.index("await _edit_force_join_post") < verify_branch.index("await old_post.delete()")
-    assert "Text animation cannot be converted into a media post" not in source
+    send_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)')
+    delete_position = source.index('await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)', send_position)
+    old_post_delete_position = source.index('await old_post.delete()', send_position)
+    # Configured poster is sent before the animation and stale Force Join post
+    # are removed; the non-poster fallback keeps its replacement ordering.
+    assert send_position < delete_position < old_post_delete_position
+    fallback_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)', send_position + 1)
+    poster_delete_position = source.index('await animation_post.delete()', fallback_position)
+    fallback_old_delete_position = source.index('await old_post.delete()', fallback_position)
+    assert fallback_position < poster_delete_position < fallback_old_delete_position
 
 
 def test_force_join_add_cleans_prompts_and_returns_to_main_page():
@@ -439,16 +441,15 @@ async def test_force_join_custom_label_updates_only_selected_channel():
     assert second["channel_title"] == "Second Channel"
     assert second["button_text"] == "Premium Channel"
 
-def test_new_message_animation_is_created_with_force_join_poster_for_verify_and_deeplink():
+def test_new_message_animation_is_reused_as_force_join_post_for_verify_and_deeplink():
     from pathlib import Path
 
     source = Path("app/handlers/start.py").read_text()
-    assert 'bot.send_animation(' in source
-    assert 'bot.send_photo(' in source
-    assert 'caption=first, parse_mode="HTML"' in source
-    assert 'poster_cfg=cfg' in source
-    assert 'poster_cfg=force_cfg' in source
-    assert 'if await _edit_force_join_post(animation_post, rendered, markup):' in source
+    assert 'message_id=separate_animation_id,' in source
+    assert 'text=rendered,' in source
+    assert 'Could not convert deeplink animation message into Force Join post' in source
+    assert 'Could not convert Verify animation message into Force Join post' in source
+    assert 'if old_post and old_post.message_id != separate_animation_id:' in source
 
 def test_settings_flow_messages_are_tracked_for_page_navigation_cleanup():
     from pathlib import Path
