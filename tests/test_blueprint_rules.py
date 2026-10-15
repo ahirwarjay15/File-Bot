@@ -108,7 +108,7 @@ def test_about_text_has_no_settings_text_editor():
     source = Path("app/handlers/settings.py").read_text()
     assert 'elif action == "invalid_about_text"' not in source
     assert 'elif field == "invalid_about_text"' not in source
-    assert '("ABOUT BUTTON", "settings:invalid_about")' in source
+    assert '("ABOUT", "settings:invalid_about_toggle")' in source
 
 
 def test_invalid_post_template_replaces_user_variables_safely():
