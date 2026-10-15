@@ -384,7 +384,15 @@ def test_force_join_verification_resolves_public_chat_username_for_join_button()
     assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
 
 @pytest.mark.asyncio
-async def test_settings_index_migration_allows_multiple_force_join_channel_documents():
+async def test_force_join_capacity_counts_external_links_and_channels_together():
+    from app.handlers.settings import force_join_capacity_reached
+
+    assert not force_join_capacity_reached(["-1001"] * 8, [{"url": "https://example.com"}])
+    assert force_join_capacity_reached(["-1001"] * 8, [{"url": "https://example.com"}, {"url": "https://example.org"}])
+    assert force_join_capacity_reached([], [{"url": f"https://example{i}.com"} for i in range(10)])
+
+
+def test_settings_index_migration_allows_multiple_force_join_channel_documents():
     from pathlib import Path
 
     source = Path("app/database/connection.py").read_text()

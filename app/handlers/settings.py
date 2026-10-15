@@ -85,6 +85,10 @@ def force_join_mode_for_chat(chat) -> str:
     """Public usernames use the public link; private chats require join approval."""
     return "normal" if getattr(chat, "username", None) else "join_request"
 
+def force_join_capacity_reached(channels, other_links) -> bool:
+    """Count both Telegram chats and external links against the shared ten-button limit."""
+    return len(channels) + len(other_links) >= 10
+
 async def save_force_join_channel_label(bot, db, channel: str, label: str):
     """Save a label only on its channel and repair that channel's join URL if needed."""
     values = {"key": "force_join_channel", "channel": channel, "button_text": label}
@@ -692,12 +696,15 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             if query.message: await tracked_answer(query.message, state, "Add process expired. Please start again.")
             return
         channels = await effective_force_join_channels(database, settings)
-        if len(channels) >= 10:
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        other_links = list(cfg.get("other_links", []))
+        if force_join_capacity_reached(channels, other_links):
             await clear_state_preserving_prompts(state)
             if query.message: await tracked_answer(query.message, state, "Maximum 10 force-join channels allowed.")
             return
         key = f"other:{datetime.now(timezone.utc).timestamp():.0f}"
-        await patch(db, "force_join", {"other_links": (await db.settings.find_one({"key": "force_join"}) or {}).get("other_links", []) + [{"key": key, "url": url, "button_text": f"Join {len(channels)+1}"}]})
+        other_links.append({"key": key, "url": url, "button_text": f"Join {len(channels) + len(other_links) + 1}"})
+        await patch(db, "force_join", {"other_links": other_links})
         await clear_state_preserving_prompts(state)
         if query.message: await tracked_answer(query.message, state, f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
         await render_forcejoin(query, db, settings)
@@ -1479,14 +1486,14 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             return
         value = normalized_url
         channels = await effective_force_join_channels(database, settings)
-        if len(channels) >= 10:
+        # External links share the same ten-button limit as Telegram chats.
+        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        if force_join_capacity_reached(channels, list(cfg.get("other_links", []))):
             await tracked_answer(message, state, "Maximum 10 force-join channels allowed.")
             await clear_state_preserving_prompts(state)
             return
-        # External links are stored inside force_join.other_links, not as
-        # separate force_join_channel documents. Compare normalized URLs there
-        # as well as against any legacy standalone channel records.
-        cfg = await db.settings.find_one({"key": "force_join"}) or {}
+        # Compare normalized URLs against both configured external links and
+        # legacy standalone channel records.
         configured_urls = {
             normalize_http_url(str(item.get("url", "")))
             for item in cfg.get("other_links", [])
@@ -1507,7 +1514,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
         channels = await effective_force_join_channels(database, settings)
         other_links = list(cfg.get("other_links", []))
-        if len(channels) + len(other_links) >= 10:
+        if force_join_capacity_reached(channels, other_links):
             await tracked_answer(message, state, "Maximum 10 force-join channels allowed.")
             await clear_state_preserving_prompts(state)
             return
