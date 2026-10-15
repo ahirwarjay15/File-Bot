@@ -862,21 +862,25 @@ def test_batch_accepts_only_forwarded_posts_from_configured_database_channel():
     assert _database_channel_origin(not_forwarded, -100123) is None
 
 
-def test_batch_does_not_copy_external_files_and_replaces_panels():
+def test_batch_does_not_copy_external_files_and_debounces_panels():
     from pathlib import Path
 
     source = Path("app/handlers/batch.py").read_text()
     collect = source.split("async def _collect_message", 1)[1].split(
         "@router.message(BatchState.collecting)", 1
     )[0]
-    status = source.split("async def _render_status", 1)[1].split(
+    panel = source.split("async def _render_session_panel", 1)[1].split(
         '@router.message(Command("batch"))', 1
     )[0]
     assert "_database_channel_origin(message, settings.source_channel_id)" in collect
     assert "message.bot.copy_message(" not in collect
     assert "This file was not added or copied" in collect
-    assert "await message.answer(text, reply_markup=menu())" in status
-    assert "await message.bot.delete_message(status_chat_id, old_id)" in status
+    assert "_render_session_panel" not in collect
+    assert "PANEL_SETTLE_SECONDS = 1" in source
+    assert "panel_count" in panel
+    assert "await bot.send_message(chat_id, text, reply_markup=menu())" in panel
+    assert "await bot.delete_message(chat_id, old_id)" in panel
+    assert "if count < 2 or count >= 100" in panel
 
 
 def test_batch_starts_with_minimum_and_maximum_file_prompt():
@@ -886,3 +890,26 @@ def test_batch_starts_with_minimum_and_maximum_file_prompt():
     assert "Send a minimum of 2 and a maximum of 100 files" in source
     assert "AUTO_GENERATE_SETTLE_SECONDS = 4" in source
     assert "maximum is 100 files" in source
+
+
+def test_batch_single_file_does_not_render_a_generate_panel():
+    from pathlib import Path
+
+    source = Path("app/handlers/batch.py").read_text()
+    panel = source.split("async def _render_session_panel", 1)[1].split(
+        '@router.message(Command("batch"))', 1
+    )[0]
+    assert "if count < 2 or count >= 100" in panel
+    assert "PANEL_SETTLE_SECONDS = 1" in source
+    assert "await _render_session_panel(bot, db, panel_session)" in source
+
+
+def test_batch_panel_is_not_sent_from_each_file_update():
+    from pathlib import Path
+
+    source = Path("app/handlers/batch.py").read_text()
+    collect = source.split("async def _collect_message", 1)[1].split(
+        "@router.message(BatchState.collecting)", 1
+    )[0]
+    assert "_render_session_panel" not in collect
+    assert "The background worker debounces a burst of updates into one panel." in collect
