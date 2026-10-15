@@ -384,7 +384,17 @@ def test_force_join_verification_resolves_public_chat_username_for_join_button()
     assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
 
 @pytest.mark.asyncio
-async def test_force_join_custom_label_updates_only_selected_channel():
+async def test_settings_index_migration_allows_multiple_force_join_channel_documents():
+    from pathlib import Path
+
+    source = Path("app/database/connection.py").read_text()
+    assert '("key", ASCENDING), ("channel", ASCENDING)' in source
+    assert 'name="key_channel_unique"' in source
+    assert 'await self.db.settings.drop_index(index_name)' in source
+    assert 'await self.db.settings.create_index([("key",ASCENDING)],unique=True)' not in source
+
+
+def test_force_join_custom_label_updates_only_selected_channel():
     from app.handlers.settings import save_force_join_channel_label
 
     class SettingsCollection:
