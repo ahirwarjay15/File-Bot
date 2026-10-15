@@ -981,9 +981,6 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
         await patch(db, "invalid_post", {"about_enabled": not cfg.get("about_enabled", False)}, {"enabled": False})
         await render_about(query, db)
-    elif action == "invalid_about_text":
-        await state.set_state(SettingInput.waiting); await state.update_data(field="invalid_about_text")
-        if query.message: await tracked_answer(query.message, state, "Send the About text to show when the About button is tapped.")
     elif action == "forcejoin_animation":
         await render_animation(query, db)
     elif action == "animation_prefix":
@@ -1589,9 +1586,6 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         if prev.get("button_text"): values["button_text"] = prev["button_text"]
         await patch(db, "invalid_post", values, {"enabled": False})
         await tracked_answer(message, state, "✨ Successfully updated invalid post button link.")
-    elif field == "invalid_about_text":
-        await patch(db, "invalid_post", {"about_text": value}, {"enabled": False, "about_enabled": True})
-        await tracked_answer(message, state, "Invalid About text updated.")
     elif field == "shortener_url":
         normalized_url = normalize_http_url(value)
         if not normalized_url:
