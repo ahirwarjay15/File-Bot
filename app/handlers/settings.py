@@ -516,10 +516,11 @@ async def render_after_text(query):
 
 async def render_invalid(query, db):
     cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
-    await edit_page(query, f"INVALID POST\nSet a response for users who send normal messages to the bot.\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}", kb([
+    about_enabled = bool(cfg.get("about_enabled", False))
+    await edit_page(query, f"INVALID POST\nSet a response for users who send normal messages to the bot.\nStatus: {'ENABLED ✅' if cfg.get('enabled', False) else 'DISABLED ❌'}\nAbout Button: {'ON ✅' if about_enabled else 'OFF ❌'}", kb([
         [("DISABLE" if cfg.get("enabled", False) else "ENABLE", "settings:invalid_toggle")],
         [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
-        [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")],
+        [("POSTER", "settings:invalid_poster"), ("ABOUT" if about_enabled else "ABOUT", "settings:invalid_about_toggle")],
         [("《 BACK", "settings:home")],
     ]))
 
@@ -980,7 +981,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "invalid_about_toggle":
         cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
         await patch(db, "invalid_post", {"about_enabled": not cfg.get("about_enabled", False)}, {"enabled": False})
-        await render_about(query, db)
+        await render_invalid(query, db)
     elif action == "forcejoin_animation":
         await render_animation(query, db)
     elif action == "animation_prefix":
@@ -1073,7 +1074,7 @@ async def handle_button_settings_reply_keyboard(message: Message, state: FSMCont
             parent_text = format_settings_page("INVALID POST\nSet a response for users who send normal messages to the bot.")
             parent_kb = kb([
                 [("DISABLE/ENABLE", "settings:invalid_toggle")], [("TEXT", "settings:invalid_text"), ("BUTTON", "settings:invalid_button")],
-                [("POSTER", "settings:invalid_poster"), ("ABOUT BUTTON", "settings:invalid_about")], [("《 BACK", "settings:home")],
+                [("POSTER", "settings:invalid_poster"), ("ABOUT", "settings:invalid_about_toggle")], [("《 BACK", "settings:home")],
             ])
         parent = await message.answer(parent_text, parse_mode="HTML", reply_markup=ReplyKeyboardRemove(), link_preview_options={"is_disabled": True})
         try:
