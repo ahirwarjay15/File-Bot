@@ -213,3 +213,41 @@ async def test_private_channel_expired_pending_request_does_not_pass():
     db = SimpleNamespace(settings=FakeSettings(), pending_join_requests=FakePending())
 
     assert await join_status(FakeBot(), 42, ["-100123"], db) == ["-100123"]
+
+
+@pytest.mark.asyncio
+async def test_missing_private_force_join_url_is_repaired_for_existing_channel():
+    from app.handlers.start import resolve_force_join_button_target
+
+    class SettingsCollection:
+        def __init__(self):
+            self.updates = []
+
+        async def update_one(self, query, update, upsert=False):
+            self.updates.append((query, update, upsert))
+
+    class FakeBot:
+        async def get_chat(self, chat_id):
+            assert chat_id == -100123
+            return SimpleNamespace(id=-100123, title="Private Channel", type="channel", username=None)
+
+        async def create_chat_invite_link(self, **kwargs):
+            assert kwargs["chat_id"] == -100123
+            assert kwargs["creates_join_request"] is True
+            return SimpleNamespace(invite_link="https://t.me/+repaired_invite")
+
+    settings = SettingsCollection()
+    db = SimpleNamespace(settings=settings)
+    target = await resolve_force_join_button_target(FakeBot(), db, "-100123", {})
+
+    assert target == "https://t.me/+repaired_invite"
+    assert settings.updates == [(
+        {"key": "force_join_channel", "channel": "-100123"},
+        {"$set": {
+            "key": "force_join_channel", "channel": "-100123",
+            "button_url": "https://t.me/+repaired_invite",
+            "channel_title": "Private Channel", "chat_type": "channel",
+            "mode": "join_request",
+        }},
+        True,
+    )]
