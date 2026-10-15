@@ -383,14 +383,6 @@ def test_force_join_verification_resolves_public_chat_username_for_join_button()
     assert source.count('target = f"https://t.me/{chat.username}"') >= 2
     assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
 
-def test_force_join_capacity_counts_external_links_and_channels_together():
-    from app.handlers.settings import force_join_capacity_reached
-
-    assert not force_join_capacity_reached(["-1001"] * 8, [{"url": "https://example.com"}])
-    assert force_join_capacity_reached(["-1001"] * 8, [{"url": "https://example.com"}, {"url": "https://example.org"}])
-    assert force_join_capacity_reached([], [{"url": f"https://example{i}.com"} for i in range(10)])
-
-
 def test_settings_index_migration_allows_multiple_force_join_channel_documents():
     from pathlib import Path
 
@@ -656,23 +648,6 @@ def test_force_join_chat_add_has_a_main_panel_fallback_and_poster_is_kept_for_ve
     assert 'cfg.get("poster_file_id") or cfg.get("poster_photo_id")' in start_source
 
 
-def test_invalid_post_deletes_submitted_text_media_only_after_response_succeeds():
-    from pathlib import Path
-
-    source = Path("app/handlers/misc.py").read_text()
-    handler = source.split("@router.message()\nasync def invalid_post", 1)[1].split(
-        "\n\n@router.callback_query(F.data == \"invalid:about\")", 1
-    )[0]
-    assert "response = await message.answer_animation(" in handler
-    assert "response = await message.answer_photo(" in handler
-    assert "response = await message.answer(text, parse_mode=\"HTML\", reply_markup=markup)" in handler
-    assert "if response is not None:" in handler
-    assert "await message.delete()" in handler
-    assert handler.index("if response is not None:") < handler.index("await message.delete()")
-    assert "keeping the submitted message" in handler
-    assert "except TelegramAPIError:" in handler
-
-
 def test_pending_join_request_expires_and_requires_timestamp():
     from datetime import datetime, timedelta, timezone
     from app.handlers.start import _pending_request_is_recent
@@ -721,14 +696,15 @@ def test_invalid_post_router_runs_after_file_and_batch_message_handlers():
     assert router_order.index("settings_router") < router_order.index("misc_router")
 
 
-def test_invalid_post_does_not_delete_submitted_message_when_response_fails():
+def test_invalid_post_never_deletes_submitted_user_message():
     from pathlib import Path
 
     source = Path("app/handlers/misc.py").read_text()
     handler = source.split("async def invalid_post", 1)[1].split("@router.callback_query", 1)[0]
-    assert "if response is not None:" in handler
-    assert handler.index("if response is not None:") < handler.index("await message.delete()")
-    assert "if response is None:" not in handler
+    assert "response = await message.answer_animation(" in handler
+    assert "response = await message.answer_photo(" in handler
+    assert "response = await message.answer(text, parse_mode=\"HTML\", reply_markup=markup)" in handler
+    assert "await message.delete()" not in handler
     assert "keeping the submitted message" in handler
 
 
@@ -783,14 +759,32 @@ def test_stats_blocked_count_does_not_treat_any_delivery_error_as_blocked():
     assert 'last_delivery_error' not in stats_handler
 
 
-def test_force_join_custom_labels_are_limited_to_telegram_button_length():
+def test_force_join_channel_custom_labels_are_limited_to_telegram_button_length():
     from pathlib import Path
 
     source = Path("app/handlers/settings.py").read_text()
-    for field in ("forcejoin_other_label", "forcejoin_existing_other_label", "forcejoin_label"):
-        block = source.split(f'if field == "{field}":', 1)[1].split("\n    if field ==", 1)[0]
-        assert "len(value) > 64" in block
-        assert "Button text must be between 1 and 64 characters." in block
+    block = source.split('if field == "forcejoin_label":', 1)[1].split("\n    if field ==", 1)[0]
+    assert "len(value) > 64" in block
+    assert "Button text must be between 1 and 64 characters." in block
+
+
+def test_external_force_join_feature_is_completely_removed_from_runtime():
+    from pathlib import Path
+
+    settings_source = Path("app/handlers/settings.py").read_text()
+    start_source = Path("app/handlers/start.py").read_text()
+    for retired_token in ("forcejoin_other", "other_links", "force_join_capacity_reached"):
+        assert retired_token not in settings_source
+        assert retired_token not in start_source
+
+
+def test_legacy_external_force_join_setting_is_removed_once_at_startup():
+    from pathlib import Path
+
+    source = Path("app/database/connection.py").read_text()
+    assert 'async def remove_legacy_external_force_join_links(db)' in source
+    assert '"$unset": {"other_links": ""}' in source
+    assert 'await remove_legacy_external_force_join_links(self.db)' in source
 
 
 def test_button_text_validation_enforces_telegram_limits():
