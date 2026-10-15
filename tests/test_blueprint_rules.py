@@ -383,6 +383,40 @@ def test_force_join_verification_resolves_public_chat_username_for_join_button()
     assert source.count('target = f"https://t.me/{chat.username}"') >= 2
     assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
 
+@pytest.mark.asyncio
+async def test_force_join_custom_label_updates_only_selected_channel():
+    from app.handlers.settings import save_force_join_channel_label
+
+    class SettingsCollection:
+        def __init__(self):
+            self.docs = [
+                {"key": "force_join_channel", "channel": "-100111", "button_url": "https://t.me/first_invite", "button_text": "Join 1"},
+                {"key": "force_join_channel", "channel": "-100222", "button_url": "https://t.me/second_invite", "button_text": "Join 2"},
+            ]
+
+        async def update_one(self, query, update, upsert=False):
+            for doc in self.docs:
+                if all(doc.get(key) == value for key, value in query.items()):
+                    doc.update(update["$set"])
+                    return
+            if upsert:
+                self.docs.append(dict(update["$set"]))
+
+    class Database:
+        def __init__(self):
+            self.settings = SettingsCollection()
+
+    db = Database()
+    await save_force_join_channel_label(db, "-100222", "Premium Channel")
+
+    first, second = db.settings.docs
+    assert first["channel"] == "-100111"
+    assert first["button_url"] == "https://t.me/first_invite"
+    assert first["button_text"] == "Join 1"
+    assert second["channel"] == "-100222"
+    assert second["button_url"] == "https://t.me/second_invite"
+    assert second["button_text"] == "Premium Channel"
+
 def test_new_message_animation_is_reused_as_force_join_post_for_verify_and_deeplink():
     from pathlib import Path
 

@@ -85,6 +85,14 @@ def force_join_mode_for_chat(chat) -> str:
     """Public usernames use the public link; private chats require join approval."""
     return "normal" if getattr(chat, "username", None) else "join_request"
 
+async def save_force_join_channel_label(db, channel: str, label: str):
+    """Update only the selected channel's settings without clobbering another channel."""
+    await db.settings.update_one(
+        {"key": "force_join_channel", "channel": channel},
+        {"$set": {"key": "force_join_channel", "channel": channel, "button_text": label}},
+        upsert=True,
+    )
+
 async def allowed(m, settings, database):
     return bool(m.from_user and await is_owner_or_moderator(database.db, m.from_user.id, settings))
 
@@ -1506,7 +1514,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
             await tracked_answer(message, state, "Channel setting expired. Please reopen it.")
             await clear_state_preserving_prompts(state)
             return
-        await patch(db, "force_join_channel", {"channel": channel, "button_text": value})
+        await save_force_join_channel_label(db, channel, value)
         await clear_state_preserving_prompts(state)
         await tracked_answer(message, state, f"✨ Successfully updated button text for {channel} force-join button.")
         return
