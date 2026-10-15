@@ -478,7 +478,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     # The stop helper below lets the current visible cycle finish.
     if not missing:
         await _cancel_gate_animation(bot, user.id, payload)
-        if animation_post:
+        if animation_post and animation_mode != "new_message":
             try:
                 await animation_post.delete()
             except TelegramAPIError:
@@ -942,7 +942,7 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
     separate_animation_id = await _cancel_gate_animation(
         bot, user_id, payload, delete_separate=False
     )
-    if animation_post and animation_post.message_id != (old_post.message_id if old_post else None):
+    if animation_post and animation_mode != "new_message" and animation_post.message_id != (old_post.message_id if old_post else None):
         try:
             await animation_post.delete()
         except TelegramAPIError:
