@@ -365,14 +365,13 @@ def test_new_message_animation_is_deleted_only_after_replacement_post():
     assert send_position < cleanup_position < animation_delete_position < old_post_delete_position < gather_position
 
     # If converting the animation message into the prompt fails, the fallback
-    # path must also start all stale-message deletions in the same gather.
+    # path keeps Message.delete() for the old post and gathers both deletions.
     fallback_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)', send_position + 1)
-    fallback_cleanup_position = source.index('cleanup_message_ids = set()', fallback_position)
-    fallback_gather_position = source.index('await asyncio.gather(', fallback_cleanup_position)
-    generator_position = source.index('bot.delete_message(chat_id=user_id, message_id=message_id)', fallback_cleanup_position)
-    assert fallback_position < fallback_cleanup_position < fallback_gather_position < generator_position
-    assert 'cleanup_message_ids.add(old_post.message_id)' in source[fallback_position:fallback_gather_position]
-    assert 'cleanup_message_ids.add(separate_animation_id)' in source[fallback_position:fallback_gather_position]
+    fallback_cleanup_position = source.index('cleanup = []', fallback_position)
+    fallback_animation_delete_position = source.index('bot.delete_message(chat_id=user_id, message_id=separate_animation_id)', fallback_cleanup_position)
+    fallback_old_delete_position = source.index('cleanup.append(old_post.delete())', fallback_cleanup_position)
+    fallback_gather_position = source.index('await asyncio.gather(*cleanup, return_exceptions=True)', fallback_cleanup_position)
+    assert fallback_position < fallback_cleanup_position < fallback_animation_delete_position < fallback_old_delete_position < fallback_gather_position
 
 
 def test_force_join_add_cleans_prompts_and_returns_to_main_page():
