@@ -791,3 +791,12 @@ def test_force_join_custom_labels_are_limited_to_telegram_button_length():
         block = source.split(f'if field == "{field}":', 1)[1].split("\n    if field ==", 1)[0]
         assert "len(value) > 64" in block
         assert "Button text must be between 1 and 64 characters." in block
+
+
+def test_button_text_validation_enforces_telegram_limits():
+    from app.handlers.settings import valid_button_text
+
+    assert valid_button_text("Join")
+    assert valid_button_text("x" * 64)
+    assert not valid_button_text("")
+    assert not valid_button_text("x" * 65)

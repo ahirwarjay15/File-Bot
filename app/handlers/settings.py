@@ -89,6 +89,12 @@ def force_join_capacity_reached(channels, other_links) -> bool:
     """Count both Telegram chats and external links against the shared ten-button limit."""
     return len(channels) + len(other_links) >= 10
 
+
+def valid_button_text(value: str) -> bool:
+    """Telegram inline keyboard button labels must contain 1 to 64 characters."""
+    text = str(value or "").strip()
+    return 1 <= len(text) <= 64
+
 async def save_force_join_channel_label(bot, db, channel: str, label: str):
     """Save a label only on its channel and repair that channel's join URL if needed."""
     values = {"key": "force_join_channel", "channel": channel, "button_text": label}
@@ -1218,6 +1224,21 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     db = database.db
     value = (message.text or "").strip()
 
+    button_label_fields = {
+        "custom_button_text", "forcejoin_label", "forcejoin_other_label",
+        "forcejoin_existing_other_label", "forcejoin_verify_text",
+        "start_button_text", "invalid_button_text", "after_text_button",
+    }
+    dynamic_button_label = (
+        isinstance(field, str)
+        and (field.startswith("start_button_") or field.startswith("invalid_button_"))
+        and field.endswith("_text")
+    )
+    if field in button_label_fields or dynamic_button_label:
+        if not valid_button_text(value):
+            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
+            return
+
     if field in {"forcejoin_wait_chat", "forcejoin_wait_mode"} and value.casefold() == "cancel":
         pending = await state.get_data()
         panel_chat_id, panel_message_id = pending.get("forcejoin_panel_chat_id"), pending.get("forcejoin_panel_message_id")
@@ -1839,6 +1860,9 @@ async def setafterdeletebutton(m: Message, settings: Settings, database):
     if not await allowed(m, settings, database): return
     p=(m.text or "").split(maxsplit=1)
     if len(p)<2: await m.answer("Usage: /setafterdeletebutton BUTTON_TEXT"); return
+    if not valid_button_text(p[1]):
+        await m.answer("Button text must be between 1 and 64 characters.")
+        return
     await patch(database.db, "after_delete", {"button_text":p[1]}, {"enabled":False,"text":DEFAULT_AFTER_TEXT})
     await m.answer("✨ After-delete button text updated successfully.")
 
