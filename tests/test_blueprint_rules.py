@@ -370,7 +370,7 @@ def test_new_message_animation_is_deleted_only_after_replacement_post():
     fallback_cleanup_position = source.index('cleanup_message_ids = set()', fallback_position)
     fallback_gather_position = source.index('await asyncio.gather(', fallback_cleanup_position)
     generator_position = source.index('bot.delete_message(chat_id=user_id, message_id=message_id)', fallback_cleanup_position)
-    assert fallback_position < fallback_cleanup_position < generator_position < fallback_gather_position
+    assert fallback_position < fallback_cleanup_position < fallback_gather_position < generator_position
     assert 'cleanup_message_ids.add(old_post.message_id)' in source[fallback_position:fallback_gather_position]
     assert 'cleanup_message_ids.add(separate_animation_id)' in source[fallback_position:fallback_gather_position]
 
