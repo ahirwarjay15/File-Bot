@@ -800,3 +800,21 @@ def test_button_text_validation_enforces_telegram_limits():
     assert valid_button_text("x" * 64)
     assert not valid_button_text("")
     assert not valid_button_text("x" * 65)
+
+
+@pytest.mark.asyncio
+async def test_shortener_input_state_does_not_swallow_other_commands():
+    from aiogram.dispatcher.event.bases import SkipHandler
+    from app.handlers.shortener import waiting_command
+
+    class FakeState:
+        def __init__(self):
+            self.cleared = False
+
+        async def clear(self):
+            self.cleared = True
+
+    state = FakeState()
+    with pytest.raises(SkipHandler):
+        await waiting_command(None, state)
+    assert state.cleared is True

@@ -3,13 +3,14 @@ import logging
 import re
 from urllib.parse import urlparse
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.filters.command import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton
 from aiogram.exceptions import TelegramAPIError
+from aiogram.dispatcher.event.bases import SkipHandler
 from app.config import Settings
 from app.services.permissions import is_owner_or_moderator
 from app.services.links import shorten_url
@@ -85,6 +86,13 @@ async def shortener_command(
 async def cancel_shortener(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("URL shortening cancelled.")
+
+
+@router.message(ShortenerState.waiting_for_url, F.text.startswith("/"))
+async def waiting_command(message: Message, state: FSMContext):
+    """Let commands other than /cancel escape URL input mode."""
+    await state.clear()
+    raise SkipHandler
 
 
 @router.message(ShortenerState.waiting_for_url)
