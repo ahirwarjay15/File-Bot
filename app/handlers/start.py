@@ -625,7 +625,8 @@ async def start_about(query: CallbackQuery, database):
     if not cfg.get("enabled", True) or not cfg.get("about_enabled", True) or not query.message:
         return
     me = await query.bot.get_me()
-    about_text = cfg.get("about_text") or "<b>✦ About {bot_mention}</b>\n\n<blockquote>A simple and reliable way to access files. 📂</blockquote>\n\n<b>⚡ Features</b>\n<blockquote>• Fast file delivery • One-tap access • Easy to use</blockquote>\n\n<b>✦ Made by: {owner}</b>"
+    from app.handlers.misc import load_shared_about_text
+    about_text = await load_shared_about_text(database.db)
     rendered = render_common_variables(about_text, query.from_user, me).replace("{bot_name}", render_common_variables("{bot_mention}", query.from_user, me))
     back_markup = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="《 BACK", callback_data="start:about_back")]])
     try:
