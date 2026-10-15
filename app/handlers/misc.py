@@ -21,6 +21,22 @@ DEFAULT_ABOUT = (
 )
 
 
+async def load_shared_about_text(db) -> str:
+    """Use one saved About template for both Start Message and Invalid Post."""
+    cfg = await db.settings.find_one({"key": "invalid_post"}) or {}
+    raw = cfg.get("about_text")
+    if raw:
+        return str(raw)
+    # Keep the default template in the one shared settings record; do not
+    # duplicate it into start_message, because both About buttons use this value.
+    await db.settings.update_one(
+        {"key": "invalid_post"},
+        {"$set": {"key": "invalid_post", "about_text": DEFAULT_ABOUT}},
+        upsert=True,
+    )
+    return DEFAULT_ABOUT
+
+
 def _mention(user):
     return f'<a href="tg://user?id={user.id}">{escape(user.first_name or "there")}</a>'
 
@@ -156,8 +172,8 @@ async def invalid_about(query: CallbackQuery, database, bot):
     if not cfg.get("about_enabled", False):
         return
     me = await bot.get_me()
-    raw = cfg.get("about_text") or DEFAULT_ABOUT
-    rendered = _render_user_text(str(raw), user, me).replace("{bot_name}", _render_user_text("{bot_mention}", user, me))
+    raw = await load_shared_about_text(database.db)
+    rendered = _render_user_text(raw, user, me).replace("{bot_name}", _render_user_text("{bot_mention}", user, me))
     await _edit_same_post(message, rendered, _about_markup())
 
 
