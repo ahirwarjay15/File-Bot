@@ -89,8 +89,8 @@ async def _render_session_panel(bot, db, session):
     if count < 2 or count >= 100 or session.get("panel_count") == count:
         return
     text = (
-        f"BATCH STORAGE\\n\\nFiles collected: {count}/100\\n\\n"
-        "Send 2–100 files forwarded directly from the configured Database channel.\\n"
+        f"BATCH STORAGE\n\nFiles collected: {count}/100\n\n"
+        "Send 2–100 files forwarded directly from the configured Database channel.\n"
         "Files are delivered in Database-channel order. You can add more before generating."
     )
     chat_id = session.get("status_chat_id", session["admin_id"])
