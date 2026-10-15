@@ -138,19 +138,38 @@ async def resolve_force_join_button_target(bot, db, channel: str, channel_cfg: d
         # Public channels should always use their own canonical username link,
         # even if a legacy settings write left another URL on the record.
         target = f"https://t.me/{chat.username}"
-        await db.settings.update_one(
-            {"key": "force_join_channel", "channel": channel},
-            {"$set": {
-                "key": "force_join_channel", "channel": channel,
-                "button_url": target, "channel_title": chat.title or str(chat.id),
-                "chat_type": chat.type, "mode": "normal",
-            }},
-            upsert=True,
-        )
+        values = {
+            "key": "force_join_channel", "channel": channel,
+            "button_url": target, "channel_title": chat.title or str(chat.id),
+            "chat_type": chat.type, "mode": "normal",
+        }
+        if any(
+            channel_cfg.get(key) != value
+            for key, value in values.items()
+            if key not in {"key", "channel"}
+        ):
+            await db.settings.update_one(
+                {"key": "force_join_channel", "channel": channel},
+                {"$set": values},
+                upsert=True,
+            )
         return target
 
-    if target:
+    stale_private_metadata = bool(
+        chat and target and (
+            not channel_cfg.get("channel_title")
+            or not channel_cfg.get("chat_type")
+            or (chat.title and channel_cfg.get("channel_title") != chat.title)
+            or channel_cfg.get("chat_type") != chat.type
+            or channel_cfg.get("mode", "join_request") != "join_request"
+        )
+    )
+    if target and not stale_private_metadata:
         return target
+    if stale_private_metadata:
+        # A previous channel-key collision could leave another channel's invite
+        # attached to this record. Recreate it when the saved metadata disagrees.
+        target = None
 
     if chat:
         try:

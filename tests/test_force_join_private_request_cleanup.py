@@ -251,3 +251,70 @@ async def test_missing_private_force_join_url_is_repaired_for_existing_channel()
         }},
         True,
     )]
+
+
+@pytest.mark.asyncio
+async def test_stale_private_force_join_invite_is_recreated_when_channel_metadata_differs():
+    from app.handlers.start import resolve_force_join_button_target
+
+    class SettingsCollection:
+        def __init__(self):
+            self.updates = []
+
+        async def update_one(self, query, update, upsert=False):
+            self.updates.append((query, update, upsert))
+
+    class FakeBot:
+        async def get_chat(self, chat_id):
+            return SimpleNamespace(id=-100123, title="Correct Channel", type="channel", username=None)
+
+        async def create_chat_invite_link(self, **kwargs):
+            return SimpleNamespace(invite_link="https://t.me/+new_correct_invite")
+
+    settings = SettingsCollection()
+    target = await resolve_force_join_button_target(
+        FakeBot(),
+        SimpleNamespace(settings=settings),
+        "-100123",
+        {
+            "button_url": "https://t.me/+wrong_channel_invite",
+            "channel_title": "Another Channel",
+            "chat_type": "channel",
+            "mode": "join_request",
+        },
+    )
+
+    assert target == "https://t.me/+new_correct_invite"
+    assert settings.updates[0][1]["$set"]["button_url"] == target
+
+
+@pytest.mark.asyncio
+async def test_public_force_join_url_is_canonical_without_unneeded_database_write():
+    from app.handlers.start import resolve_force_join_button_target
+
+    class SettingsCollection:
+        def __init__(self):
+            self.updates = []
+
+        async def update_one(self, query, update, upsert=False):
+            self.updates.append((query, update, upsert))
+
+    class FakeBot:
+        async def get_chat(self, chat_id):
+            return SimpleNamespace(id=-100123, title="Public Channel", type="channel", username="public_channel")
+
+    settings = SettingsCollection()
+    target = await resolve_force_join_button_target(
+        FakeBot(),
+        SimpleNamespace(settings=settings),
+        "-100123",
+        {
+            "button_url": "https://t.me/public_channel",
+            "channel_title": "Public Channel",
+            "chat_type": "channel",
+            "mode": "normal",
+        },
+    )
+
+    assert target == "https://t.me/public_channel"
+    assert settings.updates == []
