@@ -6,6 +6,7 @@ import pytest
 from app.handlers.start import (
     _is_private_chat,
     _pending_request_is_recent,
+    force_join_button_label,
     cleanup_expired_pending_join_requests,
     clear_accepted_private_join_request,
     join_status,
@@ -132,3 +133,83 @@ async def test_public_chat_never_passes_from_pending_request_record():
     db = SimpleNamespace(settings=FakeSettings(), pending_join_requests=FakePending())
 
     assert await join_status(FakeBot(), 42, ["@public_channel"], db) == ["@public_channel"]
+
+
+
+def test_pending_request_is_expired_at_exactly_15_days():
+    now = datetime.now(timezone.utc)
+    assert not _pending_request_is_recent({"requested_at": now - timedelta(days=15)}, now=now)
+
+
+def test_force_join_default_button_label_uses_join_number_not_channel_title():
+    assert force_join_button_label({"channel_title": "Actual Private Channel"}, 3) == "Join 3"
+
+
+def test_force_join_custom_button_label_overrides_join_number():
+    assert force_join_button_label({"channel_title": "Actual Channel", "button_text": "Premium Group"}, 3) == "Premium Group"
+
+
+@pytest.mark.asyncio
+async def test_private_channel_membership_passes_even_if_request_record_exists():
+    class FakeBot:
+        async def get_chat(self, channel):
+            return SimpleNamespace(id=-100123, type="channel", username=None)
+
+        async def get_chat_member(self, chat_id, user_id):
+            return SimpleNamespace(status="member", is_member=True)
+
+    class FakeSettings:
+        async def find_one(self, query):
+            return {"mode": "join_request"}
+
+    class FakePending:
+        async def find_one(self, query):
+            raise AssertionError("Live membership should pass without consulting pending requests")
+
+    db = SimpleNamespace(settings=FakeSettings(), pending_join_requests=FakePending())
+
+    assert await join_status(FakeBot(), 42, ["-100123"], db) == []
+
+
+@pytest.mark.asyncio
+async def test_private_channel_recent_pending_request_passes_when_not_a_member():
+    class FakeBot:
+        async def get_chat(self, channel):
+            return SimpleNamespace(id=-100123, type="channel", username=None)
+
+        async def get_chat_member(self, chat_id, user_id):
+            return SimpleNamespace(status="left", is_member=False)
+
+    class FakeSettings:
+        async def find_one(self, query):
+            return {"mode": "join_request"}
+
+    class FakePending:
+        async def find_one(self, query):
+            return {"chat_id": -100123, "user_id": 42, "requested_at": datetime.now(timezone.utc)}
+
+    db = SimpleNamespace(settings=FakeSettings(), pending_join_requests=FakePending())
+
+    assert await join_status(FakeBot(), 42, ["-100123"], db) == []
+
+
+@pytest.mark.asyncio
+async def test_private_channel_expired_pending_request_does_not_pass():
+    class FakeBot:
+        async def get_chat(self, channel):
+            return SimpleNamespace(id=-100123, type="channel", username=None)
+
+        async def get_chat_member(self, chat_id, user_id):
+            return SimpleNamespace(status="left", is_member=False)
+
+    class FakeSettings:
+        async def find_one(self, query):
+            return {"mode": "join_request"}
+
+    class FakePending:
+        async def find_one(self, query):
+            return {"chat_id": -100123, "user_id": 42, "requested_at": datetime.now(timezone.utc) - timedelta(days=15)}
+
+    db = SimpleNamespace(settings=FakeSettings(), pending_join_requests=FakePending())
+
+    assert await join_status(FakeBot(), 42, ["-100123"], db) == ["-100123"]
