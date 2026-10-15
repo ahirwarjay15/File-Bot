@@ -685,6 +685,7 @@ def test_pending_join_request_expires_and_requires_timestamp():
 
 @pytest.mark.asyncio
 async def test_force_join_explicit_empty_database_override_removes_environment_channels():
+    from types import SimpleNamespace
     from app.handlers.start import effective_force_join_channels
 
     class SettingsCollection:
