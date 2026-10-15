@@ -754,7 +754,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         index = int(action.split(":", 1)[1])
         if index < len(channels):
             channel = channels.pop(index)
-            await patch(db, "force_join", {"channels": channels})
+            await patch(db, "force_join", {"channels": channels, "channels_override": True})
             await db.settings.delete_one({"key": "force_join_channel", "channel": channel})
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_message": await render_forcejoin_message(query)
@@ -808,7 +808,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         index = int(action.split(":", 1)[1])
         if 0 <= index < len(channels):
             channels.pop(index)
-            await patch(db, "force_join", {"channels": channels})
+            await patch(db, "force_join", {"channels": channels, "channels_override": True})
         await render_forcejoin(query, db, settings)
     elif action == "custom_button": await render_custom_buttons(query, db)
     elif action == "custom_button_add":
@@ -1335,7 +1335,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
                 await tracked_answer(message, state, "Telegram could not create an approval-required invite link. Check the bot's admin status and invite-link permission.", reply_markup=ReplyKeyboardRemove())
                 return
         channels.append(channel_id)
-        await patch(db, "force_join", {"channels": channels})
+        await patch(db, "force_join", {"channels": channels, "channels_override": True})
         await db.settings.update_one({"key": "force_join_channel", "channel": channel_id},
             {"$set": {"key": "force_join_channel", "channel": channel_id, "button_url": link,
                       "channel_title": chat.title or str(chat.id), "chat_type": chat.type, "mode": mode}}, upsert=True)
@@ -1510,6 +1510,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         ]))
         return
     if field == "forcejoin_other_label":
+        if not value or len(value) > 64:
+            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
+            return
         prev = await state.get_data()
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
         channels = await effective_force_join_channels(database, settings)
@@ -1530,6 +1533,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await tracked_answer(message, state, f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
         return
     if field == "forcejoin_existing_other_label":
+        if not value or len(value) > 64:
+            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
+            return
         prev = await state.get_data()
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
         links = cfg.get("other_links", [])
@@ -1543,6 +1549,9 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await clear_state_preserving_prompts(state)
         return
     if field == "forcejoin_label":
+        if not value or len(value) > 64:
+            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
+            return
         prev = await state.get_data()
         channel = prev.get("channel")
         if not channel:

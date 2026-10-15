@@ -583,7 +583,7 @@ def test_force_join_chat_add_returns_to_main_page_with_fallback():
     # not send another panel. Replacement is handled by edit_page navigation.
     assert 'panel_chat_id, panel_message_id = data.get("forcejoin_panel_chat_id"), data.get("forcejoin_panel_message_id")' in handler
     assert 'channels.append(channel_id)' in handler
-    assert 'await patch(db, "force_join", {"channels": channels})' in handler
+    assert 'await patch(db, "force_join", {"channels": channels, "channels_override": True})' in handler
 
 
 def test_force_join_disable_button_is_next_to_verify():
@@ -684,6 +684,21 @@ def test_pending_join_request_expires_and_requires_timestamp():
 
 
 @pytest.mark.asyncio
+async def test_force_join_explicit_empty_database_override_removes_environment_channels():
+    from types import SimpleNamespace
+    from app.handlers.start import effective_force_join_channels
+
+    class SettingsCollection:
+        async def find_one(self, query):
+            return {"key": "force_join", "channels": [], "channels_override": True}
+
+    database = SimpleNamespace(db=SimpleNamespace(settings=SettingsCollection()))
+    assert await effective_force_join_channels(
+        database, SimpleNamespace(force_join_channels=["@envchannel"])
+    ) == []
+
+
+@pytest.mark.asyncio
 async def test_force_join_uses_environment_channels_when_database_list_is_empty():
     from types import SimpleNamespace
     from app.handlers.start import effective_force_join_channels
@@ -766,3 +781,13 @@ def test_stats_blocked_count_does_not_treat_any_delivery_error_as_blocked():
     )[0]
     assert 'count_documents({"blocked": True})' in stats_handler
     assert 'last_delivery_error' not in stats_handler
+
+
+def test_force_join_custom_labels_are_limited_to_telegram_button_length():
+    from pathlib import Path
+
+    source = Path("app/handlers/settings.py").read_text()
+    for field in ("forcejoin_other_label", "forcejoin_existing_other_label", "forcejoin_label"):
+        block = source.split(f'if field == "{field}":', 1)[1].split("\n    if field ==", 1)[0]
+        assert "len(value) > 64" in block
+        assert "Button text must be between 1 and 64 characters." in block

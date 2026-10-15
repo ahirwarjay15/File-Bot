@@ -44,9 +44,12 @@ def render_common_variables(raw_text, user, bot):
 async def effective_force_join_channels(database, settings) -> list[str]:
     cfg = await database.db.settings.find_one({"key": "force_join"})
     configured = cfg.get("channels") if cfg is not None else None
-    # An empty database list can be created by toggling Force Join before any
-    # channels are added. In that case keep the environment configuration usable.
-    raw_channels = configured if isinstance(configured, list) and configured else settings.force_join_channels
+    # Keep environment defaults until an admin explicitly edits the channel list.
+    # Once channels_override is set, an empty list is an intentional "no channels".
+    if cfg is not None and cfg.get("channels_override") is True and isinstance(configured, list):
+        raw_channels = configured
+    else:
+        raw_channels = configured if isinstance(configured, list) and configured else settings.force_join_channels
     channels = []
     for raw in raw_channels:
         channel = str(raw).strip()
@@ -119,6 +122,61 @@ def force_join_button_label(channel_cfg: dict, position: int) -> str:
     """Use a saved custom label or number the visible missing-channel list."""
     custom = str(channel_cfg.get("button_text") or "").strip()
     return (custom or f"Join {position}")[:64]
+
+
+async def resolve_force_join_button_target(bot, db, channel: str, channel_cfg: dict) -> str | None:
+    """Resolve a valid join URL and repair missing per-channel metadata when possible."""
+    target = channel_cfg.get("button_url")
+    chat = None
+    try:
+        chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
+        chat = await bot.get_chat(chat_arg)
+    except (TelegramAPIError, ValueError):
+        pass
+
+    if chat and chat.username:
+        # Public channels should always use their own canonical username link,
+        # even if a legacy settings write left another URL on the record.
+        target = f"https://t.me/{chat.username}"
+        await db.settings.update_one(
+            {"key": "force_join_channel", "channel": channel},
+            {"$set": {
+                "key": "force_join_channel", "channel": channel,
+                "button_url": target, "channel_title": chat.title or str(chat.id),
+                "chat_type": chat.type, "mode": "normal",
+            }},
+            upsert=True,
+        )
+        return target
+
+    if target:
+        return target
+
+    if chat:
+        try:
+            invite = await bot.create_chat_invite_link(
+                chat_id=chat.id, creates_join_request=True, name="FB Force Join - Request"
+            )
+        except TelegramAPIError:
+            log.warning("Could not repair missing private Force Join URL for %s", channel, exc_info=True)
+            return None
+        target = invite.invite_link
+        await db.settings.update_one(
+            {"key": "force_join_channel", "channel": channel},
+            {"$set": {
+                "key": "force_join_channel", "channel": channel,
+                "button_url": target, "channel_title": chat.title or str(chat.id),
+                "chat_type": chat.type, "mode": "join_request",
+            }},
+            upsert=True,
+        )
+        return target
+
+    if channel.startswith(("https://t.me/", "http://t.me/")):
+        return channel
+    if not channel.lstrip("-").isdigit():
+        return f"https://t.me/{channel.lstrip('@')}"
+    return None
 
 
 def _is_private_chat(chat) -> bool:
@@ -741,22 +799,9 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
         join_buttons = []
         for index, channel in enumerate(missing):
             channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-            target = channel_cfg.get("button_url")
-            # Older entries and public chats stored as numeric IDs may not have
-            # a usable URL on their config record. Resolve the current chat to
-            # recover its public username/link before omitting a Join button.
-            chat = None
-            try:
-                chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
-                chat = await bot.get_chat(chat_arg)
-            except (TelegramAPIError, ValueError):
-                pass
-            if not target and chat and chat.username:
-                target = f"https://t.me/{chat.username}"
-            if not target and channel.startswith(("https://t.me/", "http://t.me/")):
-                target = channel
-            if not target and not channel.lstrip("-").isdigit():
-                target = f"https://t.me/{channel.lstrip('@')}"
+            target = await resolve_force_join_button_target(
+                bot, database.db, channel, channel_cfg
+            )
             if target:
                 label = force_join_button_label(channel_cfg, index + 1)
                 join_buttons.append(InlineKeyboardButton(text=label, url=target))
