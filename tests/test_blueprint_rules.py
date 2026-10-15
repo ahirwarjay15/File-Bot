@@ -355,11 +355,13 @@ def test_new_message_animation_is_deleted_only_after_replacement_post():
     assert "delete_separate: bool = True" in source
     assert "delete_separate=False" in source
     send_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)')
-    delete_position = source.index('await bot.delete_message(chat_id=user_id, message_id=separate_animation_id)', send_position)
-    old_post_delete_position = source.index('await old_post.delete()', send_position)
-    # Configured poster is sent before the animation and stale Force Join post
-    # are removed; the non-poster fallback keeps its replacement ordering.
-    assert send_position < delete_position < old_post_delete_position
+    cleanup_position = source.index('cleanup = []', send_position)
+    animation_delete_position = source.index('bot.delete_message(chat_id=user_id, message_id=separate_animation_id)', cleanup_position)
+    old_post_delete_position = source.index('cleanup.append(old_post.delete())', cleanup_position)
+    gather_position = source.index('await asyncio.gather(*cleanup, return_exceptions=True)', cleanup_position)
+    # Configured replacement is sent first, then both stale messages are
+    # deleted concurrently without changing the animation timing.
+    assert send_position < cleanup_position < animation_delete_position < old_post_delete_position < gather_position
     fallback_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)', send_position + 1)
     poster_delete_position = source.index('await animation_post.delete()', fallback_position)
     fallback_old_delete_position = source.index('await old_post.delete()', fallback_position)
