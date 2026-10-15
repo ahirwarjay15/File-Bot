@@ -921,23 +921,19 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
                 log.warning("Could not convert Verify animation message into Force Join post", exc_info=True)
 
         new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)
-        # Start every obsolete-message deletion together, including fallback
-        # paths where Telegram refused to edit the animation into the prompt.
-        cleanup_message_ids = set()
+        # Keep the existing Message.delete() path for the old Force Join post,
+        # and start its cleanup alongside the separate animation deletion.
+        cleanup = []
         if animation_post and animation_post.message_id != new_post.message_id:
-            cleanup_message_ids.add(animation_post.message_id)
+            cleanup.append(animation_post.delete())
         if separate_animation_id and separate_animation_id != new_post.message_id:
-            cleanup_message_ids.add(separate_animation_id)
-        if old_post and old_post.message_id != new_post.message_id:
-            cleanup_message_ids.add(old_post.message_id)
-        if cleanup_message_ids:
-            await asyncio.gather(
-                *(
-                    bot.delete_message(chat_id=user_id, message_id=message_id)
-                    for message_id in cleanup_message_ids
-                ),
-                return_exceptions=True,
+            cleanup.append(
+                bot.delete_message(chat_id=user_id, message_id=separate_animation_id)
             )
+        if old_post and old_post.message_id != new_post.message_id:
+            cleanup.append(old_post.delete())
+        if cleanup:
+            await asyncio.gather(*cleanup, return_exceptions=True)
         return
 
     # Verification succeeded: stop animation immediately; never wait for its
