@@ -1,62 +1,40 @@
-# Blueprint vs GitHub audit
+# File-Bot Audit Status
 
-Repository: ahirwarjay15/File-Bot, branch main.
+**Repository:** `ahirwarjay15/File-Bot`  
+**Branch:** `main`  
+**Last reviewed:** 2026-10-15  
+**Current main commit at review:** `9f4f2c4` — Enable tested auto-deploy from main
 
-## Source coverage note
-The supplied blueprint file starts at section 5 (Auto Delete). Sections 1–4 are not present in that file, so those sections cannot be certified against the uploaded source. The matrix below covers the requirements that are actually present in the supplied file and the additional flows named in its final end-to-end section.
+> This document replaces the dated implementation-pass notes below. It records verified repository/CI/deployment status and known audit limitations; it is not a claim that every Telegram interaction has been end-to-end tested.
 
-## Feature-by-feature status
+## Verified current status
 
-| Blueprint requirement | Code status | Verification status |
-|---|---|---|
-| Auto Delete defaults off, 30-minute timer, cycle 2m/5m/15m/30m/1h/3h/6h/12h/24h | Implemented in settings and delivery service | Automated checks pending |
-| Auto Delete only schedules delivered file messages and the auto-delete notice | Implemented | Telegram integration test pending |
-| Single-file timer starts after successful delivery; alert shares deadline | Implemented | Telegram integration test pending |
-| Batch timer starts at first successful delivery; all files share one deadline; one alert after last attempt | Implemented | Telegram integration test pending |
-| After Delete only runs while Auto Delete is enabled; replacement points to original deeplink | Implemented | Telegram integration test pending |
-| Expiry jobs persist and are recovered after restart | Implemented with MongoDB task records | Crash/restart integration test pending |
-| Invalid Post defaults off; normal messages only; moderator and banned users excluded | Implemented | Telegram integration test pending |
-| Start About and Invalid About have independent toggles and edit their existing messages | Start About control and callback added; Invalid About already implemented | Callback integration test pending |
-| Invalid Post text variables, custom URL button, photo/GIF poster, About button | Implemented | Media and callback integration tests pending |
-| About button edits existing invalid post, including media caption | Implemented | Telegram integration test pending |
-| Shortener add/remove, masked token, API validation, manual shortening + COPY | GPlinks adapter plus generic compatible JSON API adapter implemented | Adapter unit tests added; live provider test pending |
-| /file creates one permanent deeplink and does not auto-shorten it | Implemented | Telegram integration test pending |
-| /batch creates one permanent deeplink for up to 100 messages | Implemented | Telegram integration test pending |
-| Batch source order, 200-second timeout, persistent collection session, restart recovery | MongoDB session plus per-item delivery progress and a recovery worker | Concurrency/restart tests pending |
-| Force Join checks configured channels, caches verification for matching channel set, removes prompt after successful check | Implemented | Real membership checks pending |
-| Optional Force Join animation, excluded from Auto Delete | Implemented through settings UI; deleted after delivery | Telegram media test pending |
-| Moderator maximum three, owner-only add/remove, owner excluded from list | Implemented | Concurrent moderator-change test pending |
-| Ban/unban persistence and owner/moderator protection | Implemented | Authorization tests pending |
-| Stats popup reports tracked users and known blocked/unreachable users | Implemented | Count accuracy depends on Telegram delivery errors |
-| Broadcast confirmation, queued rate-limited delivery, per-recipient result, restart recovery | Implemented with MongoDB jobs and recipient records | Large-broadcast/crash test pending |
+- `main` is the active development and deployment branch.
+- GitHub Actions CI completed successfully for the current main push, including dependency installation, Python compilation, and `pytest -q`.
+- The `Oracle Auto Deploy` workflow completed successfully for that push. Both **Verify code before deployment** and **Deploy to Oracle Cloud** succeeded.
+- The deployment workflow fetches the tested commit on the Oracle host, installs requirements, compiles the application, restarts `file-bot.service`, and checks that the service is active.
+- On the server, `git branch --show-current` reported `main`, the working tree was clean, and `systemctl is-active file-bot` returned `active`.
+- A backup tag, `backup-before-main-migration-20261015`, was created before the main-branch migration. Keep it until the migration has been stable and no longer needs rollback.
 
-## Known remaining gaps before production
+## Audit scope and limitations
 
-- Request-level deduplication is persisted for repeated /start updates and Force Join callbacks. Single-file and batch deliveries now use the same durable per-item queue and recover after restart; an item caught in the send/database-write crash window is marked unknown rather than resent blindly. Broadcast recovers queued drafts even if the process stops before job creation, skips users banned after queueing, and marks interrupted in-flight recipients as unknown. Exactly-once delivery cannot be guaranteed across the Telegram-send/database-write crash window.
-- The blueprint mentions a separate last-two-message retention rule. That retention/cleanup behavior is not implemented because the supplied section does not define its trigger/cleanup sequence. Telegram also does not generally allow the bot to delete user-authored messages in private chats.
-- The supplied file lacks blueprint sections 1–4, so the complete A-to-Z comparison requires the missing source sections.
-- A GitHub Actions CI workflow has now been added at `.github/workflows/ci.yml`; it installs the declared dependencies, compiles Python, and runs `pytest -q` on pushes and pull requests. The workflow has not yet been observed passing, and no end-to-end Telegram/Atlas/Oracle test has been confirmed. This audit does not claim a passing run.
+- The available blueprint source begins at section 5 (Auto Delete); sections 1–4 were not available for this comparison. A complete specification-to-code audit cannot be certified without those missing sections.
+- CI passing confirms the automated checks in the repository pass; it does **not** prove every Telegram, MongoDB Atlas, or real-user interaction works end to end.
+- Telegram/Atlas/Oracle integration behavior should be tested in the live environment for Force Join verification and animation, invalid-post deletion rules, auto-delete timing, batch delivery/recovery, and broadcast recovery.
+- Exactly-once delivery cannot be guaranteed across a Telegram-send/database-write crash window. Interrupted in-flight operations should be reported as unknown rather than blindly resent.
+- Telegram generally does not allow a bot to delete user-authored messages in private chats. Any deletion feature must only report success when the Telegram deletion call actually succeeds.
 
-## Release gate
+## Release and maintenance checklist
 
-Do not deploy as production-ready until the GitHub Actions checks pass, test cases cover settings callbacks and permission boundaries, and the full flow is tested with a real bot and Atlas database—including restart during batch collection, batch generation, expiry, and broadcast.
+- [x] Current `main` CI run passed.
+- [x] Current `main` Oracle deployment run passed.
+- [x] Oracle `file-bot` service reported active after deployment.
+- [ ] Obtain the missing blueprint sections 1–4 for a complete requirements audit.
+- [ ] Continue targeted live integration checks for Telegram and MongoDB Atlas flows; do not treat CI alone as end-to-end certification.
+- [ ] Retain the migration backup tag until the new main-only workflow has been stable.
 
-## Implementation pass — 2026-10-11
+## Branch policy
 
-- Work is being applied on branch `blueprint-implementation-pass-2026-10-11`; `main` has not been changed.
-- Added Force Join Media submenu with ADD/REMOVE controls; removal clears the saved poster IDs.
-- Aligned Force Join default copy in both the initial prompt and verification-refresh path with the agreed `{remaining_count}` wording.
-- Start settings fallback defaults now use the approved Start Text instead of the old generic welcome copy, and the default Start Button URL is explicitly seeded when the button text is customized.
-- These edits are not yet runtime-verified. Continue the Blueprint audit before deployment; no end-to-end Telegram/Atlas test has been run.
-
-
-## User-confirmed decisions — 2026-10-11
-
-- Animation default mode: Force Join Poster.
-- Default animation text frames: `.`, `..`, `...`.
-- `📟 UPDATE CHANNEL` remains the explicit emoji exception.
-- Force Join is effectively disabled with no Join Request channels configured. The Add flow asks the mode first: Join Request or Other.
-- Auto Delete and After Delete are separate toggles/pages. After Delete cannot be enabled while Auto Delete is off; switching Auto Delete off also turns After Delete off.
-- Both user-facing About views include a Back button to restore their prior Start/Invalid post content and buttons.
-- Implemented settings/UI updates are committed to the branch, but the actual 3-frame animation loop and both runtime animation modes remain incomplete/unverified in the delivery flow. The current flow still refers to a separately configured Force Join animation media ID.
-- No successful CI run for this branch or live Telegram/MongoDB Atlas end-to-end test has been verified yet.
+- Make new changes on `main` only.
+- Pushes to `main` run CI; the Oracle deploy job runs only on `main` and only when the repository variable `ORACLE_DEPLOY_ENABLED` is set to `true`.
+- Do not delete old remote branches or the backup tag until their unique commits have been reviewed and the main-only setup is confirmed stable.
