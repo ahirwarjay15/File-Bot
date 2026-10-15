@@ -124,11 +124,16 @@ def force_join_button_label(channel_cfg: dict, position: int) -> str:
     return (custom or f"Join {position}")[:64]
 
 
-def build_force_join_channel_button(channel_cfg: dict, position: int, target: str | None):
-    """Build a join button only from a real Telegram join URL."""
-    if not target:
-        return None
-    return InlineKeyboardButton(text=force_join_button_label(channel_cfg, position), url=target)
+def build_force_join_channel_button(
+    channel_cfg: dict, position: int, target: str | None, channel: str | None = None
+):
+    """Always render the channel; retry URL resolution on tap if it is not ready yet."""
+    label = force_join_button_label(channel_cfg, position)
+    if target:
+        return InlineKeyboardButton(text=label, url=target)
+    if channel:
+        return InlineKeyboardButton(text=label, callback_data=f"forcejoin:repair:{channel}")
+    return None
 
 
 async def resolve_force_join_button_target(bot, db, channel: str, channel_cfg: dict) -> str | None:
@@ -485,7 +490,7 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     for index, channel in enumerate(missing):
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
         target = await resolve_force_join_button_target(bot, database.db, channel, channel_cfg)
-        button = build_force_join_channel_button(channel_cfg, index + 1, target)
+        button = build_force_join_channel_button(channel_cfg, index + 1, target, channel)
         if button:
             join_buttons.append(button)
     rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
@@ -733,6 +738,34 @@ async def _edit_force_join_post(message: Message, text: str, markup: InlineKeybo
         log.warning("Could not edit animation poster into Force Join prompt", exc_info=True)
         return False
 
+@router.callback_query(F.data.startswith("forcejoin:repair:"))
+async def forcejoin_repair_link(query: CallbackQuery, database):
+    """Retry resolving a real join URL and replace the temporary callback button."""
+    if not query.message or not query.message.reply_markup:
+        await query.answer()
+        return
+    channel = query.data.split(":", 2)[2]
+    channel_cfg = await database.db.settings.find_one(
+        {"key": "force_join_channel", "channel": channel}
+    ) or {}
+    target = await resolve_force_join_button_target(query.bot, database.db, channel, channel_cfg)
+    if target:
+        rows = []
+        for row in query.message.reply_markup.inline_keyboard:
+            updated_row = []
+            for button in row:
+                if button.callback_data == query.data:
+                    updated_row.append(InlineKeyboardButton(text=button.text, url=target))
+                else:
+                    updated_row.append(button)
+            rows.append(updated_row)
+        try:
+            await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        except TelegramAPIError:
+            log.warning("Could not replace repaired Force Join URL button", exc_info=True)
+    await query.answer()
+
+
 @router.callback_query(F.data.startswith("forcejoin:check:"))
 async def forcejoin_check(query: CallbackQuery, settings: Settings, database, bot):
     if not query.from_user:
@@ -823,7 +856,7 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
             target = await resolve_force_join_button_target(
                 bot, database.db, channel, channel_cfg
             )
-            button = build_force_join_channel_button(channel_cfg, index + 1, target)
+            button = build_force_join_channel_button(channel_cfg, index + 1, target, channel)
             if button:
                 join_buttons.append(button)
         rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
