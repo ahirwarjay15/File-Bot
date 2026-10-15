@@ -684,6 +684,20 @@ def test_pending_join_request_expires_and_requires_timestamp():
 
 
 @pytest.mark.asyncio
+async def test_force_join_explicit_empty_database_override_removes_environment_channels():
+    from app.handlers.start import effective_force_join_channels
+
+    class SettingsCollection:
+        async def find_one(self, query):
+            return {"key": "force_join", "channels": [], "channels_override": True}
+
+    database = SimpleNamespace(db=SimpleNamespace(settings=SettingsCollection()))
+    assert await effective_force_join_channels(
+        database, SimpleNamespace(force_join_channels=["@envchannel"])
+    ) == []
+
+
+@pytest.mark.asyncio
 async def test_force_join_uses_environment_channels_when_database_list_is_empty():
     from types import SimpleNamespace
     from app.handlers.start import effective_force_join_channels
