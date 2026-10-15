@@ -354,18 +354,25 @@ def test_new_message_animation_is_deleted_only_after_replacement_post():
     source = Path("app/handlers/start.py").read_text()
     assert "delete_separate: bool = True" in source
     assert "delete_separate=False" in source
+
+    # The configured-poster path sends the replacement before concurrently
+    # deleting the animation and the previous Force Join post.
     send_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)')
     cleanup_position = source.index('cleanup = []', send_position)
     animation_delete_position = source.index('bot.delete_message(chat_id=user_id, message_id=separate_animation_id)', cleanup_position)
     old_post_delete_position = source.index('cleanup.append(old_post.delete())', cleanup_position)
     gather_position = source.index('await asyncio.gather(*cleanup, return_exceptions=True)', cleanup_position)
-    # Configured replacement is sent first, then both stale messages are
-    # deleted concurrently without changing the animation timing.
     assert send_position < cleanup_position < animation_delete_position < old_post_delete_position < gather_position
+
+    # If converting the animation message into the prompt fails, the fallback
+    # path must also start all stale-message deletions in the same gather.
     fallback_position = source.index('new_post = await _send_force_join_post(bot, user_id, force_cfg, rendered, markup)', send_position + 1)
-    poster_delete_position = source.index('await animation_post.delete()', fallback_position)
-    fallback_old_delete_position = source.index('await old_post.delete()', fallback_position)
-    assert fallback_position < poster_delete_position < fallback_old_delete_position
+    fallback_cleanup_position = source.index('cleanup_message_ids = set()', fallback_position)
+    fallback_gather_position = source.index('await asyncio.gather(', fallback_cleanup_position)
+    generator_position = source.index('bot.delete_message(chat_id=user_id, message_id=message_id)', fallback_cleanup_position)
+    assert fallback_position < fallback_cleanup_position < generator_position < fallback_gather_position
+    assert 'cleanup_message_ids.add(old_post.message_id)' in source[fallback_position:fallback_gather_position]
+    assert 'cleanup_message_ids.add(separate_animation_id)' in source[fallback_position:fallback_gather_position]
 
 
 def test_force_join_add_cleans_prompts_and_returns_to_main_page():
