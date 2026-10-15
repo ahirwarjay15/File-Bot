@@ -394,9 +394,9 @@ async def run_task_worker(bot: Bot, db, poll_seconds: int = 5):
                     ]]) if link else None
                     try:
                         if notice_id:
-                            await bot.edit_message_text(chat_id=task["user_id"], message_id=notice_id, text=text, reply_markup=markup)
+                            await bot.edit_message_text(chat_id=task["user_id"], message_id=notice_id, text=text, reply_markup=markup, parse_mode="HTML")
                         else:
-                            await bot.send_message(task["user_id"], text, reply_markup=markup)
+                            await bot.send_message(task["user_id"], text, reply_markup=markup, parse_mode="HTML")
                     except (TelegramForbiddenError, TelegramBadRequest):
                         await db.tasks.update_one({"_id": task["_id"]}, {"$set": {"after_delete_attempted": True}})
                         log.warning("After-delete replacement cannot be edited for user %s", task["user_id"])
