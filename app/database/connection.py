@@ -36,6 +36,23 @@ async def backfill_deeplink_codes(db, batch_size: int = 500) -> bool:
     return True
 
 
+async def remove_legacy_external_force_join_links(db) -> bool:
+    """Remove the retired external Force Join setting from legacy deployments."""
+    migration_id = "remove_external_force_join_links_v1"
+    if await db.system_migrations.find_one({"_id": migration_id}):
+        return False
+    await db.settings.update_one(
+        {"key": "force_join"},
+        {"$unset": {"other_links": ""}},
+    )
+    await db.system_migrations.update_one(
+        {"_id": migration_id},
+        {"$setOnInsert": {"completed": True}},
+        upsert=True,
+    )
+    return True
+
+
 class Database:
     def __init__(self,settings:Settings):
         self.settings=settings
@@ -72,6 +89,8 @@ class Database:
             await self.db.delivery_requests.create_index([("status",ASCENDING),("updated_at",ASCENDING)])
             await self.db.batches.create_index([("batch_id",ASCENDING)],unique=True,sparse=True)
             await self.db.deeplink_codes.create_index([("code",ASCENDING)],unique=True)
+            # Drop the retired external Force Join field from legacy configuration.
+            await remove_legacy_external_force_join_links(self.db)
             # Preserve every legacy code, but do the scan once and use bulk writes
             # so startup cost does not grow by one network round trip per stored file.
             await backfill_deeplink_codes(self.db)

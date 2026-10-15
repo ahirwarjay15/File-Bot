@@ -85,11 +85,6 @@ def force_join_mode_for_chat(chat) -> str:
     """Public usernames use the public link; private chats require join approval."""
     return "normal" if getattr(chat, "username", None) else "join_request"
 
-def force_join_capacity_reached(channels, other_links) -> bool:
-    """Count both Telegram chats and external links against the shared ten-button limit."""
-    return len(channels) + len(other_links) >= 10
-
-
 def valid_button_text(value: str) -> bool:
     """Telegram inline keyboard button labels must contain 1 to 64 characters."""
     text = str(value or "").strip()
@@ -642,7 +637,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
     elif action == "forcejoin": await render_forcejoin(query, db, settings)
     elif action == "forcejoin_toggle":
         cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        await patch(db, "force_join", {"enabled": not cfg.get("enabled", False)}, {"channels": [], "other_links": [], "message": "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"})
+        await patch(db, "force_join", {"enabled": not cfg.get("enabled", False)}, {"channels": [], "message": "Hey {mention}\nPlease Join My {remaining_count} Channel's To Use Me!"})
         await render_forcejoin(query, db, settings)
     elif action == "forcejoin_add":
         panel_message = await edit_page(query, "ADD FORCE JOIN\n\nChoose Group or Channel from the keyboard below. Public chats use Normal Mode automatically; private chats use Join Request Mode automatically.", kb([
@@ -665,65 +660,6 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
             )
         await state.set_state(SettingInput.waiting)
         await state.update_data(field="forcejoin_wait_chat")
-    elif action == "forcejoin_other":
-        await state.set_state(SettingInput.waiting); await state.update_data(field="forcejoin_other_url")
-        if query.message: await tracked_answer(query.message, state, "Send the link of any platform. Example: Facebook, Instagram or YouTube.")
-    elif action.startswith("forcejoin_other_settings:"):
-        cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        links = cfg.get("other_links", [])
-        index = int(action.split(":", 1)[1])
-        if 0 <= index < len(links):
-            item = links[index]
-            await edit_page(query, f"CHANNEL SETTINGS\n\n{item.get('url', '')}\n\nSelect an option below.", kb([
-                [("BUTTON TEXT", f"settings:forcejoin_other_label:{index}"), ("REMOVE", f"settings:forcejoin_other_remove:{index}")],
-                [("《 BACK", "settings:forcejoin")],
-            ]))
-    elif action.startswith("forcejoin_other_label:"):
-        index = int(action.split(":", 1)[1])
-        cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        links = cfg.get("other_links", [])
-        if 0 <= index < len(links):
-            await state.set_state(SettingInput.waiting)
-            await state.update_data(field="forcejoin_existing_other_label", other_index=index)
-            if query.message: await tracked_answer(query.message, state, "Send new button text for force-join channel button.")
-    elif action.startswith("forcejoin_other_remove:"):
-        index = int(action.split(":", 1)[1])
-        cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        links = cfg.get("other_links", [])
-        if 0 <= index < len(links):
-            links.pop(index)
-            await patch(db, "force_join", {"other_links": links})
-        await render_forcejoin(query, db, settings)
-    elif action == "forcejoin_other_default":
-        data = await state.get_data()
-        url = data.get("pending_url")
-        if not url:
-            await clear_state_preserving_prompts(state)
-            if query.message: await tracked_answer(query.message, state, "Add process expired. Please start again.")
-            return
-        channels = await effective_force_join_channels(database, settings)
-        cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        other_links = list(cfg.get("other_links", []))
-        if force_join_capacity_reached(channels, other_links):
-            await clear_state_preserving_prompts(state)
-            if query.message: await tracked_answer(query.message, state, "Maximum 10 force-join channels allowed.")
-            return
-        key = f"other:{datetime.now(timezone.utc).timestamp():.0f}"
-        other_links.append({"key": key, "url": url, "button_text": f"Join {len(channels) + len(other_links) + 1}"})
-        await patch(db, "force_join", {"other_links": other_links})
-        await clear_state_preserving_prompts(state)
-        if query.message: await tracked_answer(query.message, state, f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
-        await render_forcejoin(query, db, settings)
-        return
-    elif action == "forcejoin_other_custom":
-        data = await state.get_data()
-        if not data.get("pending_url"):
-            await clear_state_preserving_prompts(state)
-            if query.message: await tracked_answer(query.message, state, "Add process expired. Please start again.")
-            return
-        await state.set_state(SettingInput.waiting)
-        await state.update_data(field="forcejoin_other_label")
-        if query.message: await tracked_answer(query.message, state, "Send custom button text for force-join channel button.")
     elif action == "forcejoin_join_request":
         await state.set_state(SettingInput.waiting)
         await state.update_data(field="forcejoin_wait_chat")
@@ -782,7 +718,7 @@ async def settings_callbacks(query: CallbackQuery, state: FSMContext, settings: 
         await query.answer(plain_preview(preview)[:190], show_alert=True)
         return
     elif action == "forcejoin_message_default":
-        await patch(db, "force_join", {"message": DEFAULT_FORCE_JOIN_MESSAGE}, {"enabled": False, "channels": [], "other_links": []})
+        await patch(db, "force_join", {"message": DEFAULT_FORCE_JOIN_MESSAGE}, {"enabled": False, "channels": [], })
         me = await query.bot.get_me()
         preview = DEFAULT_FORCE_JOIN_MESSAGE.replace("{mention}", query.from_user.full_name if query.from_user else "User").replace("{remaining_count}", "3")
         preview = preview.replace("{bot_mention}", me.full_name or me.username or "Bot")
@@ -1225,8 +1161,7 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
     value = (message.text or "").strip()
 
     button_label_fields = {
-        "custom_button_text", "forcejoin_label", "forcejoin_other_label",
-        "forcejoin_existing_other_label", "forcejoin_verify_text",
+        "custom_button_text", "forcejoin_label", "forcejoin_verify_text",
         "start_button_text", "invalid_button_text", "after_text_button",
     }
     dynamic_button_label = (
@@ -1499,75 +1434,6 @@ async def receive_setting_input(message: Message, state: FSMContext, settings: S
         await patch(db, "animation", {"frames": frames}, {"enabled": False, "prefix": "Checking", "speed": 0.25, "mode": "force_join_poster"})
         await clear_state_preserving_prompts(state)
         await tracked_answer(message, state, "✨ Animation frames updated successfully.")
-        return
-    if field == "forcejoin_other_url":
-        normalized_url = normalize_http_url(value)
-        if not normalized_url:
-            await tracked_answer(message, state, "Please send a valid link, e.g. example.com, https://example.com, t.me/channel, or @channel.")
-            return
-        value = normalized_url
-        channels = await effective_force_join_channels(database, settings)
-        # External links share the same ten-button limit as Telegram chats.
-        cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        if force_join_capacity_reached(channels, list(cfg.get("other_links", []))):
-            await tracked_answer(message, state, "Maximum 10 force-join channels allowed.")
-            await clear_state_preserving_prompts(state)
-            return
-        # Compare normalized URLs against both configured external links and
-        # legacy standalone channel records.
-        configured_urls = {
-            normalize_http_url(str(item.get("url", "")))
-            for item in cfg.get("other_links", [])
-            if isinstance(item, dict) and item.get("url")
-        }
-        existing_other = await db.settings.find_one({"key": "force_join_channel", "url": value})
-        if value in configured_urls or existing_other:
-            await tracked_answer(message, state, "That link is already configured.")
-            return
-        await state.update_data(field="forcejoin_other_label", pending_url=value)
-        await tracked_answer(message, state, "Use the default button text or set a custom button text.", reply_markup=kb([
-            [("DEFAULT", "settings:forcejoin_other_default"), ("CUSTOM", "settings:forcejoin_other_custom")],
-            [("《 BACK", "settings:forcejoin")],
-        ]))
-        return
-    if field == "forcejoin_other_label":
-        if not value or len(value) > 64:
-            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
-            return
-        prev = await state.get_data()
-        cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        channels = await effective_force_join_channels(database, settings)
-        other_links = list(cfg.get("other_links", []))
-        if force_join_capacity_reached(channels, other_links):
-            await tracked_answer(message, state, "Maximum 10 force-join channels allowed.")
-            await clear_state_preserving_prompts(state)
-            return
-        url = prev.get("pending_url")
-        if not url:
-            await tracked_answer(message, state, "Add process expired. Please start again.")
-            await clear_state_preserving_prompts(state)
-            return
-        channel_key = f"other:{len(other_links)+1}"
-        other_links.append({"key": channel_key, "url": url, "button_text": value})
-        await patch(db, "force_join", {"other_links": other_links})
-        await clear_state_preserving_prompts(state)
-        await tracked_answer(message, state, f"✨ Successfully added {urlparse(url).netloc} as your force-join channel.")
-        return
-    if field == "forcejoin_existing_other_label":
-        if not value or len(value) > 64:
-            await tracked_answer(message, state, "Button text must be between 1 and 64 characters.")
-            return
-        prev = await state.get_data()
-        cfg = await db.settings.find_one({"key": "force_join"}) or {}
-        links = cfg.get("other_links", [])
-        index = int(prev.get("other_index", -1))
-        if 0 <= index < len(links):
-            links[index]["button_text"] = value
-            await patch(db, "force_join", {"other_links": links})
-            await tracked_answer(message, state, "✨ Successfully updated force-join button text.")
-        else:
-            await tracked_answer(message, state, "Channel setting expired. Please reopen it.")
-        await clear_state_preserving_prompts(state)
         return
     if field == "forcejoin_label":
         if not value or len(value) > 64:
