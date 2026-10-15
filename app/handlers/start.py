@@ -124,12 +124,16 @@ def force_join_button_label(channel_cfg: dict, position: int) -> str:
     return (custom or f"Join {position}")[:64]
 
 
-def build_force_join_channel_button(channel_cfg: dict, position: int, target: str | None):
-    """Never silently omit a required channel when Telegram cannot resolve its invite."""
+def build_force_join_channel_button(
+    channel_cfg: dict, position: int, target: str | None, channel: str | None = None
+):
+    """Always render the channel; retry URL resolution on tap if it is not ready yet."""
     label = force_join_button_label(channel_cfg, position)
     if target:
         return InlineKeyboardButton(text=label, url=target)
-    return InlineKeyboardButton(text=label, callback_data="forcejoin:link_unavailable")
+    if channel:
+        return InlineKeyboardButton(text=label, callback_data=f"forcejoin:repair:{channel}")
+    return None
 
 
 async def resolve_force_join_button_target(bot, db, channel: str, channel_cfg: dict) -> str | None:
@@ -139,8 +143,10 @@ async def resolve_force_join_button_target(bot, db, channel: str, channel_cfg: d
     try:
         chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
         chat = await bot.get_chat(chat_arg)
-    except (TelegramAPIError, ValueError):
-        pass
+    except ValueError:
+        log.warning("Invalid Force Join chat identifier %r", channel, exc_info=True)
+    except TelegramAPIError as exc:
+        log.warning("Could not resolve Force Join chat %r via Telegram: %s", channel, exc, exc_info=True)
 
     if chat and chat.username:
         # Public channels should always use their own canonical username link,
@@ -184,9 +190,14 @@ async def resolve_force_join_button_target(bot, db, channel: str, channel_cfg: d
             invite = await bot.create_chat_invite_link(
                 chat_id=chat.id, creates_join_request=True, name="FB Force Join - Request"
             )
-        except TelegramAPIError:
-            log.warning("Could not repair missing private Force Join URL for %s", channel, exc_info=True)
-            return None
+        except TelegramAPIError as exc:
+            log.error(
+                "Could not create a private Force Join invite for chat %s: %s",
+                chat.id, exc, exc_info=True,
+            )
+            # Reuse the saved URL if Telegram refuses a replacement; never invent
+            # a private invite URL.
+            return channel_cfg.get("button_url") or None
         target = invite.invite_link
         await db.settings.update_one(
             {"key": "force_join_channel", "channel": channel},
@@ -478,22 +489,10 @@ async def gate_or_prompt(message:Message,payload:str,settings,database,bot)->boo
     join_buttons = []
     for index, channel in enumerate(missing):
         channel_cfg = await database.db.settings.find_one({"key": "force_join_channel", "channel": channel}) or {}
-        target = channel_cfg.get("button_url")
-        chat = None
-        try:
-            chat_arg = int(channel) if channel.lstrip("-").isdigit() else channel
-            chat = await bot.get_chat(chat_arg)
-        except (TelegramAPIError, ValueError):
-            pass
-        if not target and chat and chat.username:
-            target = f"https://t.me/{chat.username}"
-        if not target and channel.startswith(("https://t.me/", "http://t.me/")):
-            target = channel
-        if not target and not channel.lstrip("-").isdigit():
-            target = f"https://t.me/{channel.lstrip('@')}"
-        if target:
-            label = force_join_button_label(channel_cfg, index + 1)
-            join_buttons.append(InlineKeyboardButton(text=label, url=target))
+        target = await resolve_force_join_button_target(bot, database.db, channel, channel_cfg)
+        button = build_force_join_channel_button(channel_cfg, index + 1, target, channel)
+        if button:
+            join_buttons.append(button)
     rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
     rows.append([InlineKeyboardButton(text=cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ",callback_data=f"forcejoin:check:{payload}")])
     raw_text = cfg.get("message") or "Hey {user_mention}! Please join my {remaining_count} remaining channel(s) to use me."
@@ -739,12 +738,32 @@ async def _edit_force_join_post(message: Message, text: str, markup: InlineKeybo
         log.warning("Could not edit animation poster into Force Join prompt", exc_info=True)
         return False
 
-@router.callback_query(F.data == "forcejoin:link_unavailable")
-async def forcejoin_link_unavailable(query: CallbackQuery):
-    await query.answer(
-        "This channel's join link is temporarily unavailable. Please contact the bot owner.",
-        show_alert=True,
-    )
+@router.callback_query(F.data.startswith("forcejoin:repair:"))
+async def forcejoin_repair_link(query: CallbackQuery, database):
+    """Retry resolving a real join URL and replace the temporary callback button."""
+    if not query.message or not query.message.reply_markup:
+        await query.answer()
+        return
+    channel = query.data.split(":", 2)[2]
+    channel_cfg = await database.db.settings.find_one(
+        {"key": "force_join_channel", "channel": channel}
+    ) or {}
+    target = await resolve_force_join_button_target(query.bot, database.db, channel, channel_cfg)
+    if target:
+        rows = []
+        for row in query.message.reply_markup.inline_keyboard:
+            updated_row = []
+            for button in row:
+                if button.callback_data == query.data:
+                    updated_row.append(InlineKeyboardButton(text=button.text, url=target))
+                else:
+                    updated_row.append(button)
+            rows.append(updated_row)
+        try:
+            await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        except TelegramAPIError:
+            log.warning("Could not replace repaired Force Join URL button", exc_info=True)
+    await query.answer()
 
 
 @router.callback_query(F.data.startswith("forcejoin:check:"))
@@ -837,9 +856,9 @@ async def _forcejoin_check_impl(query: CallbackQuery, settings: Settings, databa
             target = await resolve_force_join_button_target(
                 bot, database.db, channel, channel_cfg
             )
-            # Keep every missing channel visible even when Telegram refuses to
-            # resolve or create its invite URL; never silently drop its button.
-            join_buttons.append(build_force_join_channel_button(channel_cfg, index + 1, target))
+            button = build_force_join_channel_button(channel_cfg, index + 1, target, channel)
+            if button:
+                join_buttons.append(button)
         rows = [join_buttons[i:i+2] for i in range(0, len(join_buttons), 2)]
         rows.append([InlineKeyboardButton(text=force_cfg.get("verify_text") or "ɪ ᴊᴏɪɴᴇᴅ — ᴄʜᴇᴄᴋ ᴀɢᴀɪɴ", callback_data=f"forcejoin:check:{payload}")])
         me = await bot.get_me()

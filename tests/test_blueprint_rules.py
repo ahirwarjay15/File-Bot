@@ -380,8 +380,10 @@ def test_force_join_verification_resolves_public_chat_username_for_join_button()
     from pathlib import Path
 
     source = Path("app/handlers/start.py").read_text()
-    assert source.count('target = f"https://t.me/{chat.username}"') >= 2
-    assert source.count("chat = await bot.get_chat(chat_arg)") >= 2
+    gate_prompt = source.split("async def gate_or_prompt", 1)[1].split("@router.callback_query(F.data == \"start:about\")", 1)[0]
+    verification = source.split("async def _forcejoin_check_impl", 1)[1]
+    assert "resolve_force_join_button_target(bot, database.db, channel, channel_cfg)" in gate_prompt
+    assert "resolve_force_join_button_target(" in verification
 
 def test_settings_index_migration_allows_multiple_force_join_channel_documents():
     from pathlib import Path
@@ -762,9 +764,9 @@ def test_stats_blocked_count_does_not_treat_any_delivery_error_as_blocked():
 def test_force_join_channel_button_is_not_omitted_when_invite_resolution_fails():
     from app.handlers.start import build_force_join_channel_button
 
-    button = build_force_join_channel_button({"button_text": "Test"}, 2, None)
+    button = build_force_join_channel_button({"button_text": "Test"}, 2, None, "-100123")
     assert button.text == "Test"
-    assert button.callback_data == "forcejoin:link_unavailable"
+    assert button.callback_data == "forcejoin:repair:-100123"
     assert button.url is None
 
 
