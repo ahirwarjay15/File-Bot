@@ -26,7 +26,17 @@ def build_dispatcher(settings, database) -> Dispatcher:
     dp["settings"] = settings
     dp["database"] = database
     # Keep the catch-all invalid-post handler last so specific handlers run first.
-    for r in (start_router,file_router,batch_router,admin_router,settings_router,broadcast_router,shortener_router,misc_router):dp.include_router(r)
+    for router in (
+        start_router,
+        file_router,
+        batch_router,
+        admin_router,
+        settings_router,
+        broadcast_router,
+        shortener_router,
+        misc_router,
+    ):
+        dp.include_router(router)
     return dp
 
 
