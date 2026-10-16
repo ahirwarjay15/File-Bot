@@ -731,13 +731,30 @@ async def test_force_join_uses_environment_channels_when_database_list_is_empty(
 
 
 def test_invalid_post_router_runs_after_file_and_batch_message_handlers():
+    import ast
     from pathlib import Path
 
-    source = Path("main.py").read_text()
-    router_order = source.split("for r in (", 1)[1].split("):dp.include_router(r)", 1)[0]
-    assert router_order.index("file_router") < router_order.index("misc_router")
-    assert router_order.index("batch_router") < router_order.index("misc_router")
-    assert router_order.index("settings_router") < router_order.index("misc_router")
+    tree = ast.parse(Path("main.py").read_text())
+    router_names = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.For):
+            continue
+        if not isinstance(node.target, ast.Name) or node.target.id != "router":
+            continue
+        if not isinstance(node.iter, ast.Tuple):
+            continue
+        names = [
+            item.id for item in node.iter.elts
+            if isinstance(item, ast.Name)
+        ]
+        if {"file_router", "batch_router", "misc_router"}.issubset(names):
+            router_names = names
+            break
+
+    assert router_names is not None
+    assert router_names.index("file_router") < router_names.index("misc_router")
+    assert router_names.index("batch_router") < router_names.index("misc_router")
+    assert router_names.index("settings_router") < router_names.index("misc_router")
 
 
 def test_invalid_post_never_deletes_submitted_user_message():
