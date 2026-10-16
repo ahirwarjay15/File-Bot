@@ -12,3 +12,7 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+
+# Private deployment values; never commit real secrets
+deployment/render-env.private.json
+deployment/render-env.private.*.json
