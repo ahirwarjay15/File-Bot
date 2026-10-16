@@ -26,11 +26,7 @@ def build_dispatcher(settings, database) -> Dispatcher:
     dp["settings"] = settings
     dp["database"] = database
     # Keep the catch-all invalid-post handler last so specific handlers run first.
-    for router in (
-        start_router, file_router, batch_router, admin_router,
-        settings_router, broadcast_router, shortener_router, misc_router,
-    ):
-        dp.include_router(router)
+    for r in (start_router,file_router,batch_router,admin_router,settings_router,broadcast_router,shortener_router,misc_router):dp.include_router(r)
     return dp
 
 
@@ -54,19 +50,18 @@ async def supervise_worker(worker, *args, name: str, restart_delay: float = 5.0)
 async def run_background_workers(bot, db):
     """Run queue/maintenance workers; this role never polls Telegram updates."""
     workers = (
-        (run_task_worker, "delivery-task-worker"),
-        (run_batch_session_worker, "batch-session-worker"),
-        (run_batch_delivery_worker, "batch-delivery-worker"),
-        (run_broadcast_worker, "broadcast-worker"),
-        (run_pending_join_request_cleanup_worker, "pending-join-request-cleanup-worker"),
+        (run_task_worker, (bot, db), "delivery-task-worker"),
+        (run_batch_session_worker, (bot, db), "batch-session-worker"),
+        (run_batch_delivery_worker, (bot, db), "batch-delivery-worker"),
+        (run_broadcast_worker, (bot, db), "broadcast-worker"),
+        (run_pending_join_request_cleanup_worker, (db,), "pending-join-request-cleanup-worker"),
     )
     tasks = [
         asyncio.create_task(
-            supervise_worker(worker, *( [bot, db] if worker is not run_pending_join_request_cleanup_worker else [db] ),
-                             name=name),
+            supervise_worker(worker, *args, name=name),
             name=name,
         )
-        for worker, name in workers
+        for worker, args, name in workers
     ]
     try:
         await asyncio.gather(*tasks)
