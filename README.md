@@ -39,3 +39,8 @@ GitHub Actions compile checks and the current automated unit/regression suite pa
 - GPlinks uses its documented API endpoint; other shortener providers need to match the generic JSON url/token contract or have a dedicated adapter.
 - Telegram does not expose a universal exact count of users who blocked the bot.
 - Telegram Bot API cannot delete user-authored messages in ordinary private chats.
+
+
+
+
+8725242605:AAFO1XdnhtieZXyaMYqSSR2KjIKd0v-7IMg
