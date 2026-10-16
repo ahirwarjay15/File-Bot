@@ -14,6 +14,16 @@ Async Telegram file/batch delivery bot built with Python 3.12, aiogram 3 and Mon
 - Manual /shortener URL or reply-to-message shortening; file and batch links are not automatically shortened.
 - Shortener setup includes a GPlinks adapter plus a generic JSON API adapter for compatible providers.
 
+## Process roles
+
+`APP_ROLE=all` is the backward-compatible default: one process polls Telegram and runs background workers.
+
+`APP_ROLE=main` polls Telegram and performs schema/index setup, but does not consume background jobs.
+
+`APP_ROLE=worker` connects to MongoDB and runs queue/maintenance workers without Telegram polling or schema migrations. All workers must currently use the same bot token and database as the main bot; separate Telegram bot identities and 15-way sharded storage are not implemented by this role switch alone.
+
+**Do not scale to multiple worker replicas yet.** Safe multi-worker lease renewal/stale-job recovery must be implemented and tested first. The central catalog + 15 Atlas shard routing layer is also a separate, not-yet-implemented step. Until then, keep the existing single-process `APP_ROLE=all` deployment running.
+
 ## Required Telegram setup
 1. Create a private source channel for stored messages.
 2. Add the bot as an administrator with permission to post/copy messages.
@@ -33,7 +43,7 @@ python main.py
 Run tests with pytest -q. GitHub Actions compiles Python and runs the test suite on pushes and pull requests.
 
 ## Test status and limitations
-GitHub Actions compile checks and the current automated unit/regression suite pass on the implementation branch. End-to-end tests against a real Telegram bot, MongoDB Atlas, and the Oracle VM are still pending. Do not treat it as production-ready until those checks pass.
+End-to-end tests against a real Telegram bot, MongoDB Atlas, and the Oracle VM are still required. Do not treat the system as production-ready until those checks pass.
 - MongoDB stores references; the source channel contains actual posts. Deleted or inaccessible source posts cannot be reconstructed.
 - Telegram cannot guarantee exactly-once delivery across a crash between a successful send and recording the result. An interrupted in-flight broadcast recipient is marked unknown rather than blindly resent.
 - GPlinks uses its documented API endpoint; other shortener providers need to match the generic JSON url/token contract or have a dedicated adapter.
