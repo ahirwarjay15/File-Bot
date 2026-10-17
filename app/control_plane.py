@@ -1,7 +1,10 @@
 """Main control plane for managing isolated File-Bot worker bots."""
 import asyncio
+import copy
+import json
 import logging
 import os
+from types import SimpleNamespace
 from contextlib import suppress
 from datetime import datetime, timezone
 
@@ -13,7 +16,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
-    BotCommand, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message,
+    BotCommand, BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message,
 )
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import SecretStr
@@ -85,6 +88,7 @@ async def _home(message_or_query, db):
         status = "🟢" if doc.get("status", "active") == "active" else "⏸"
         rows.append([(f"{status} {_worker_label(doc)}", f"worker:{doc['bot_id']}")])
     rows.append([("➕ Add Worker Bot", "add_worker")])
+    rows.append([("📦 Backup All Bots", "backup_all")])
     text = "<b>Main Bot · Worker Control Center</b>\n\nChoose a worker to manage its status, storage, and settings."
     if isinstance(message_or_query, Message):
         await message_or_query.answer(text, reply_markup=_keyboard(rows), parse_mode="HTML")
@@ -143,7 +147,7 @@ class WorkerManager:
             async def settings_redirect(message: Message):
                 await message.answer("Worker settings are managed from the Main Bot. Open Main Bot → /settings.")
             for item in (start_router, file_router, batch_router, admin_router, broadcast_router, shortener_router, guard, misc_router):
-                dp.include_router(item)
+                dp.include_router(copy.deepcopy(item))
             await _set_commands(bot)
             await bot.delete_webhook(drop_pending_updates=False)
             task = asyncio.create_task(
@@ -351,6 +355,7 @@ async def worker_details(query: CallbackQuery, database, manager: WorkerManager)
     rows = [
         [("⚙️ Worker Settings", f"cfg:{bot_id}")],
         [("⏸ Pause" if status == "active" else "▶️ Resume", f"toggle:{bot_id}")],
+        [("📦 Backup Data", f"backup:{bot_id}")],
         [("🗑 Remove Worker", f"remove:{bot_id}")],
         [("← Back", "home")],
     ]
@@ -395,6 +400,7 @@ async def worker_details_refresh(query, db, bot_id):
         reply_markup=_keyboard([
             [("⚙️ Worker Settings", f"cfg:{bot_id}")],
             [("⏸ Pause" if status == "active" else "▶️ Resume", f"toggle:{bot_id}")],
+            [("📦 Backup Data", f"backup:{bot_id}")],
             [("🗑 Remove Worker", f"remove:{bot_id}")],
             [("← Back", "home")],
         ]),
@@ -481,7 +487,7 @@ async def set_worker_setting(query: CallbackQuery, manager: WorkerManager):
     await query.answer("Setting updated")
     # Refresh the settings panel through the existing callback handler.
     query.data = f"cfg:{bot_id}"
-    await worker_settings(query, database=type("D", (), {"db": manager.control_db})(), manager=manager)
+    await worker_settings(query, database=SimpleNamespace(db=manager.control_db), manager=manager)
 
 
 @router.callback_query(F.data == "home")
@@ -491,6 +497,69 @@ async def back_home(query: CallbackQuery, database):
         return
     await _home(query, database.db)
     await query.answer()
+
+
+
+async def _export_db(db, label):
+    lines = [f"FILE BOT BACKUP: {label}", f"Created: {datetime.now(timezone.utc).isoformat()}", ""]
+    for name in sorted(await db.list_collection_names()):
+        lines.append(f"\\n===== COLLECTION: {name} =====")
+        cursor = db[name].find({})
+        async for document in cursor:
+            if name == "managed_bots":
+                document.pop("token_enc", None)
+            lines.append(json.dumps(document, ensure_ascii=False, default=str, separators=(",", ":")))
+    return "\\n".join(lines)
+
+
+async def _send_backup(message_or_query, database, manager, bot_id=None):
+    chunks = []
+    chunks.append(await _export_db(database.db, "Main database / bot registry"))
+    docs = await _worker_docs(database.db)
+    selected = [d for d in docs if bot_id is None or int(d["bot_id"]) == int(bot_id)]
+    for doc in selected:
+        runtime = manager.instances.get(int(doc["bot_id"]))
+        if runtime:
+            chunks.append(await _export_db(runtime["database"].db, _worker_label(doc)))
+        else:
+            chunks.append(f"Worker {_worker_label(doc)} (pool {doc.get('pool_index')}) is not running; its live database was not exported.")
+    payload = "\\n\\n".join(chunks)
+    if len(payload.encode("utf-8")) > 45 * 1024 * 1024:
+        target = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
+        await target.answer("Backup exceeds Telegram's single-file upload limit. Use a server-side export for this dataset.")
+        return
+    filename = "filebot_all_bots_backup.txt" if bot_id is None else f"filebot_worker_{bot_id}_backup.txt"
+    target = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
+    await target.answer_document(
+        BufferedInputFile(payload.encode("utf-8"), filename=filename),
+        caption="Backup complete. Worker bot tokens are excluded from the export."
+    )
+
+
+@router.callback_query(F.data == "backup_all")
+async def backup_all(query: CallbackQuery, database, manager: WorkerManager):
+    if not await _is_owner(query.from_user):
+        await query.answer("Not authorized", show_alert=True)
+        return
+    await query.answer("Preparing backup…")
+    await _send_backup(query, database, manager)
+
+
+@router.callback_query(F.data.startswith("backup:"))
+async def backup_worker(query: CallbackQuery, database, manager: WorkerManager):
+    if not await _is_owner(query.from_user):
+        await query.answer("Not authorized", show_alert=True)
+        return
+    bot_id = int(query.data.split(":", 1)[1])
+    await query.answer("Preparing worker backup…")
+    await _send_backup(query, database, manager, bot_id=bot_id)
+
+
+@router.message(Command("backup"))
+async def backup_command(message: Message, database, manager: WorkerManager):
+    if not await _is_owner(message.from_user):
+        return
+    await _send_backup(message, database, manager)
 
 
 async def run_control_plane():
