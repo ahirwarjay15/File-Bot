@@ -1,5 +1,5 @@
 """Application entry point."""
-import asyncio,logging,sys
+import asyncio,logging,sys,os
 from aiogram import Bot,Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -61,5 +61,10 @@ async def main():
         await database.close();await bot.session.close()
 
 if __name__=="__main__":
-    try:asyncio.run(main())
+    try:
+        if os.getenv("APP_ROLE", "all").strip().lower() == "control":
+            from app.control_plane import run_control_plane
+            asyncio.run(run_control_plane())
+        else:
+            asyncio.run(main())
     except (KeyboardInterrupt,SystemExit):pass
