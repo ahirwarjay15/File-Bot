@@ -20,6 +20,7 @@ from aiogram.types import (
 )
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import SecretStr
+from pymongo import AsyncMongoClient
 
 from app.config import Settings
 from app.database.connection import Database
@@ -229,6 +230,12 @@ async def add_worker_start(query: CallbackQuery, state: FSMContext):
     await state.set_state(AddWorker.token)
     await query.message.answer("Send the Worker Bot API token from BotFather. It will be encrypted before storage.")
     await query.answer()
+
+
+@router.message(Command("cancel"), StateFilter(AddWorker.token, AddWorker.storage_channel))
+async def cancel_add_worker(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Worker setup cancelled.")
 
 
 @router.message(StateFilter(AddWorker.token))
@@ -521,8 +528,19 @@ async def _send_backup(message_or_query, database, manager, bot_id=None):
         runtime = manager.instances.get(int(doc["bot_id"]))
         if runtime:
             chunks.append(await _export_db(runtime["database"].db, _worker_label(doc)))
-        else:
-            chunks.append(f"Worker {_worker_label(doc)} (pool {doc.get('pool_index')}) is not running; its live database was not exported.")
+            continue
+        uri = _pool_uri(int(doc["pool_index"]))
+        if not uri:
+            chunks.append(f"Worker {_worker_label(doc)}: database pool is not configured; data was not exported.")
+            continue
+        client = AsyncMongoClient(uri, appname="File-Bot-Backup", serverSelectionTimeoutMS=8000, connectTimeoutMS=8000)
+        try:
+            await client.admin.command("ping")
+            chunks.append(await _export_db(client[doc.get("database_name", "file_bot")], _worker_label(doc)))
+        except Exception as exc:
+            chunks.append(f"Worker {_worker_label(doc)}: database export failed ({type(exc).__name__}).")
+        finally:
+            await client.close()
     payload = "\\n\\n".join(chunks)
     if len(payload.encode("utf-8")) > 45 * 1024 * 1024:
         target = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
